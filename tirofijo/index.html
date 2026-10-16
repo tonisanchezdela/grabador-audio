@@ -637,6 +637,7 @@
   function iniciarSesion(){
     if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
     if(S.phase!=='ready') return;
+    S.shots=[]; S.lastShot=0; renderStats();   // nueva sesión: borra impactos anteriores
     $('#rowReady').style.display='none'; $('#rowRun').style.display='flex';
     clearTick();
     if(T.startCount>0){
