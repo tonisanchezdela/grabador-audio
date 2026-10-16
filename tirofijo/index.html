@@ -65,6 +65,22 @@
     font-size:12px; padding:6px 12px; border-radius:20px; display:none; backdrop-filter:blur(4px);}
   #stage.controls-hidden #tapHint{display:block;}
 
+  /* pantalla inicial: elección de cámara */
+  #startup{position:absolute; inset:0; z-index:30; background:rgba(13,17,23,.97);
+    display:flex; align-items:center; justify-content:center; padding:22px;}
+  #startup .su-box{width:100%; max-width:380px; display:flex; flex-direction:column; gap:12px;}
+  .su-logo{font-size:28px; font-weight:800; letter-spacing:3px; text-align:center;}
+  .su-sub{color:var(--muted); text-align:center; margin:0 0 4px; font-size:14px;}
+  .su-status{color:var(--gold); font-size:13px; text-align:center; min-height:18px; line-height:1.4;}
+  #startup input[type=text]{text-align:center; font-size:26px; letter-spacing:6px; font-weight:800;}
+  /* banner del móvil-cámara */
+  #camBanner{position:absolute; top:52px; left:50%; transform:translateX(-50%); z-index:15;
+    background:rgba(13,17,23,.8); border:1px solid var(--accent); border-radius:14px;
+    padding:10px 18px; text-align:center; display:none; backdrop-filter:blur(6px);}
+  #camBanner .cb-l{font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase;}
+  #camBanner .cb-code{font-size:38px; font-weight:800; letter-spacing:6px; color:var(--accent);}
+  #camBanner .cb-st{font-size:12px; color:var(--gold);}
+
   .scoreflash{position:absolute; top:14%; right:14px;
     font-size:58px; font-weight:800; color:var(--gold); opacity:0;
     text-shadow:0 2px 20px rgba(0,0,0,.9); pointer-events:none;}
@@ -156,6 +172,28 @@
     <div class="pill" id="pill">Pulsa <b>Iniciar</b></div>
     <div class="scoreflash" id="flash"></div>
     <div id="tapHint">Toca para mostrar los controles</div>
+
+    <div id="camBanner">
+      <div class="cb-l">Cámara remota · código</div>
+      <div class="cb-code" id="cbCode">----</div>
+      <div class="cb-st" id="cbStatus">Iniciando…</div>
+    </div>
+
+    <div id="startup">
+      <div class="su-box">
+        <div class="su-logo">◎ TIROFIJO</div>
+        <p class="su-sub">¿Qué cámara vas a usar?</p>
+        <button class="btn primary" id="suLocal">📷 Cámara de este móvil</button>
+        <button class="btn" id="suCam">📡 Ser la cámara (remoto)</button>
+        <button class="btn" id="suView">🎯 Puntuar recibiendo de otro móvil</button>
+        <div id="suViewBox" style="display:none; margin-top:6px">
+          <label class="fld">Código del móvil-cámara:</label>
+          <input type="text" id="suCode" inputmode="numeric" maxlength="4" placeholder="----">
+          <button class="btn primary" id="suConnect" style="margin-top:10px">Conectar</button>
+        </div>
+        <div class="su-status" id="suStatus"></div>
+      </div>
+    </div>
 
     <div id="timerHud">
       <div class="ph" id="thPhase">SESIÓN</div>
@@ -326,6 +364,7 @@
   </div>
 </div>
 
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
@@ -342,18 +381,65 @@
   };
 
   /* ---------- cámara ---------- */
-  async function start(){
-    try{
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }, audio:false
+  async function getCam(){
+    return navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }, audio:false });
+  }
+  // arranca la sesión de puntuación sobre el vídeo actual (local o remoto)
+  function beginSession(){
+    S.running = true; S.phase='ready'; $('#statusDot').classList.add('live');
+    $('#rowCam').style.display='none'; $('#pill').style.display='none';
+    resize(); loop(); iniciarSesion();
+  }
+  async function start(){ // cámara local
+    try{ const stream=await getCam(); video.srcObject=stream; await video.play(); beginSession(); }
+    catch(e){ $('#pill').style.display='block'; $('#pill').innerHTML='No se pudo abrir la cámara.<br><small>'+e.message+'</small>'; }
+  }
+
+  /* ---------- cámara remota (WebRTC / PeerJS) ---------- */
+  let peer=null, camStream=null;
+  function peerAvailable(){ return typeof Peer!=='undefined'; }
+  // Este móvil ES la cámara: transmite su vídeo al que se conecte con el código
+  async function startAsCamera(){
+    if(!peerAvailable()){ $('#suStatus').textContent='No se pudo cargar el módulo remoto. Revisa tu conexión.'; return; }
+    try{ camStream=await getCam(); video.srcObject=camStream; await video.play(); }
+    catch(e){ $('#suStatus').textContent='No se pudo abrir la cámara: '+e.message; return; }
+    const code=String(Math.floor(1000+Math.random()*9000));
+    $('#startup').style.display='none';
+    S.running=true; S.phase='camera'; $('#statusDot').classList.add('live'); $('#pill').style.display='none';
+    $('#hud').style.display='none'; $('#camBanner').style.display='block';
+    $('#cbCode').textContent=code; $('#cbStatus').textContent='Esperando al móvil que puntúa…';
+    resize(); loop();
+    peer=new Peer('tirofijo-'+code);
+    peer.on('error', err=>{ $('#cbStatus').textContent='Error: '+err.type; });
+    peer.on('connection', conn=>{ conn.on('open', ()=>{
+      $('#cbStatus').textContent='Conectado ✓ transmitiendo vídeo';
+      peer.call(conn.peer, camStream);
+    }); });
+  }
+  // Este móvil PUNTÚA: se conecta al código y recibe el vídeo remoto
+  function startAsViewer(code){
+    if(!peerAvailable()){ $('#suStatus').textContent='No se pudo cargar el módulo remoto. Revisa tu conexión.'; return; }
+    if(!/^\d{4}$/.test(code)){ $('#suStatus').textContent='Introduce el código de 4 dígitos.'; return; }
+    $('#suStatus').textContent='Conectando con '+code+'…';
+    peer=new Peer();
+    peer.on('open', ()=>{
+      const conn=peer.connect('tirofijo-'+code);
+      conn.on('open', ()=>{ $('#suStatus').textContent='Enlazado, esperando vídeo…'; });
+      conn.on('error', ()=>{ $('#suStatus').textContent='No se pudo enlazar. Revisa el código.'; });
+    });
+    peer.on('call', call=>{
+      call.answer();
+      call.on('stream', remote=>{
+        video.srcObject=remote; video.play();
+        $('#startup').style.display='none';
+        beginSession();
       });
-      video.srcObject = stream; await video.play();
-      S.running = true; S.phase='ready'; $('#statusDot').classList.add('live');
-      $('#rowCam').style.display='none';
-      $('#pill').style.display='none';
-      resize(); loop();
-      iniciarSesion();   // arranca la sesión automáticamente con la cámara
-    }catch(e){ $('#pill').innerHTML='No se pudo abrir la cámara.<br><small>'+e.message+'</small>'; }
+    });
+    peer.on('error', err=>{
+      $('#suStatus').textContent = err.type==='peer-unavailable'
+        ? 'No hay ninguna cámara con ese código ahora mismo.' : 'Error de conexión: '+err.type;
+    });
   }
   function resize(){ const r=video.getBoundingClientRect(); S.W=overlay.width=r.width; S.H=overlay.height=r.height; }
   window.addEventListener('resize', resize);
@@ -556,6 +642,11 @@
   }
 
   /* ---------- UI ---------- */
+  // pantalla inicial
+  $('#suLocal').onclick=()=>{ $('#startup').style.display='none'; start(); };
+  $('#suCam').onclick=startAsCamera;
+  $('#suView').onclick=()=>{ $('#suViewBox').style.display='block'; $('#suCode').focus(); };
+  $('#suConnect').onclick=()=>startAsViewer(($('#suCode').value||'').trim());
   $('#btnStart').onclick=start;
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open')));
   $('#btnCfg').onclick=()=>$('#sheetCfg').classList.add('open');
