@@ -40,6 +40,8 @@
     box-shadow:0 4px 18px rgba(248,81,73,.35);}
   .btn.on{background:var(--ok); border-color:var(--ok); color:#06220f;
     text-transform:uppercase; letter-spacing:1px; font-size:18px; padding:20px 10px;}
+  .btn.danger{background:var(--accent); border-color:var(--accent); color:#fff;
+    text-transform:uppercase; letter-spacing:1px; font-size:18px; padding:20px 10px;}
   .btn.sm{flex:0 0 auto; padding:10px 12px; font-size:13px;}
   /* fila de iconos del HUD */
   #hud .iconrow .btn{font-size:24px; padding:16px 6px;}
@@ -149,7 +151,7 @@
     <div class="scoreflash" id="flash"></div>
 
     <div id="timerHud">
-      <div class="ph" id="thPhase">—</div>
+      <div class="ph" id="thPhase">SESIÓN</div>
       <div class="tc" id="thClock">00:00</div>
     </div>
 
@@ -161,9 +163,15 @@
         <button class="btn" id="btnHist">▤</button>
         <button class="btn" id="btnReport">📄</button>
       </div>
-      <div class="row">
+      <div class="row" id="rowCam">
         <button class="btn primary" id="btnStart">▶ Iniciar cámara</button>
-        <button class="btn on" id="btnArm" style="display:none">● Detectando…</button>
+      </div>
+      <div class="row" id="rowReady" style="display:none">
+        <button class="btn primary" id="btnSession">▶ Iniciar sesión</button>
+      </div>
+      <div class="row" id="rowRun" style="display:none">
+        <button class="btn on" id="btnPause">⏸ Pausar detección</button>
+        <button class="btn danger" id="btnFinish">■ Finalizar</button>
       </div>
     </div>
   </div>
@@ -228,31 +236,18 @@
     </div>
   </div>
 
-  <!-- TEMPORIZADOR -->
+  <!-- AJUSTES DE SESIÓN -->
   <div class="sheet" id="sheetTimer">
     <button class="close" data-close>✕</button>
-    <h2>Temporizador de cuenta atrás</h2>
-    <div class="card">
-      <h3>Periodos (en orden)</h3>
-      <div id="periodList"></div>
-      <button class="btn" id="addPeriod" style="margin-top:6px">＋ Añadir periodo</button>
-      <p style="margin-top:8px">Cada periodo cuenta atrás; al terminar suena y pasa al siguiente.</p>
-    </div>
+    <h2>Ajustes de sesión</h2>
     <div class="card">
       <h3>Cuenta atrás de inicio</h3>
       <label class="fld">Segundos de "Preparados": <span class="val" id="vStart">5</span></label>
       <input type="range" id="startcd" min="0" max="30" value="5">
-      <p>Al pulsar Inicio, cuenta atrás antes del primer periodo (0 = sin cuenta atrás).</p>
+      <p>Al pulsar Iniciar sesión, cuenta atrás antes de empezar (0 = sin cuenta atrás). Después, el tiempo cuenta hacia adelante.</p>
     </div>
     <div class="card">
-      <div class="switchrow"><span>🔊 Sonido en avisos</span><div class="sw on" id="swSound"></div></div>
-      <div class="switchrow"><span>🔁 Repetir en bucle</span><div class="sw" id="swLoop"></div></div>
-      <div class="switchrow"><span>⚠️ Aviso últimos 5 s</span><div class="sw on" id="swCount"></div></div>
-    </div>
-    <div class="row">
-      <button class="btn primary" id="tStart">▶ Inicio</button>
-      <button class="btn" id="tPause">⏸ Pausa</button>
-      <button class="btn" id="tReset">⟲ Puesta a cero</button>
+      <div class="switchrow"><span>🔊 Sonido (pitidos y avisos)</span><div class="sw on" id="swSound"></div></div>
     </div>
   </div>
 
@@ -314,6 +309,7 @@
     running:false, fireMode:'auto', dianaMode:'standard',
     thr:160, minpx:4, cooldown:2.0, rings:10, radiusPct:42, realmm:0,
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
+    phase:'idle', // idle | ready | leadin | running | paused
   };
 
   /* ---------- cámara ---------- */
@@ -323,9 +319,9 @@
         video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }, audio:false
       });
       video.srcObject = stream; await video.play();
-      S.running = true; $('#statusDot').classList.add('live');
-      $('#btnStart').style.display='none'; $('#btnArm').style.display='block';
-      $('#pill').innerHTML = S.fireMode==='auto'?'Detectando punto rojo…':'Toca el impacto';
+      S.running = true; S.phase='ready'; $('#statusDot').classList.add('live');
+      $('#rowCam').style.display='none'; $('#rowReady').style.display='flex';
+      $('#pill').innerHTML = 'Cámara lista. Pulsa <b>Iniciar sesión</b>';
       resize(); loop();
     }catch(e){ $('#pill').innerHTML='No se pudo abrir la cámara.<br><small>'+e.message+'</small>'; }
   }
@@ -389,7 +385,7 @@
   /* ---------- bucle ---------- */
   function loop(){
     if(!S.running) return; drawDiana();
-    if(S.fireMode==='auto'){
+    if(S.phase==='running' && S.fireMode==='auto'){
       const p=detectRed();
       if(p){ const now=performance.now()/1000;
         if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.x,p.y); }
@@ -455,9 +451,8 @@
     const d=new Date(); $('#rDateShow').textContent=d.toLocaleDateString('es-ES');
   }
 
-  /* ---------- TEMPORIZADOR ---------- */
-  const T={ periods:[{name:'Preparación',s:60},{name:'Tiro',s:300}], loop:false, sound:true, countdown:true,
-    startCount:5, inLead:false, idx:0, left:0, running:false, tick:null };
+  /* ---------- SESIÓN: cuenta atrás de inicio + reloj hacia adelante ---------- */
+  const T={ sound:true, startCount:5, lead:0, elapsed:0, tick:null };
   let audioCtx=null;
   function beep(freq=880, dur=0.18, vol=0.4){
     if(!T.sound) return;
@@ -469,65 +464,59 @@
       o.start(); o.stop(audioCtx.currentTime+dur);
     }catch(e){}
   }
-  function renderPeriods(){
-    const el=$('#periodList'); el.innerHTML='';
-    T.periods.forEach((p,i)=>{
-      const d=document.createElement('div'); d.className='period';
-      d.innerHTML='<input type="text" value="'+p.name+'" data-i="'+i+'" data-f="name">'+
-        '<input type="number" value="'+p.s+'" min="1" data-i="'+i+'" data-f="s" inputmode="numeric"> s'+
-        '<button data-del="'+i+'">✕</button>';
-      el.appendChild(d);
-    });
-    el.querySelectorAll('input').forEach(inp=>inp.oninput=e=>{
-      const i=+e.target.dataset.i, f=e.target.dataset.f;
-      T.periods[i][f]= f==='s'? Math.max(1,+e.target.value||1) : e.target.value;
-    });
-    el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ T.periods.splice(+b.dataset.del,1); renderPeriods(); });
-  }
-  function showTimerHud(on){ $('#timerHud').style.display=on?'block':'none'; }
   function fmt(s){ const m=Math.floor(s/60), ss=s%60; return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'); }
-  function updTimerHud(){
-    const name = T.inLead ? 'Preparados' : (T.periods[T.idx]||{name:'—'}).name;
-    $('#thPhase').textContent=name; $('#thClock').textContent=fmt(T.left);
-    $('#timerHud').classList.toggle('alert', T.countdown && T.left<=5 && T.left>0);
+  function updHud(){
+    const hud=$('#timerHud'); hud.style.display='block';
+    if(S.phase==='leadin'){ $('#thPhase').textContent='PREPARADOS'; $('#thClock').textContent=T.lead;
+      hud.classList.toggle('alert', T.lead<=5); }
+    else { $('#thPhase').textContent = S.phase==='paused'?'PAUSA':'SESIÓN';
+      $('#thClock').textContent=fmt(T.elapsed); hud.classList.remove('alert'); }
   }
-  function startPeriod(i){
-    if(i>=T.periods.length){ if(T.loop){ i=0; } else { stopTimer(true); return; } }
-    T.idx=i; T.left=T.periods[i].s; beep(1046,0.25,0.5); updTimerHud();
-  }
-  function tick(){
-    if(!T.running) return;
-    T.left--;
-    if(T.countdown && T.left<=5 && T.left>0) beep(660,0.12,0.35);
-    if(T.left<=0){
-      if(T.inLead){ T.inLead=false; beep(1046,0.4,0.6); setTimeout(()=>startPeriod(0), 50); }
-      else { beep(440,0.5,0.6); setTimeout(()=>startPeriod(T.idx+1), 50); }
-    }
-    updTimerHud();
-  }
-  function startTimer(){
+  function clearTick(){ if(T.tick){ clearInterval(T.tick); T.tick=null; } }
+
+  function iniciarSesion(){
     if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
-    if(!T.running){
-      if(T.left<=0 && !T.inLead){
-        if(T.idx===0 && T.startCount>0){ T.inLead=true; T.left=T.startCount; beep(1046,0.25,0.5); }
-        else startPeriod(T.idx<T.periods.length?T.idx:0);
-      }
-      T.running=true; showTimerHud(true); updTimerHud();
-      T.tick=setInterval(tick,1000);
-    }
+    if(S.phase!=='ready') return;
+    $('#rowReady').style.display='none'; $('#rowRun').style.display='flex';
+    $('#pill').innerHTML='';
+    clearTick();
+    if(T.startCount>0){
+      S.phase='leadin'; T.lead=T.startCount; beep(1046,0.25,0.5); updHud();
+      T.tick=setInterval(()=>{
+        T.lead--;
+        if(T.lead>0){ if(T.lead<=5) beep(660,0.12,0.35); updHud(); }
+        else { beep(1046,0.4,0.6); clearTick(); empezarTiro(); }
+      },1000);
+    } else empezarTiro();
   }
-  function pauseTimer(){ T.running=false; clearInterval(T.tick); }
-  function stopTimer(finished){ T.running=false; clearInterval(T.tick); T.idx=0; T.left=0; T.inLead=false;
-    if(finished){ beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380); }
-    updTimerHud(); if(finished){ $('#thPhase').textContent='Fin'; $('#thClock').textContent='00:00'; } }
-  function resetTimer(){ pauseTimer(); T.idx=0; T.left=0; T.inLead=false; showTimerHud(false); }
+  function empezarTiro(){
+    S.phase='running'; T.elapsed=0; updHud();
+    $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on');
+    clearTick();
+    T.tick=setInterval(()=>{ if(S.phase==='running'){ T.elapsed++; updHud(); } },1000);
+  }
+  function togglePausa(){
+    if(S.phase==='running'){ S.phase='paused'; $('#btnPause').textContent='▶ Reanudar'; $('#btnPause').classList.remove('on'); }
+    else if(S.phase==='paused'){ S.phase='running'; $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on'); }
+    updHud();
+  }
+  function finalizarSesion(){
+    clearTick(); S.phase='ready';
+    beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380);
+    $('#rowRun').style.display='none'; $('#rowReady').style.display='flex';
+    $('#timerHud').style.display='none';
+    buildReport(); $('#sheetReport').classList.add('open');
+  }
 
   /* ---------- UI ---------- */
   $('#btnStart').onclick=start;
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open')));
   $('#btnCfg').onclick=()=>$('#sheetCfg').classList.add('open');
   $('#btnDiana').onclick=()=>$('#sheetDiana').classList.add('open');
-  $('#btnTimer').onclick=()=>{renderPeriods();$('#sheetTimer').classList.add('open');};
+  $('#btnTimer').onclick=()=>{$('#sheetTimer').classList.add('open');};
+  $('#btnSession').onclick=iniciarSesion;
+  $('#btnPause').onclick=togglePausa;
+  $('#btnFinish').onclick=finalizarSesion;
   $('#btnHist').onclick=()=>{renderStats();$('#sheetHist').classList.add('open');};
   $('#btnReport').onclick=()=>{buildReport();$('#sheetReport').classList.add('open');};
 
@@ -552,24 +541,16 @@
     const r=overlay.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
     if(calMode){ const nx=x/S.W, ny=y/S.H; if(calMode==='center')S.center={x:nx,y:ny}; else S.edge={x:nx,y:ny};
       $('#calState').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—'); calMode=null; return; }
-    if(S.fireMode==='manual'&&S.running) registerShot(x,y);
+    if(S.fireMode==='manual'&&S.phase==='running') registerShot(x,y);
   });
   $('#btnUndo').onclick=()=>{S.shots.pop();renderStats();};
   $('#btnReset2').onclick=()=>{S.shots=[];renderStats();};
 
-  // timer ui
+  // ajustes de sesión
   $('#startcd').oninput=e=>{T.startCount=+e.target.value;$('#vStart').textContent=T.startCount;};
-  $('#addPeriod').onclick=()=>{T.periods.push({name:'Fase '+(T.periods.length+1),s:60});renderPeriods();};
   $('#swSound').onclick=e=>{T.sound=!T.sound;e.target.classList.toggle('on',T.sound);};
-  $('#swLoop').onclick=e=>{T.loop=!T.loop;e.target.classList.toggle('on',T.loop);};
-  $('#swCount').onclick=e=>{T.countdown=!T.countdown;e.target.classList.toggle('on',T.countdown);};
-  $('#tStart').onclick=()=>{startTimer();};
-  $('#tPause').onclick=pauseTimer;
-  $('#tReset').onclick=resetTimer;
 
-  $('#btnPrint').onclick=()=>{ // pasar inputs a texto para impresión limpia
-    window.print();
-  };
+  $('#btnPrint').onclick=()=>{ window.print(); };
 })();
 </script>
 </body>
