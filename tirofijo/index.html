@@ -28,8 +28,8 @@
   #video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
   #overlay{position:absolute; inset:0; width:100%; height:100%; touch-action:none;}
 
-  #hud{position:absolute; left:0; right:0; bottom:0; padding:10px 12px 14px;
-    background:linear-gradient(transparent, rgba(0,0,0,.75) 40%);}
+  #hud{position:absolute; left:0; right:0; bottom:0; padding:8px 10px 12px;
+    background:linear-gradient(transparent, rgba(0,0,0,.6) 55%);}
   .row{display:flex; gap:8px; align-items:center;}
   .btn{flex:1; border:1px solid var(--line); background:var(--panel);
     color:var(--txt); padding:18px 10px; border-radius:14px; font-size:17px;
@@ -52,21 +52,27 @@
   .pill b{color:var(--txt);}
 
   /* temporizador superpuesto */
-  #timerHud{position:absolute; top:46px; left:50%; transform:translateX(-50%);
-    background:rgba(13,17,23,.82); border:1px solid var(--line); border-radius:16px;
-    padding:10px 18px; text-align:center; display:none; backdrop-filter:blur(6px); min-width:160px;}
-  #timerHud .ph{font-size:12px; color:var(--gold); letter-spacing:.5px; text-transform:uppercase;}
-  #timerHud .tc{font-size:46px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.05;}
+  #timerHud{position:absolute; top:8px; left:10px;
+    background:rgba(13,17,23,.55); border:1px solid var(--line); border-radius:11px;
+    padding:4px 11px; text-align:left; display:none; backdrop-filter:blur(5px);}
+  #timerHud .ph{font-size:9px; color:var(--gold); letter-spacing:.5px; text-transform:uppercase;}
+  #timerHud .tc{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
   #timerHud.alert .tc{color:var(--accent);}
+  /* ocultar controles para ver la diana */
+  #stage.controls-hidden #hud{display:none;}
+  #tapHint{position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+    background:rgba(13,17,23,.6); border:1px solid var(--line); color:var(--muted);
+    font-size:12px; padding:6px 12px; border-radius:20px; display:none; backdrop-filter:blur(4px);}
+  #stage.controls-hidden #tapHint{display:block;}
 
-  .scoreflash{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-    font-size:90px; font-weight:800; color:var(--gold); opacity:0;
-    text-shadow:0 2px 20px rgba(0,0,0,.8); pointer-events:none;}
-  .scoreflash.show{animation:flash 1.1s ease-out;}
-  @keyframes flash{0%{opacity:0; transform:translate(-50%,-50%) scale(.4)}
-    25%{opacity:1; transform:translate(-50%,-50%) scale(1.1)}
-    70%{opacity:1; transform:translate(-50%,-50%) scale(1)}
-    100%{opacity:0; transform:translate(-50%,-50%) scale(1)}}
+  .scoreflash{position:absolute; top:14%; right:14px;
+    font-size:58px; font-weight:800; color:var(--gold); opacity:0;
+    text-shadow:0 2px 20px rgba(0,0,0,.9); pointer-events:none;}
+  .scoreflash.show{animation:flash 1s ease-out;}
+  @keyframes flash{0%{opacity:0; transform:scale(.4)}
+    25%{opacity:1; transform:scale(1.1)}
+    70%{opacity:1; transform:scale(1)}
+    100%{opacity:0; transform:scale(1)}}
 
   .sheet{position:absolute; inset:0; background:var(--bg); z-index:20;
     transform:translateY(100%); transition:transform .25s ease; overflow-y:auto;
@@ -149,6 +155,7 @@
     <canvas id="overlay"></canvas>
     <div class="pill" id="pill">Pulsa <b>Iniciar</b></div>
     <div class="scoreflash" id="flash"></div>
+    <div id="tapHint">Toca para mostrar los controles</div>
 
     <div id="timerHud">
       <div class="ph" id="thPhase">SESIÓN</div>
@@ -167,7 +174,7 @@
         <button class="btn primary" id="btnStart">▶ Iniciar cámara</button>
       </div>
       <div class="row" id="rowReady" style="display:none">
-        <button class="btn primary" id="btnSession">▶ Iniciar sesión</button>
+        <button class="btn primary" id="btnSession">▶ Nueva sesión</button>
       </div>
       <div class="row" id="rowRun" style="display:none">
         <button class="btn on" id="btnPause">⏸ Pausar detección</button>
@@ -236,18 +243,40 @@
     </div>
   </div>
 
-  <!-- AJUSTES DE SESIÓN -->
+  <!-- TEMPORIZADOR -->
   <div class="sheet" id="sheetTimer">
     <button class="close" data-close>✕</button>
-    <h2>Ajustes de sesión</h2>
+    <h2>Temporizador</h2>
     <div class="card">
-      <h3>Cuenta atrás de inicio</h3>
-      <label class="fld">Segundos de "Preparados": <span class="val" id="vStart">5</span></label>
-      <input type="range" id="startcd" min="0" max="30" value="5">
-      <p>Al pulsar Iniciar sesión, cuenta atrás antes de empezar (0 = sin cuenta atrás). Después, el tiempo cuenta hacia adelante.</p>
+      <h3>Modo</h3>
+      <div class="seg" id="timerMode">
+        <button data-tm="up" class="sel">Cronómetro ↑</button>
+        <button data-tm="down">Cuenta atrás</button>
+        <button data-tm="beep">Intervalo</button>
+      </div>
+      <p style="margin-top:10px">Arranca automáticamente al iniciar la cámara.</p>
+    </div>
+    <div class="card" id="cardDown" style="display:none">
+      <h3>Cuenta atrás</h3>
+      <label class="fld">Duración (segundos):</label>
+      <input type="number" id="downSecs" value="60" min="1" inputmode="numeric">
+      <div class="switchrow" style="margin-top:12px"><span>🔁 Repetir en bucle</span><div class="sw" id="swLoop"></div></div>
+      <p>Pita al llegar a 0. En bucle, vuelve a empezar.</p>
+    </div>
+    <div class="card" id="cardBeep" style="display:none">
+      <h3>Intervalo de pitido</h3>
+      <label class="fld">Pitar cada (segundos):</label>
+      <input type="number" id="beepSecs" value="10" min="1" inputmode="numeric">
+      <p>Pita repetidamente mientras el cronómetro corre hacia adelante.</p>
     </div>
     <div class="card">
-      <div class="switchrow"><span>🔊 Sonido (pitidos y avisos)</span><div class="sw on" id="swSound"></div></div>
+      <h3>Cuenta atrás de inicio</h3>
+      <label class="fld">"Preparados" (s): <span class="val" id="vStart">3</span></label>
+      <input type="range" id="startcd" min="0" max="30" value="3">
+      <p>0 = empieza directo al abrir la cámara.</p>
+    </div>
+    <div class="card">
+      <div class="switchrow"><span>🔊 Sonido</span><div class="sw on" id="swSound"></div></div>
     </div>
   </div>
 
@@ -320,9 +349,10 @@
       });
       video.srcObject = stream; await video.play();
       S.running = true; S.phase='ready'; $('#statusDot').classList.add('live');
-      $('#rowCam').style.display='none'; $('#rowReady').style.display='flex';
-      $('#pill').innerHTML = 'Cámara lista. Pulsa <b>Iniciar sesión</b>';
+      $('#rowCam').style.display='none';
+      $('#pill').style.display='none';
       resize(); loop();
+      iniciarSesion();   // arranca la sesión automáticamente con la cámara
     }catch(e){ $('#pill').innerHTML='No se pudo abrir la cámara.<br><small>'+e.message+'</small>'; }
   }
   function resize(){ const r=video.getBoundingClientRect(); S.W=overlay.width=r.width; S.H=overlay.height=r.height; }
@@ -451,8 +481,9 @@
     const d=new Date(); $('#rDateShow').textContent=d.toLocaleDateString('es-ES');
   }
 
-  /* ---------- SESIÓN: cuenta atrás de inicio + reloj hacia adelante ---------- */
-  const T={ sound:true, startCount:5, lead:0, elapsed:0, tick:null };
+  /* ---------- SESIÓN Y TEMPORIZADOR ---------- */
+  const T={ sound:true, mode:'up', startCount:3, downSecs:60, loop:false, beepSecs:10,
+    clock:0, lead:0, beepAcc:0, tick:null };
   let audioCtx=null;
   function beep(freq=880, dur=0.18, vol=0.4){
     if(!T.sound) return;
@@ -464,13 +495,15 @@
       o.start(); o.stop(audioCtx.currentTime+dur);
     }catch(e){}
   }
-  function fmt(s){ const m=Math.floor(s/60), ss=s%60; return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'); }
+  function fmt(s){ s=Math.max(0,s); const m=Math.floor(s/60), ss=s%60; return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'); }
   function updHud(){
     const hud=$('#timerHud'); hud.style.display='block';
-    if(S.phase==='leadin'){ $('#thPhase').textContent='PREPARADOS'; $('#thClock').textContent=T.lead;
-      hud.classList.toggle('alert', T.lead<=5); }
-    else { $('#thPhase').textContent = S.phase==='paused'?'PAUSA':'SESIÓN';
-      $('#thClock').textContent=fmt(T.elapsed); hud.classList.remove('alert'); }
+    if(S.phase==='leadin'){ hud.querySelector('.ph').textContent='PREPARADOS'; hud.querySelector('.tc').textContent=T.lead;
+      hud.classList.add('alert'); return; }
+    const lbl = S.phase==='paused' ? 'PAUSA' : (T.mode==='down'?'CUENTA ATRÁS':'SESIÓN');
+    hud.querySelector('.ph').textContent=lbl;
+    hud.querySelector('.tc').textContent=fmt(T.clock);
+    hud.classList.toggle('alert', T.mode==='down' && T.clock<=5);
   }
   function clearTick(){ if(T.tick){ clearInterval(T.tick); T.tick=null; } }
 
@@ -478,7 +511,6 @@
     if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
     if(S.phase!=='ready') return;
     $('#rowReady').style.display='none'; $('#rowRun').style.display='flex';
-    $('#pill').innerHTML='';
     clearTick();
     if(T.startCount>0){
       S.phase='leadin'; T.lead=T.startCount; beep(1046,0.25,0.5); updHud();
@@ -490,18 +522,33 @@
     } else empezarTiro();
   }
   function empezarTiro(){
-    S.phase='running'; T.elapsed=0; updHud();
+    S.phase='running'; T.beepAcc=0;
+    T.clock = (T.mode==='down') ? T.downSecs : 0;
     $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on');
-    clearTick();
-    T.tick=setInterval(()=>{ if(S.phase==='running'){ T.elapsed++; updHud(); } },1000);
+    updHud(); clearTick();
+    T.tick=setInterval(sessionTick,1000);
+  }
+  function sessionTick(){
+    if(S.phase!=='running') return;
+    if(T.mode==='down'){
+      T.clock--;
+      if(T.clock<=5 && T.clock>0) beep(660,0.12,0.35);
+      if(T.clock<=0){ beep(440,0.5,0.6); T.clock = T.loop ? T.downSecs : 0;
+        if(!T.loop){ clearTick(); } }
+    } else {
+      T.clock++;
+      if(T.mode==='beep'){ T.beepAcc++; if(T.beepAcc>=T.beepSecs){ T.beepAcc=0; beep(880,0.15,0.4); } }
+    }
+    updHud();
   }
   function togglePausa(){
     if(S.phase==='running'){ S.phase='paused'; $('#btnPause').textContent='▶ Reanudar'; $('#btnPause').classList.remove('on'); }
-    else if(S.phase==='paused'){ S.phase='running'; $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on'); }
+    else if(S.phase==='paused'){ S.phase='running'; $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on');
+      if(!T.tick) T.tick=setInterval(sessionTick,1000); }
     updHud();
   }
   function finalizarSesion(){
-    clearTick(); S.phase='ready';
+    clearTick(); S.phase='ready'; $('#stage').classList.remove('controls-hidden');
     beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380);
     $('#rowRun').style.display='none'; $('#rowReady').style.display='flex';
     $('#timerHud').style.display='none';
@@ -541,12 +588,23 @@
     const r=overlay.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
     if(calMode){ const nx=x/S.W, ny=y/S.H; if(calMode==='center')S.center={x:nx,y:ny}; else S.edge={x:nx,y:ny};
       $('#calState').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—'); calMode=null; return; }
-    if(S.fireMode==='manual'&&S.phase==='running') registerShot(x,y);
+    if(S.fireMode==='manual'&&S.phase==='running'){ registerShot(x,y); return; }
+    // en automático, tocar la pantalla oculta/muestra los controles para ver la diana
+    if(S.phase==='running'||S.phase==='paused') $('#stage').classList.toggle('controls-hidden');
   });
   $('#btnUndo').onclick=()=>{S.shots.pop();renderStats();};
   $('#btnReset2').onclick=()=>{S.shots=[];renderStats();};
 
-  // ajustes de sesión
+  // temporizador
+  document.querySelectorAll('#timerMode button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#timerMode button').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel'); T.mode=b.dataset.tm;
+    $('#cardDown').style.display = T.mode==='down'?'block':'none';
+    $('#cardBeep').style.display = T.mode==='beep'?'block':'none';
+  });
+  $('#downSecs').oninput=e=>{T.downSecs=Math.max(1,+e.target.value||1);};
+  $('#beepSecs').oninput=e=>{T.beepSecs=Math.max(1,+e.target.value||1);};
+  $('#swLoop').onclick=e=>{T.loop=!T.loop;e.target.classList.toggle('on',T.loop);};
   $('#startcd').oninput=e=>{T.startCount=+e.target.value;$('#vStart').textContent=T.startCount;};
   $('#swSound').onclick=e=>{T.sound=!T.sound;e.target.classList.toggle('on',T.sound);};
 
