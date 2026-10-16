@@ -182,7 +182,12 @@
     <div id="startup">
       <div class="su-box">
         <div class="su-logo">◎ TIROFIJO</div>
-        <p class="su-sub">¿Qué cámara vas a usar?</p>
+        <p class="su-sub">Tipo de diana</p>
+        <div class="seg" id="targetType">
+          <button data-tt="laser" class="sel">🔴 Punteros láser</button>
+          <button data-tt="holes">🎯 Impactos en cartón</button>
+        </div>
+        <p class="su-sub" style="margin-top:12px">¿Qué cámara vas a usar?</p>
         <button class="btn primary" id="suLocal">📷 Cámara de este móvil</button>
         <button class="btn" id="suCam">📡 Ser la cámara (remoto)</button>
         <button class="btn" id="suView">🎯 Puntuar recibiendo de otro móvil</button>
@@ -235,6 +240,14 @@
       <label class="fld">Espera entre tiros (s): <span class="val" id="vCd">2.0</span></label>
       <input type="range" id="cd" min="5" max="60" value="20">
       <div class="warn" id="liveRed">Rojo detectado ahora: — </div>
+    </div>
+    <div class="card">
+      <h3>Sensibilidad impactos en cartón</h3>
+      <p>Solo en modo "Impactos en cartón". Si marca falsos por luz o sombras, sube el umbral.</p>
+      <label class="fld">Umbral de oscurecimiento: <span class="val" id="vHole">45</span></label>
+      <input type="range" id="holeThr" min="20" max="120" value="45">
+      <label class="fld">Tamaño mínimo del agujero: <span class="val" id="vMinHole">8</span></label>
+      <input type="range" id="minHole" min="2" max="60" value="8">
     </div>
     <div class="card">
       <h3>Modo de disparo</h3>
@@ -375,9 +388,11 @@
 
   const S = {
     running:false, fireMode:'auto', dianaMode:'standard',
+    detectType:'laser', // laser | holes
     thr:160, minpx:4, cooldown:2.0, rings:10, radiusPct:42, realmm:0,
+    holeThr:45, minHole:8, ref:null,
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
-    phase:'idle', // idle | ready | leadin | running | paused
+    phase:'idle', // idle | ready | leadin | running | paused | camera
   };
 
   /* ---------- cámara ---------- */
@@ -481,6 +496,26 @@
     return {x:ox+nx*dw, y:oy+ny*dh};
   }
 
+  /* ---------- detección de impactos en cartón (diferencia de fotogramas) ---------- */
+  function detectHole(){
+    if(video.videoWidth===0) return null;
+    const sw=160, sh=Math.round(sw*video.videoHeight/video.videoWidth);
+    work.width=sw; work.height=sh; wctx.drawImage(video,0,0,sw,sh);
+    const d=wctx.getImageData(0,0,sw,sh).data, N=sw*sh;
+    const cur=new Uint8Array(N);
+    for(let i=0;i<N;i++){ const p=i*4; cur[i]=(d[p]+d[p+1]+d[p+2])/3; }
+    if(!S.ref || S.ref.length!==N){ S.ref=cur; return null; }
+    let sx=0,sy=0,n=0;
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+      const i=y*sw+x;
+      if(S.ref[i]-cur[i] > S.holeThr){ sx+=x; sy+=y; n++; } // oscurecimiento nuevo = agujero
+    }
+    // cambio global (luz, movimiento del móvil) → refrescar referencia y descartar
+    if(n > N*0.22){ S.ref=cur; return null; }
+    if(n < S.minHole) return null;
+    return { pt:mapCover(sx/n/sw, sy/n/sh), cur };
+  }
+
   /* ---------- dibujo overlay ---------- */
   function drawDiana(){
     const {cx,cy,rOuter}=dianaGeom(); octx.clearRect(0,0,S.W,S.H);
@@ -502,10 +537,16 @@
   function loop(){
     if(!S.running) return; drawDiana();
     if(S.phase==='running' && S.fireMode==='auto'){
-      const p=detectRed();
-      if(p){ const now=performance.now()/1000;
-        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.x,p.y); }
-        octx.beginPath(); octx.arc(p.x,p.y,10,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=2; octx.stroke(); }
+      if(S.detectType==='laser'){
+        const p=detectRed();
+        if(p){ const now=performance.now()/1000;
+          if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.x,p.y); }
+          octx.beginPath(); octx.arc(p.x,p.y,10,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=2; octx.stroke(); }
+      } else {
+        const h=detectHole();
+        if(h){ const now=performance.now()/1000;
+          if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(h.pt.x,h.pt.y); S.ref=h.cur; } }
+      }
     }
     requestAnimationFrame(loop);
   }
@@ -608,7 +649,7 @@
     } else empezarTiro();
   }
   function empezarTiro(){
-    S.phase='running'; T.beepAcc=0;
+    S.phase='running'; T.beepAcc=0; S.ref=null; // referencia limpia para detectar agujeros
     T.clock = (T.mode==='down') ? T.downSecs : 0;
     $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on');
     updHud(); clearTick();
@@ -643,6 +684,10 @@
 
   /* ---------- UI ---------- */
   // pantalla inicial
+  document.querySelectorAll('#targetType button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#targetType button').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel'); S.detectType=b.dataset.tt;
+  });
   $('#suLocal').onclick=()=>{ $('#startup').style.display='none'; start(); };
   $('#suCam').onclick=startAsCamera;
   $('#suView').onclick=()=>{ $('#suViewBox').style.display='block'; $('#suCode').focus(); };
@@ -664,6 +709,8 @@
   $('#radius').oninput=e=>{S.radiusPct=+e.target.value;$('#vR').textContent=S.radiusPct;};
   $('#rings').oninput=e=>{S.rings=+e.target.value;$('#vRings').textContent=S.rings;};
   $('#realmm').oninput=e=>{S.realmm=+e.target.value||0;};
+  $('#holeThr').oninput=e=>{S.holeThr=+e.target.value;$('#vHole').textContent=S.holeThr;};
+  $('#minHole').oninput=e=>{S.minHole=+e.target.value;$('#vMinHole').textContent=S.minHole;};
 
   document.querySelectorAll('#fireMode button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('#fireMode button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); S.fireMode=b.dataset.fm;
