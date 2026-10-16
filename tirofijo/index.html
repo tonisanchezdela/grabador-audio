@@ -18,7 +18,7 @@
 
   header{padding:10px 14px; display:flex; align-items:center; gap:10px;
     border-bottom:1px solid var(--line); background:var(--panel);}
-  header h1{font-size:16px; margin:0; font-weight:600; letter-spacing:.3px;}
+  header h1{font-size:18px; margin:0; font-weight:800; letter-spacing:2px; text-transform:uppercase;}
   header .dot{width:9px; height:9px; border-radius:50%; background:var(--muted);}
   header .dot.live{background:var(--accent); animation:pulse 1.4s infinite;}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(248,81,73,.5)}
@@ -32,12 +32,17 @@
     background:linear-gradient(transparent, rgba(0,0,0,.75) 40%);}
   .row{display:flex; gap:8px; align-items:center;}
   .btn{flex:1; border:1px solid var(--line); background:var(--panel);
-    color:var(--txt); padding:12px 8px; border-radius:12px; font-size:14px;
-    font-weight:600; text-align:center;}
-  .btn:active{transform:scale(.97);}
-  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
-  .btn.on{background:var(--ok); border-color:var(--ok); color:#06220f;}
+    color:var(--txt); padding:18px 10px; border-radius:14px; font-size:17px;
+    font-weight:700; text-align:center; letter-spacing:.3px;}
+  .btn:active{transform:scale(.96);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;
+    text-transform:uppercase; letter-spacing:1px; font-size:19px; padding:20px 10px;
+    box-shadow:0 4px 18px rgba(248,81,73,.35);}
+  .btn.on{background:var(--ok); border-color:var(--ok); color:#06220f;
+    text-transform:uppercase; letter-spacing:1px; font-size:18px; padding:20px 10px;}
   .btn.sm{flex:0 0 auto; padding:10px 12px; font-size:13px;}
+  /* fila de iconos del HUD */
+  #hud .iconrow .btn{font-size:24px; padding:16px 6px;}
 
   .pill{position:absolute; top:10px; left:10px; background:rgba(13,17,23,.7);
     border:1px solid var(--line); padding:6px 10px; border-radius:20px;
@@ -131,7 +136,7 @@
 <div id="app">
   <header>
     <span class="dot" id="statusDot"></span>
-    <h1>Tirofijo</h1>
+    <h1>◎ Tirofijo</h1>
     <div style="margin-left:auto; font-size:13px; color:var(--muted)">
       Total <b id="hdrTotal" style="color:var(--txt)">0</b>
     </div>
@@ -149,7 +154,7 @@
     </div>
 
     <div id="hud">
-      <div class="row" style="margin-bottom:8px">
+      <div class="row iconrow" style="margin-bottom:10px">
         <button class="btn" id="btnCfg">⚙︎</button>
         <button class="btn" id="btnDiana">◎</button>
         <button class="btn" id="btnTimer">⏱</button>
@@ -234,14 +239,20 @@
       <p style="margin-top:8px">Cada periodo cuenta atrás; al terminar suena y pasa al siguiente.</p>
     </div>
     <div class="card">
+      <h3>Cuenta atrás de inicio</h3>
+      <label class="fld">Segundos de "Preparados": <span class="val" id="vStart">5</span></label>
+      <input type="range" id="startcd" min="0" max="30" value="5">
+      <p>Al pulsar Inicio, cuenta atrás antes del primer periodo (0 = sin cuenta atrás).</p>
+    </div>
+    <div class="card">
       <div class="switchrow"><span>🔊 Sonido en avisos</span><div class="sw on" id="swSound"></div></div>
       <div class="switchrow"><span>🔁 Repetir en bucle</span><div class="sw" id="swLoop"></div></div>
       <div class="switchrow"><span>⚠️ Aviso últimos 5 s</span><div class="sw on" id="swCount"></div></div>
     </div>
     <div class="row">
-      <button class="btn primary" id="tStart">▶ Iniciar</button>
+      <button class="btn primary" id="tStart">▶ Inicio</button>
       <button class="btn" id="tPause">⏸ Pausa</button>
-      <button class="btn" id="tReset">⟲ Reiniciar</button>
+      <button class="btn" id="tReset">⟲ Puesta a cero</button>
     </div>
   </div>
 
@@ -446,7 +457,7 @@
 
   /* ---------- TEMPORIZADOR ---------- */
   const T={ periods:[{name:'Preparación',s:60},{name:'Tiro',s:300}], loop:false, sound:true, countdown:true,
-    idx:0, left:0, running:false, tick:null };
+    startCount:5, inLead:false, idx:0, left:0, running:false, tick:null };
   let audioCtx=null;
   function beep(freq=880, dur=0.18, vol=0.4){
     if(!T.sound) return;
@@ -476,8 +487,8 @@
   function showTimerHud(on){ $('#timerHud').style.display=on?'block':'none'; }
   function fmt(s){ const m=Math.floor(s/60), ss=s%60; return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'); }
   function updTimerHud(){
-    const p=T.periods[T.idx]||{name:'—'};
-    $('#thPhase').textContent=p.name; $('#thClock').textContent=fmt(T.left);
+    const name = T.inLead ? 'Preparados' : (T.periods[T.idx]||{name:'—'}).name;
+    $('#thPhase').textContent=name; $('#thClock').textContent=fmt(T.left);
     $('#timerHud').classList.toggle('alert', T.countdown && T.left<=5 && T.left>0);
   }
   function startPeriod(i){
@@ -488,22 +499,28 @@
     if(!T.running) return;
     T.left--;
     if(T.countdown && T.left<=5 && T.left>0) beep(660,0.12,0.35);
-    if(T.left<=0){ beep(440,0.5,0.6); setTimeout(()=>startPeriod(T.idx+1), 50); }
+    if(T.left<=0){
+      if(T.inLead){ T.inLead=false; beep(1046,0.4,0.6); setTimeout(()=>startPeriod(0), 50); }
+      else { beep(440,0.5,0.6); setTimeout(()=>startPeriod(T.idx+1), 50); }
+    }
     updTimerHud();
   }
   function startTimer(){
     if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
     if(!T.running){
-      if(T.left<=0) startPeriod(T.idx<T.periods.length?T.idx:0);
-      T.running=true; showTimerHud(true);
+      if(T.left<=0 && !T.inLead){
+        if(T.idx===0 && T.startCount>0){ T.inLead=true; T.left=T.startCount; beep(1046,0.25,0.5); }
+        else startPeriod(T.idx<T.periods.length?T.idx:0);
+      }
+      T.running=true; showTimerHud(true); updTimerHud();
       T.tick=setInterval(tick,1000);
     }
   }
   function pauseTimer(){ T.running=false; clearInterval(T.tick); }
-  function stopTimer(finished){ T.running=false; clearInterval(T.tick); T.idx=0; T.left=0;
+  function stopTimer(finished){ T.running=false; clearInterval(T.tick); T.idx=0; T.left=0; T.inLead=false;
     if(finished){ beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380); }
     updTimerHud(); if(finished){ $('#thPhase').textContent='Fin'; $('#thClock').textContent='00:00'; } }
-  function resetTimer(){ pauseTimer(); T.idx=0; T.left=0; showTimerHud(false); }
+  function resetTimer(){ pauseTimer(); T.idx=0; T.left=0; T.inLead=false; showTimerHud(false); }
 
   /* ---------- UI ---------- */
   $('#btnStart').onclick=start;
@@ -541,6 +558,7 @@
   $('#btnReset2').onclick=()=>{S.shots=[];renderStats();};
 
   // timer ui
+  $('#startcd').oninput=e=>{T.startCount=+e.target.value;$('#vStart').textContent=T.startCount;};
   $('#addPeriod').onclick=()=>{T.periods.push({name:'Fase '+(T.periods.length+1),s:60});renderPeriods();};
   $('#swSound').onclick=e=>{T.sound=!T.sound;e.target.classList.toggle('on',T.sound);};
   $('#swLoop').onclick=e=>{T.loop=!T.loop;e.target.classList.toggle('on',T.loop);};
