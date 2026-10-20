@@ -242,12 +242,22 @@
       <div class="warn" id="liveRed">Rojo detectado ahora: — </div>
     </div>
     <div class="card">
-      <h3>Sensibilidad impactos en cartón</h3>
-      <p>Solo en modo "Impactos en cartón". Si marca falsos por luz o sombras, sube el umbral.</p>
+      <h3>Impactos en cartón</h3>
+      <p>Solo en modo "Impactos en cartón". Ajusta hasta que marque los disparos reales sin falsos.</p>
       <label class="fld">Umbral de oscurecimiento: <span class="val" id="vHole">45</span></label>
-      <input type="range" id="holeThr" min="20" max="120" value="45">
-      <label class="fld">Tamaño mínimo del agujero: <span class="val" id="vMinHole">8</span></label>
-      <input type="range" id="minHole" min="2" max="60" value="8">
+      <input type="range" id="holeThr" min="15" max="140" value="45">
+      <label class="fld">Tamaño mínimo (px): <span class="val" id="vMinHole">6</span></label>
+      <input type="range" id="minHole" min="2" max="80" value="6">
+      <label class="fld">Tamaño máximo (px): <span class="val" id="vMaxHole">400</span></label>
+      <input type="range" id="maxHole" min="40" max="1500" value="400">
+      <label class="fld">Confirmación (fotogramas): <span class="val" id="vConfirm">2</span></label>
+      <input type="range" id="confirm" min="1" max="5" value="2">
+      <label class="fld">Redondez exigida: <span class="val" id="vRound">2.6</span></label>
+      <input type="range" id="roundv" min="12" max="40" value="26">
+      <div class="switchrow" style="margin-top:10px"><span>Solo dentro de la diana</span><div class="sw on" id="swInside"></div></div>
+      <div class="switchrow"><span>Compensar cambios de luz</span><div class="sw on" id="swLight"></div></div>
+      <button class="btn" id="btnRecalib" style="margin-top:10px">Recalibrar fondo ahora</button>
+      <div class="warn" id="liveHole">Cambios detectados: — </div>
     </div>
     <div class="card">
       <h3>Modo de disparo</h3>
@@ -263,11 +273,25 @@
     <button class="close" data-close>✕</button>
     <h2>Diana y puntuación</h2>
     <div class="card">
-      <h3>Tipo de diana</h3>
+      <h3>Encuadre de la diana</h3>
       <div class="seg" id="dianaMode">
-        <button data-dm="standard" class="sel">Estándar centrada</button>
-        <button data-dm="calib">Calibrar tocando</button>
+        <button data-dm="standard" class="sel">Centrada</button>
+        <button data-dm="calib">Centro+borde</button>
+        <button data-dm="persp">Perspectiva</button>
       </div>
+    </div>
+    <div class="card" id="cardPersp" style="display:none">
+      <h3>Corrección trapezoidal (perspectiva)</h3>
+      <p>Si la cámara no está frontal a la diana (queda ladeada arriba/abajo o a un lado), marca los 4 bordes y la app la verá plana para puntuar bien.</p>
+      <p style="margin-top:8px">Pulsa y toca, en la imagen, el borde exterior de la diana en este orden:</p>
+      <div class="row" style="margin-top:10px; flex-wrap:wrap; gap:6px">
+        <button class="btn sm" id="pTop">① Arriba</button>
+        <button class="btn sm" id="pRight">② Derecha</button>
+        <button class="btn sm" id="pBottom">③ Abajo</button>
+        <button class="btn sm" id="pLeft">④ Izquierda</button>
+      </div>
+      <p style="margin-top:8px" id="perspState">Puntos: 0 / 4</p>
+      <button class="btn" id="pClear" style="margin-top:6px">Borrar puntos</button>
     </div>
     <div class="card" id="cardStd">
       <h3>Diana estándar centrada</h3>
@@ -301,11 +325,20 @@
     <div class="card">
       <h3>Modo</h3>
       <div class="seg" id="timerMode">
-        <button data-tm="up" class="sel">Cronómetro ↑</button>
-        <button data-tm="down">Cuenta atrás</button>
+        <button data-tm="up" class="sel">Cron.↑</button>
+        <button data-tm="down">Atrás</button>
         <button data-tm="beep">Intervalo</button>
+        <button data-tm="alt">Alterno</button>
       </div>
       <p style="margin-top:10px">Arranca automáticamente al iniciar la cámara.</p>
+    </div>
+    <div class="card" id="cardAlt" style="display:none">
+      <h3>Alterno (dos tiempos en bucle)</h3>
+      <p>Cuenta atrás de A segundos, pita, luego B segundos, pita, y vuelve a empezar. Constante. Ej.: 7 y 3.</p>
+      <div class="grid2">
+        <div><label class="fld">Tiempo A (s):</label><input type="number" id="altA" value="7" min="1" inputmode="numeric"></div>
+        <div><label class="fld">Tiempo B (s):</label><input type="number" id="altB" value="3" min="1" inputmode="numeric"></div>
+      </div>
     </div>
     <div class="card" id="cardDown" style="display:none">
       <h3>Cuenta atrás</h3>
@@ -390,10 +423,50 @@
     running:false, fireMode:'auto', dianaMode:'standard',
     detectType:'laser', // laser | holes
     thr:160, minpx:4, cooldown:2.0, rings:10, radiusPct:42, realmm:0,
-    holeThr:45, minHole:8, ref:null,
+    holeThr:45, minHole:6, maxHole:400, confirm:2, roundMax:2.6,
+    insideOnly:true, lightComp:true, ref:null, cand:null,
+    persp:{top:null,right:null,bottom:null,left:null}, Hf:null, Hinv:null,
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
     phase:'idle', // idle | ready | leadin | running | paused | camera
   };
+
+  /* ---------- homografía (corrección de perspectiva) ---------- */
+  function solveLin(A,b){ // elimina Gauss, A n×n
+    const n=b.length;
+    for(let c=0;c<n;c++){
+      let piv=c; for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[piv][c])) piv=r;
+      [A[c],A[piv]]=[A[piv],A[c]]; [b[c],b[piv]]=[b[piv],b[c]];
+      const d=A[c][c]||1e-9;
+      for(let r=0;r<n;r++){ if(r===c) continue; const f=A[r][c]/d;
+        for(let k=c;k<n;k++) A[r][k]-=f*A[c][k]; b[r]-=f*b[c]; }
+    }
+    return b.map((v,i)=>v/(A[i][i]||1e-9));
+  }
+  function homography(src,dst){ // 4 puntos {x,y} -> H (img a destino)
+    const A=[],bb=[];
+    for(let i=0;i<4;i++){ const {x,y}=src[i], X=dst[i].x, Y=dst[i].y;
+      A.push([x,y,1,0,0,0,-x*X,-y*X]); bb.push(X);
+      A.push([0,0,0,x,y,1,-x*Y,-y*Y]); bb.push(Y); }
+    const h=solveLin(A,bb);
+    return [[h[0],h[1],h[2]],[h[3],h[4],h[5]],[h[6],h[7],1]];
+  }
+  function applyH(H,x,y){ const d=H[2][0]*x+H[2][1]*y+H[2][2];
+    return {x:(H[0][0]*x+H[0][1]*y+H[0][2])/d, y:(H[1][0]*x+H[1][1]*y+H[1][2])/d}; }
+  function inv3(m){
+    const a=m[0][0],b=m[0][1],c=m[0][2],d=m[1][0],e=m[1][1],f=m[1][2],g=m[2][0],h=m[2][1],i=m[2][2];
+    const A=e*i-f*h,B=-(d*i-f*g),C=d*h-e*g,D=-(b*i-c*h),E=a*i-c*g,F=-(a*h-b*g),G=b*f-c*e,Hh=-(a*f-c*d),I=a*e-b*d;
+    const det=a*A+b*B+c*C||1e-9;
+    return [[A/det,D/det,G/det],[B/det,E/det,Hh/det],[C/det,F/det,I/det]];
+  }
+  function buildPersp(){
+    const p=S.persp;
+    if(!(p.top&&p.right&&p.bottom&&p.left)){ S.Hf=null; S.Hinv=null; return; }
+    const src=[p.top,p.right,p.bottom,p.left].map(o=>({x:o.x*S.W,y:o.y*S.H}));
+    // destino: borde exterior (radio 1) arriba, derecha, abajo, izquierda
+    const dst=[{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+    S.Hf=homography(src,dst);   // imagen -> normalizado
+    S.Hinv=inv3(S.Hf);          // normalizado -> imagen
+  }
 
   /* ---------- cámara ---------- */
   async function getCam(){
@@ -456,7 +529,7 @@
         ? 'No hay ninguna cámara con ese código ahora mismo.' : 'Error de conexión: '+err.type;
     });
   }
-  function resize(){ const r=video.getBoundingClientRect(); S.W=overlay.width=r.width; S.H=overlay.height=r.height; }
+  function resize(){ const r=video.getBoundingClientRect(); S.W=overlay.width=r.width; S.H=overlay.height=r.height; buildPersp(); }
   window.addEventListener('resize', resize);
 
   /* ---------- geometría ---------- */
@@ -466,6 +539,15 @@
       return {cx,cy,rOuter:Math.hypot(ex-cx,ey-cy)};
     }
     return {cx:S.W/2, cy:S.H/2, rOuter:(S.radiusPct/100)*S.H};
+  }
+  // coords normalizadas (rx,ry) de un punto de pantalla; outer=1
+  function normFromScreen(x,y){
+    if(S.dianaMode==='persp' && S.Hf){
+      const u=applyH(S.Hf,x,y); return {rx:u.x, ry:u.y, dRel:Math.hypot(u.x,u.y)};
+    }
+    const {cx,cy,rOuter}=dianaGeom();
+    const rx=(x-cx)/rOuter, ry=(y-cy)/rOuter;
+    return {rx,ry,dRel:Math.hypot(rx,ry)};
   }
   // relación distancia(en unidades de rOuter) -> anillo y décima
   function scoreFromDist(dRel){ // dRel: 0 centro, 1 borde
@@ -497,37 +579,83 @@
   }
 
   /* ---------- detección de impactos en cartón (diferencia de fotogramas) ---------- */
+  const HRES=220;
+  function insideDiana(nx,ny){ // nx,ny en 0..1 del muestreo -> a pantalla -> normalizado
+    if(!S.insideOnly) return true;
+    const scr=mapCover(nx,ny); const {dRel}=normFromScreen(scr.x,scr.y);
+    return dRel<=1.05;
+  }
   function detectHole(){
     if(video.videoWidth===0) return null;
-    const sw=160, sh=Math.round(sw*video.videoHeight/video.videoWidth);
+    const sw=HRES, sh=Math.round(sw*video.videoHeight/video.videoWidth);
     work.width=sw; work.height=sh; wctx.drawImage(video,0,0,sw,sh);
     const d=wctx.getImageData(0,0,sw,sh).data, N=sw*sh;
     const cur=new Uint8Array(N);
-    for(let i=0;i<N;i++){ const p=i*4; cur[i]=(d[p]+d[p+1]+d[p+2])/3; }
+    for(let i=0;i<N;i++){ const p=i*4; cur[i]=(d[p]*0.299+d[p+1]*0.587+d[p+2]*0.114); }
     if(!S.ref || S.ref.length!==N){ S.ref=cur; return null; }
-    let sx=0,sy=0,n=0;
+
+    // compensar cambio global de brillo (luz): desplaza la referencia por la mediana de diferencia
+    let gsum=0; for(let i=0;i<N;i+=7) gsum+=(cur[i]-S.ref[i]); const gBias=S.lightComp? gsum/(N/7) : 0;
+
+    let sx=0,sy=0,n=0, minx=sw,miny=sh,maxx=0,maxy=0;
     for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
       const i=y*sw+x;
-      if(S.ref[i]-cur[i] > S.holeThr){ sx+=x; sy+=y; n++; } // oscurecimiento nuevo = agujero
+      if((S.ref[i]-(cur[i]-gBias)) > S.holeThr){
+        if(S.insideOnly && !insideDiana(x/sw,y/sh)) continue;
+        sx+=x; sy+=y; n++;
+        if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+      }
     }
-    // cambio global (luz, movimiento del móvil) → refrescar referencia y descartar
-    if(n > N*0.22){ S.ref=cur; return null; }
-    if(n < S.minHole) return null;
-    return { pt:mapCover(sx/n/sw, sy/n/sh), cur };
+    $('#liveHole').textContent='Cambios detectados: '+n+' px';
+    // cambio global enorme (movimiento del móvil / luz brusca) → re-referenciar, descartar
+    if(n > N*0.18){ S.ref=cur; S.cand=null; return null; }
+    if(n < S.minHole || n > S.maxHole){ S.cand=null; return null; }
+    // forma: rechaza manchas alargadas (sombras) exigiendo caja casi cuadrada
+    const bw=(maxx-minx)+1, bh=(maxy-miny)+1, ar=Math.max(bw/bh, bh/bw);
+    if(ar > S.roundMax){ S.cand=null; return null; }
+    const cx=sx/n, cy=sy/n;
+    // confirmación en N fotogramas: el impacto debe persistir cerca
+    if(!S.cand){ S.cand={x:cx,y:cy,f:1}; return null; }
+    if(Math.hypot(cx-S.cand.x, cy-S.cand.y) < 6){ S.cand.f++; S.cand.x=cx; S.cand.y=cy; }
+    else { S.cand={x:cx,y:cy,f:1}; return null; }
+    if(S.cand.f < S.confirm) return null;
+    S.cand=null;
+    return { pt:mapCover(cx/sw, cy/sh), cur };
   }
 
   /* ---------- dibujo overlay ---------- */
+  function normToScreen(rx,ry){ // normalizado -> pantalla (según modo)
+    if(S.dianaMode==='persp' && S.Hinv){ return applyH(S.Hinv,rx,ry); }
+    const {cx,cy,rOuter}=dianaGeom(); return {x:cx+rx*rOuter, y:cy+ry*rOuter};
+  }
   function drawDiana(){
-    const {cx,cy,rOuter}=dianaGeom(); octx.clearRect(0,0,S.W,S.H);
-    for(let k=S.rings;k>=1;k--){ const rr=rOuter*k/S.rings;
-      octx.beginPath(); octx.arc(cx,cy,rr,0,7);
-      octx.strokeStyle=k%2?'rgba(88,166,255,.55)':'rgba(88,166,255,.28)';
-      octx.lineWidth=k===S.rings?2:1; octx.stroke(); }
-    octx.strokeStyle='rgba(63,185,80,.9)'; octx.lineWidth=1.5;
-    octx.beginPath(); octx.moveTo(cx-12,cy); octx.lineTo(cx+12,cy);
-    octx.moveTo(cx,cy-12); octx.lineTo(cx,cy+12); octx.stroke();
+    octx.clearRect(0,0,S.W,S.H);
+    if(S.dianaMode==='persp' && S.Hinv){
+      for(let k=S.rings;k>=1;k--){
+        const rr=k/S.rings; octx.beginPath();
+        for(let a=0;a<=48;a++){ const t=a/48*Math.PI*2, p=normToScreen(rr*Math.cos(t), rr*Math.sin(t));
+          if(a===0)octx.moveTo(p.x,p.y); else octx.lineTo(p.x,p.y); }
+        octx.strokeStyle=k%2?'rgba(88,166,255,.55)':'rgba(88,166,255,.28)';
+        octx.lineWidth=k===S.rings?2:1; octx.stroke();
+      }
+      const c=normToScreen(0,0); octx.strokeStyle='rgba(63,185,80,.9)'; octx.lineWidth=1.5;
+      octx.beginPath(); octx.moveTo(c.x-12,c.y); octx.lineTo(c.x+12,c.y);
+      octx.moveTo(c.x,c.y-12); octx.lineTo(c.x,c.y+12); octx.stroke();
+    } else {
+      const {cx,cy,rOuter}=dianaGeom();
+      for(let k=S.rings;k>=1;k--){ const rr=rOuter*k/S.rings;
+        octx.beginPath(); octx.arc(cx,cy,rr,0,7);
+        octx.strokeStyle=k%2?'rgba(88,166,255,.55)':'rgba(88,166,255,.28)';
+        octx.lineWidth=k===S.rings?2:1; octx.stroke(); }
+      octx.strokeStyle='rgba(63,185,80,.9)'; octx.lineWidth=1.5;
+      octx.beginPath(); octx.moveTo(cx-12,cy); octx.lineTo(cx+12,cy);
+      octx.moveTo(cx,cy-12); octx.lineTo(cx,cy+12); octx.stroke();
+    }
     if(S.dianaMode==='calib'){ if(S.center)mark(S.center.x*S.W,S.center.y*S.H,'#3fb950','C'); if(S.edge)mark(S.edge.x*S.W,S.edge.y*S.H,'#d29922','B'); }
-    S.shots.slice(-12).forEach(s=>{ octx.beginPath(); octx.arc(cx+s.rx*rOuter, cy+s.ry*rOuter,6,0,7);
+    if(S.dianaMode==='persp'){ const p=S.persp;
+      [['top','①'],['right','②'],['bottom','③'],['left','④']].forEach(([k,t])=>{ if(p[k]) mark(p[k].x*S.W,p[k].y*S.H,'#d29922',t); }); }
+    S.shots.slice(-12).forEach(s=>{ const p=normToScreen(s.rx,s.ry);
+      octx.beginPath(); octx.arc(p.x,p.y,6,0,7);
       octx.fillStyle='rgba(248,81,73,.9)'; octx.fill(); octx.strokeStyle='#fff'; octx.lineWidth=1.5; octx.stroke(); });
   }
   function mark(x,y,c,t){ octx.beginPath(); octx.arc(x,y,9,0,7); octx.strokeStyle=c; octx.lineWidth=2; octx.stroke();
@@ -553,8 +681,7 @@
 
   /* ---------- registro ---------- */
   function registerShot(x,y){
-    const {cx,cy,rOuter}=dianaGeom();
-    const rx=(x-cx)/rOuter, ry=(y-cy)/rOuter, dRel=Math.hypot(rx,ry);
+    const {rx,ry,dRel}=normFromScreen(x,y);
     const {ring,dec}=scoreFromDist(dRel);
     S.shots.push({rx,ry,dRel,ring,dec,t:Date.now()});
     flashScore(ring); renderStats();
@@ -610,7 +737,7 @@
 
   /* ---------- SESIÓN Y TEMPORIZADOR ---------- */
   const T={ sound:true, mode:'up', startCount:3, downSecs:60, loop:false, beepSecs:10,
-    clock:0, lead:0, beepAcc:0, tick:null };
+    altA:7, altB:3, altOn:'A', clock:0, lead:0, beepAcc:0, tick:null };
   let audioCtx=null;
   function beep(freq=880, dur=0.18, vol=0.4){
     if(!T.sound) return;
@@ -627,10 +754,13 @@
     const hud=$('#timerHud'); hud.style.display='block';
     if(S.phase==='leadin'){ hud.querySelector('.ph').textContent='PREPARADOS'; hud.querySelector('.tc').textContent=T.lead;
       hud.classList.add('alert'); return; }
-    const lbl = S.phase==='paused' ? 'PAUSA' : (T.mode==='down'?'CUENTA ATRÁS':'SESIÓN');
+    let lbl='SESIÓN';
+    if(S.phase==='paused') lbl='PAUSA';
+    else if(T.mode==='down') lbl='CUENTA ATRÁS';
+    else if(T.mode==='alt') lbl='TRAMO '+T.altOn;
     hud.querySelector('.ph').textContent=lbl;
     hud.querySelector('.tc').textContent=fmt(T.clock);
-    hud.classList.toggle('alert', T.mode==='down' && T.clock<=5);
+    hud.classList.toggle('alert', (T.mode==='down'||T.mode==='alt') && T.clock<=3 && T.clock>0);
   }
   function clearTick(){ if(T.tick){ clearInterval(T.tick); T.tick=null; } }
 
@@ -650,8 +780,10 @@
     } else empezarTiro();
   }
   function empezarTiro(){
-    S.phase='running'; T.beepAcc=0; S.ref=null; // referencia limpia para detectar agujeros
-    T.clock = (T.mode==='down') ? T.downSecs : 0;
+    S.phase='running'; T.beepAcc=0; S.ref=null; S.cand=null; // referencia limpia para agujeros
+    if(T.mode==='down') T.clock=T.downSecs;
+    else if(T.mode==='alt'){ T.altOn='A'; T.clock=T.altA; }
+    else T.clock=0;
     $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on');
     updHud(); clearTick();
     T.tick=setInterval(sessionTick,1000);
@@ -663,6 +795,14 @@
       if(T.clock<=5 && T.clock>0) beep(660,0.12,0.35);
       if(T.clock<=0){ beep(440,0.5,0.6); T.clock = T.loop ? T.downSecs : 0;
         if(!T.loop){ clearTick(); } }
+    } else if(T.mode==='alt'){
+      T.clock--;
+      if(T.clock<=3 && T.clock>0) beep(660,0.12,0.35);
+      if(T.clock<=0){
+        // cambio de tramo, en bucle constante
+        if(T.altOn==='A'){ T.altOn='B'; T.clock=T.altB; beep(520,0.35,0.55); }
+        else { T.altOn='A'; T.clock=T.altA; beep(880,0.35,0.55); }
+      }
     } else {
       T.clock++;
       if(T.mode==='beep'){ T.beepAcc++; if(T.beepAcc>=T.beepSecs){ T.beepAcc=0; beep(880,0.15,0.4); } }
@@ -712,21 +852,47 @@
   $('#realmm').oninput=e=>{S.realmm=+e.target.value||0;};
   $('#holeThr').oninput=e=>{S.holeThr=+e.target.value;$('#vHole').textContent=S.holeThr;};
   $('#minHole').oninput=e=>{S.minHole=+e.target.value;$('#vMinHole').textContent=S.minHole;};
+  $('#maxHole').oninput=e=>{S.maxHole=+e.target.value;$('#vMaxHole').textContent=S.maxHole;};
+  $('#confirm').oninput=e=>{S.confirm=+e.target.value;$('#vConfirm').textContent=S.confirm;};
+  $('#roundv').oninput=e=>{S.roundMax=(+e.target.value)/10;$('#vRound').textContent=S.roundMax.toFixed(1);};
+  $('#swInside').onclick=e=>{S.insideOnly=!S.insideOnly;e.target.classList.toggle('on',S.insideOnly);};
+  $('#swLight').onclick=e=>{S.lightComp=!S.lightComp;e.target.classList.toggle('on',S.lightComp);};
+  $('#btnRecalib').onclick=()=>{S.ref=null;S.cand=null;$('#liveHole').textContent='Fondo recalibrado.';};
 
   document.querySelectorAll('#fireMode button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('#fireMode button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); S.fireMode=b.dataset.fm;
     $('#pill').innerHTML=S.fireMode==='auto'?'Detectando punto rojo…':'Toca el impacto'; });
   document.querySelectorAll('#dianaMode button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('#dianaMode button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); S.dianaMode=b.dataset.dm;
-    $('#cardStd').style.display=S.dianaMode==='standard'?'block':'none'; $('#cardCal').style.display=S.dianaMode==='calib'?'block':'none'; });
+    $('#cardStd').style.display=S.dianaMode==='standard'?'block':'none';
+    $('#cardCal').style.display=S.dianaMode==='calib'?'block':'none';
+    $('#cardPersp').style.display=S.dianaMode==='persp'?'block':'none'; });
 
   let calMode=null;
   $('#setCenter').onclick=()=>{calMode='center';$('#calState').textContent='Toca el centro…';};
   $('#setEdge').onclick=()=>{calMode='edge';$('#calState').textContent='Toca el borde…';};
+  // perspectiva: fijar cada uno de los 4 bordes
+  function perspCount(){ const p=S.persp; return ['top','right','bottom','left'].filter(k=>p[k]).length; }
+  $('#pTop').onclick=()=>{calMode='pTop';$('#perspState').textContent='Toca el borde SUPERIOR…';};
+  $('#pRight').onclick=()=>{calMode='pRight';$('#perspState').textContent='Toca el borde DERECHO…';};
+  $('#pBottom').onclick=()=>{calMode='pBottom';$('#perspState').textContent='Toca el borde INFERIOR…';};
+  $('#pLeft').onclick=()=>{calMode='pLeft';$('#perspState').textContent='Toca el borde IZQUIERDO…';};
+  $('#pClear').onclick=()=>{S.persp={top:null,right:null,bottom:null,left:null};buildPersp();$('#perspState').textContent='Puntos: 0 / 4';};
+
   overlay.addEventListener('pointerdown',e=>{
     const r=overlay.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
-    if(calMode){ const nx=x/S.W, ny=y/S.H; if(calMode==='center')S.center={x:nx,y:ny}; else S.edge={x:nx,y:ny};
-      $('#calState').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—'); calMode=null; return; }
+    if(calMode){
+      const nx=x/S.W, ny=y/S.H;
+      if(calMode==='center')S.center={x:nx,y:ny};
+      else if(calMode==='edge')S.edge={x:nx,y:ny};
+      else if(calMode.startsWith('p')){
+        const key={pTop:'top',pRight:'right',pBottom:'bottom',pLeft:'left'}[calMode];
+        S.persp[key]={x:nx,y:ny}; buildPersp();
+        $('#perspState').textContent='Puntos: '+perspCount()+' / 4'+(perspCount()===4?' ✓ listo':'');
+        calMode=null; return;
+      }
+      $('#calState').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—'); calMode=null; return;
+    }
     if(S.fireMode==='manual'&&S.phase==='running'){ registerShot(x,y); return; }
     // en automático, tocar la pantalla oculta/muestra los controles para ver la diana
     if(S.phase==='running'||S.phase==='paused') $('#stage').classList.toggle('controls-hidden');
@@ -740,9 +906,12 @@
     b.classList.add('sel'); T.mode=b.dataset.tm;
     $('#cardDown').style.display = T.mode==='down'?'block':'none';
     $('#cardBeep').style.display = T.mode==='beep'?'block':'none';
+    $('#cardAlt').style.display = T.mode==='alt'?'block':'none';
   });
   $('#downSecs').oninput=e=>{T.downSecs=Math.max(1,+e.target.value||1);};
   $('#beepSecs').oninput=e=>{T.beepSecs=Math.max(1,+e.target.value||1);};
+  $('#altA').oninput=e=>{T.altA=Math.max(1,+e.target.value||1);};
+  $('#altB').oninput=e=>{T.altB=Math.max(1,+e.target.value||1);};
   $('#swLoop').onclick=e=>{T.loop=!T.loop;e.target.classList.toggle('on',T.loop);};
   $('#startcd').oninput=e=>{T.startCount=+e.target.value;$('#vStart').textContent=T.startCount;};
   $('#swSound').onclick=e=>{T.sound=!T.sound;e.target.classList.toggle('on',T.sound);};
