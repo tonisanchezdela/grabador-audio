@@ -25,8 +25,26 @@
     70%{box-shadow:0 0 0 7px rgba(248,81,73,0)}100%{box-shadow:0 0 0 0 rgba(248,81,73,0)}}
 
   #stage{position:relative; flex:1; overflow:hidden; background:#000;}
+  #camwrap{position:absolute; inset:0; transform-origin:0 0; will-change:transform;}
   #video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
   #overlay{position:absolute; inset:0; width:100%; height:100%; touch-action:none;}
+
+  /* barra de ajuste flotante */
+  #adjustBar{position:absolute; left:0; right:0; bottom:0; z-index:18; display:none;
+    background:rgba(13,17,23,.92); border-top:1px solid var(--line); padding:10px 12px 14px;
+    backdrop-filter:blur(6px);}
+  #adjustBar.open{display:block;}
+  #adjustBar .abT{font-size:13px; color:var(--gold); margin-bottom:8px; text-align:center;}
+  #adjustBar .abRow{display:flex; gap:7px; flex-wrap:wrap; justify-content:center;}
+  #adjustBar .ab{flex:0 0 auto; border:1px solid var(--line); background:var(--panel);
+    color:var(--txt); padding:12px 14px; border-radius:11px; font-size:15px; font-weight:700;}
+  #adjustBar .ab:active{transform:scale(.95);}
+  #adjustBar .ab.go{background:var(--ok); border-color:var(--ok); color:#06220f;}
+  #adjustBar .ab.sel{background:var(--ring); border-color:var(--ring); color:#06182e;}
+  #adjustBar .abInfo{font-size:12px; color:var(--muted); text-align:center; margin-top:8px;}
+  #zoomHint{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:17;
+    background:rgba(13,17,23,.7); border:1px solid var(--line); color:var(--muted);
+    font-size:13px; padding:8px 14px; border-radius:20px; display:none; pointer-events:none;}
 
   #hud{position:absolute; left:0; right:0; bottom:0; padding:8px 10px 12px;
     background:linear-gradient(transparent, rgba(0,0,0,.6) 55%);}
@@ -167,8 +185,11 @@
   </header>
 
   <div id="stage">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="overlay"></canvas>
+    <div id="camwrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div id="zoomHint">Pellizca con dos dedos para ampliar</div>
     <div class="pill" id="pill">Pulsa <b>Iniciar</b></div>
     <div class="scoreflash" id="flash"></div>
     <div id="tapHint">Toca para mostrar los controles</div>
@@ -224,6 +245,13 @@
         <button class="btn danger" id="btnFinish">■ Finalizar</button>
       </div>
     </div>
+
+    <!-- barra de ajuste flotante (sin salir del menú) -->
+    <div id="adjustBar">
+      <div class="abT" id="abT">Ajuste</div>
+      <div class="abRow" id="abRow"></div>
+      <div class="abInfo" id="abInfo"></div>
+    </div>
   </div>
 
   <!-- AJUSTES -->
@@ -257,6 +285,7 @@
       <div class="switchrow" style="margin-top:10px"><span>Solo dentro de la diana</span><div class="sw on" id="swInside"></div></div>
       <div class="switchrow"><span>Compensar cambios de luz</span><div class="sw on" id="swLight"></div></div>
       <button class="btn" id="btnRecalib" style="margin-top:10px">Recalibrar fondo ahora</button>
+      <button class="btn primary" id="holeAdjust" style="margin-top:8px">Ajustar sobre la imagen</button>
       <div class="warn" id="liveHole">Cambios detectados: — </div>
     </div>
     <div class="card">
@@ -283,15 +312,9 @@
     <div class="card" id="cardPersp" style="display:none">
       <h3>Corrección trapezoidal (perspectiva)</h3>
       <p>Si la cámara no está frontal a la diana (queda ladeada arriba/abajo o a un lado), marca los 4 bordes y la app la verá plana para puntuar bien.</p>
-      <p style="margin-top:8px">Pulsa y toca, en la imagen, el borde exterior de la diana en este orden:</p>
-      <div class="row" style="margin-top:10px; flex-wrap:wrap; gap:6px">
-        <button class="btn sm" id="pTop">① Arriba</button>
-        <button class="btn sm" id="pRight">② Derecha</button>
-        <button class="btn sm" id="pBottom">③ Abajo</button>
-        <button class="btn sm" id="pLeft">④ Izquierda</button>
-      </div>
+      <p style="margin-top:8px">Pulsa "Ajustar sobre la imagen": podrás <b>ampliar con dos dedos</b> y tocar el borde exterior de la diana (arriba, derecha, abajo, izquierda) sin salir de la cámara.</p>
       <p style="margin-top:8px" id="perspState">Puntos: 0 / 4</p>
-      <button class="btn" id="pClear" style="margin-top:6px">Borrar puntos</button>
+      <button class="btn primary" id="pAdjust" style="margin-top:6px">Ajustar sobre la imagen</button>
     </div>
     <div class="card" id="cardStd">
       <h3>Diana estándar centrada</h3>
@@ -302,11 +325,8 @@
     <div class="card" id="cardCal" style="display:none">
       <h3>Calibrar tocando</h3>
       <p>1) Toca el <b>centro</b>. 2) Toca el <b>borde exterior</b>.</p>
-      <div class="row" style="margin-top:10px">
-        <button class="btn" id="setCenter">Fijar centro</button>
-        <button class="btn" id="setEdge">Fijar borde</button>
-      </div>
       <p style="margin-top:8px" id="calState">Centro: — · Borde: —</p>
+      <button class="btn primary" id="calAdjust" style="margin-top:6px">Ajustar sobre la imagen</button>
     </div>
     <div class="card">
       <h3>Anillos</h3>
@@ -414,7 +434,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const video = $('#video'), overlay = $('#overlay');
+  const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
   const work = document.createElement('canvas');
   const wctx = work.getContext('2d', {willReadFrequently:true});
@@ -476,8 +496,11 @@
   // arranca la sesión de puntuación sobre el vídeo actual (local o remoto)
   function beginSession(){
     S.running = true; S.phase='ready'; $('#statusDot').classList.add('live');
-    $('#rowCam').style.display='none'; $('#pill').style.display='none';
-    resize(); loop(); iniciarSesion();
+    $('#rowCam').style.display='none'; $('#rowReady').style.display='flex';
+    $('#pill').style.display='block';
+    $('#pill').innerHTML='Cámara lista. Ajusta la diana y pulsa <b>Nueva sesión</b>';
+    resize(); loop();
+    $('#zoomHint').style.display='block'; setTimeout(()=>{$('#zoomHint').style.display='none';},3500);
   }
   async function start(){ // cámara local
     try{ const stream=await getCam(); video.srcObject=stream; await video.play(); beginSession(); }
@@ -664,17 +687,18 @@
   /* ---------- bucle ---------- */
   function loop(){
     if(!S.running) return; drawDiana();
-    if(S.phase==='running' && S.fireMode==='auto'){
-      if(S.detectType==='laser'){
-        const p=detectRed();
-        if(p){ const now=performance.now()/1000;
-          if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.x,p.y); }
-          octx.beginPath(); octx.arc(p.x,p.y,10,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=2; octx.stroke(); }
-      } else {
-        const h=detectHole();
-        if(h){ const now=performance.now()/1000;
-          if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(h.pt.x,h.pt.y); S.ref=h.cur; } }
-      }
+    const adjHoles = $('#adjustBar').classList.contains('open') && $('#adjustBar').dataset.kind==='holes';
+    const live = S.phase==='running' && S.fireMode==='auto';
+    if(live && S.detectType==='laser'){
+      const p=detectRed();
+      if(p){ const now=performance.now()/1000;
+        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.x,p.y); }
+        octx.beginPath(); octx.arc(p.x,p.y,10,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=2; octx.stroke(); }
+    } else if((live && S.detectType==='holes') || adjHoles){
+      const h=detectHole();
+      if(h && live){ const now=performance.now()/1000;
+        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(h.pt.x,h.pt.y); S.ref=h.cur; } }
+      if(adjHoles) abInfo();
     }
     requestAnimationFrame(loop);
   }
@@ -869,34 +893,111 @@
     $('#cardPersp').style.display=S.dianaMode==='persp'?'block':'none'; });
 
   let calMode=null;
-  $('#setCenter').onclick=()=>{calMode='center';$('#calState').textContent='Toca el centro…';};
-  $('#setEdge').onclick=()=>{calMode='edge';$('#calState').textContent='Toca el borde…';};
-  // perspectiva: fijar cada uno de los 4 bordes
   function perspCount(){ const p=S.persp; return ['top','right','bottom','left'].filter(k=>p[k]).length; }
-  $('#pTop').onclick=()=>{calMode='pTop';$('#perspState').textContent='Toca el borde SUPERIOR…';};
-  $('#pRight').onclick=()=>{calMode='pRight';$('#perspState').textContent='Toca el borde DERECHO…';};
-  $('#pBottom').onclick=()=>{calMode='pBottom';$('#perspState').textContent='Toca el borde INFERIOR…';};
-  $('#pLeft').onclick=()=>{calMode='pLeft';$('#perspState').textContent='Toca el borde IZQUIERDO…';};
-  $('#pClear').onclick=()=>{S.persp={top:null,right:null,bottom:null,left:null};buildPersp();$('#perspState').textContent='Puntos: 0 / 4';};
 
+  /* ----- ZOOM con dos dedos (pellizco) ----- */
+  const Z={s:1,tx:0,ty:0};
+  function applyZoom(){ camwrap.style.transform=`translate(${Z.tx}px,${Z.ty}px) scale(${Z.s})`; }
+  function resetZoom(){ Z.s=1; Z.tx=0; Z.ty=0; applyZoom(); }
+  const ptrs=new Map(); let pinch=null, tapCand=null;
+  function stageXY(cx,cy){ const r=overlay.getBoundingClientRect();
+    return { x:(cx-r.left)/r.width*S.W, y:(cy-r.top)/r.height*S.H }; }
   overlay.addEventListener('pointerdown',e=>{
-    const r=overlay.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
+    ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(ptrs.size===1){ tapCand={id:e.pointerId,x:e.clientX,y:e.clientY,moved:false}; }
+    if(ptrs.size===2){
+      tapCand=null;
+      const p=[...ptrs.values()];
+      const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+      const sr=$('#stage').getBoundingClientRect();
+      const mid={x:(p[0].x+p[1].x)/2-sr.left,y:(p[0].y+p[1].y)/2-sr.top};
+      pinch={d0:d,mid0:mid,z0:{...Z}};
+    }
+  });
+  overlay.addEventListener('pointermove',e=>{
+    if(!ptrs.has(e.pointerId))return;
+    ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(tapCand && e.pointerId===tapCand.id){
+      if(Math.hypot(e.clientX-tapCand.x,e.clientY-tapCand.y)>12) tapCand.moved=true;
+    }
+    if(pinch && ptrs.size>=2){
+      const p=[...ptrs.values()];
+      const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+      const sr=$('#stage').getBoundingClientRect();
+      const mid={x:(p[0].x+p[1].x)/2-sr.left,y:(p[0].y+p[1].y)/2-sr.top};
+      let ns=Math.max(1,Math.min(6, pinch.z0.s*(d/pinch.d0)));
+      const cpx=(pinch.mid0.x-pinch.z0.tx)/pinch.z0.s, cpy=(pinch.mid0.y-pinch.z0.ty)/pinch.z0.s;
+      Z.s=ns; Z.tx=mid.x-ns*cpx; Z.ty=mid.y-ns*cpy;
+      if(Z.s<=1.001){ Z.tx=0; Z.ty=0; }
+      applyZoom();
+    }
+  });
+  function endPtr(e){
+    const wasTap = tapCand && e.pointerId===tapCand.id && !tapCand.moved && !pinch;
+    ptrs.delete(e.pointerId);
+    if(ptrs.size<2) pinch=null;
+    if(wasTap){ const {x,y}=stageXY(e.clientX,e.clientY); handleTap(x,y); }
+    if(ptrs.size===0) tapCand=null;
+  }
+  overlay.addEventListener('pointerup',endPtr);
+  overlay.addEventListener('pointercancel',e=>{ ptrs.delete(e.pointerId); if(ptrs.size<2)pinch=null; });
+
+  function handleTap(x,y){
     if(calMode){
       const nx=x/S.W, ny=y/S.H;
-      if(calMode==='center')S.center={x:nx,y:ny};
-      else if(calMode==='edge')S.edge={x:nx,y:ny};
+      if(calMode==='center'){S.center={x:nx,y:ny}; $('#calState').textContent='Centro ✓'; abInfo();}
+      else if(calMode==='edge'){S.edge={x:nx,y:ny}; $('#calState').textContent='Borde ✓'; abInfo();}
       else if(calMode.startsWith('p')){
         const key={pTop:'top',pRight:'right',pBottom:'bottom',pLeft:'left'}[calMode];
         S.persp[key]={x:nx,y:ny}; buildPersp();
         $('#perspState').textContent='Puntos: '+perspCount()+' / 4'+(perspCount()===4?' ✓ listo':'');
-        calMode=null; return;
+        abInfo();
       }
-      $('#calState').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—'); calMode=null; return;
+      calMode=null; refreshAbSel(); return;
     }
     if(S.fireMode==='manual'&&S.phase==='running'){ registerShot(x,y); return; }
-    // en automático, tocar la pantalla oculta/muestra los controles para ver la diana
     if(S.phase==='running'||S.phase==='paused') $('#stage').classList.toggle('controls-hidden');
-  });
+  }
+
+  /* ----- barra de ajuste flotante ----- */
+  function refreshAbSel(){ document.querySelectorAll('#adjustBar .ab[data-cm]').forEach(b=>b.classList.toggle('sel', b.dataset.cm===calMode)); }
+  function abInfo(){
+    const bar=$('#adjustBar'); if(!bar.classList.contains('open'))return;
+    if(bar.dataset.kind==='persp') $('#abInfo').textContent='Puntos: '+perspCount()+' / 4'+(perspCount()===4?' — ✓ corrección activa':'');
+    else if(bar.dataset.kind==='calib') $('#abInfo').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—');
+    else if(bar.dataset.kind==='holes') $('#abInfo').textContent='Umbral '+S.holeThr+' · Conf '+S.confirm+' · '+($('#liveHole').textContent||'');
+  }
+  function openAdjust(kind){
+    document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
+    const bar=$('#adjustBar'); bar.dataset.kind=kind; $('#hud').style.display='none';
+    const row=$('#abRow'); row.innerHTML=''; calMode=null;
+    const mk=(label,fn,cm)=>{ const b=document.createElement('button'); b.className='ab'; b.textContent=label;
+      if(cm)b.dataset.cm=cm; b.onclick=()=>{fn(b);refreshAbSel();}; row.appendChild(b); return b; };
+    if(kind==='persp'){
+      $('#abT').textContent='Marca los 4 bordes de la diana (pellizca para ampliar)';
+      mk('① Arr',()=>calMode='pTop','pTop'); mk('② Der',()=>calMode='pRight','pRight');
+      mk('③ Abj',()=>calMode='pBottom','pBottom'); mk('④ Izq',()=>calMode='pLeft','pLeft');
+      mk('Borrar',()=>{S.persp={top:null,right:null,bottom:null,left:null};buildPersp();abInfo();});
+    } else if(kind==='calib'){
+      $('#abT').textContent='Marca centro y borde (pellizca para ampliar)';
+      mk('Centro',()=>calMode='center','center'); mk('Borde',()=>calMode='edge','edge');
+    } else if(kind==='holes'){
+      $('#abT').textContent='Ajusta en vivo mientras disparas de prueba';
+      mk('Umbral −',()=>{S.holeThr=Math.max(15,S.holeThr-5);$('#holeThr').value=S.holeThr;$('#vHole').textContent=S.holeThr;abInfo();});
+      mk('Umbral +',()=>{S.holeThr=Math.min(140,S.holeThr+5);$('#holeThr').value=S.holeThr;$('#vHole').textContent=S.holeThr;abInfo();});
+      mk('Conf −',()=>{S.confirm=Math.max(1,S.confirm-1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=S.confirm;abInfo();});
+      mk('Conf +',()=>{S.confirm=Math.min(5,S.confirm+1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=S.confirm;abInfo();});
+      mk('Recalibrar',()=>{S.ref=null;S.cand=null;});
+    }
+    mk('🔍 Zoom 1×',()=>resetZoom());
+    const done=mk('✓ Hecho',()=>closeAdjust()); done.classList.add('go');
+    bar.classList.add('open'); abInfo();
+  }
+  function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#hud').style.display='block'; calMode=null; }
+
+  $('#calAdjust').onclick=()=>openAdjust('calib');
+  $('#pAdjust').onclick=()=>openAdjust('persp');
+  $('#holeAdjust').onclick=()=>openAdjust('holes');
   $('#btnUndo').onclick=()=>{S.shots.pop();renderStats();};
   $('#btnReset2').onclick=()=>{S.shots=[];renderStats();};
 
