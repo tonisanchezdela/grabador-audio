@@ -153,6 +153,10 @@
   .period button{flex:0 0 auto; background:var(--panel); border:1px solid var(--line);
     color:var(--accent); border-radius:9px; padding:9px 11px; font-size:14px;}
   .switchrow{display:flex; align-items:center; justify-content:space-between; margin:10px 0;}
+  select{width:100%; background:#0d1117; border:1px solid var(--line); color:var(--txt); border-radius:10px; padding:11px 10px; font-size:15px;}
+  .pfi{display:flex; gap:8px; align-items:center; padding:8px 0; border-top:1px solid var(--line);}
+  .pfi .pfn{flex:1; font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis;}
+  .pfi .pfn span{display:block; font-weight:400; font-size:11px; color:var(--muted);}
   .rc{width:44px; height:44px; border-radius:50%; border:3px solid var(--line); flex:0 0 auto;}
   .rc.sel{border-color:#fff; box-shadow:0 0 0 3px rgba(255,255,255,.25);}
   .sw{width:46px; height:26px; border-radius:20px; background:var(--line); position:relative; transition:.2s;}
@@ -169,19 +173,51 @@
   #report .meta{display:flex; gap:14px; margin-top:10px; flex-wrap:wrap;}
   #report .meta div{min-width:120px;} #report .meta .k{color:#666; font-size:10px; text-transform:uppercase;}
   #report .meta .v{font-weight:700; font-size:13px; border-bottom:1px solid #ccc; min-height:17px;}
-  #report canvas{display:block; margin:14px auto; border:1px solid #ddd; border-radius:8px;}
-  #report table{width:100%; border-collapse:collapse; margin-top:10px; font-variant-numeric:tabular-nums;}
+  #report canvas{display:block; margin:0 auto;}
+  #report table{width:100%; border-collapse:collapse; margin-top:8px; font-variant-numeric:tabular-nums;}
   #report th,#report td{border:1px solid #ccc; padding:4px 5px; text-align:center;}
   #report th{background:#f2f2f2; font-size:11px;}
   #report .sumline{background:#eee; padding:8px 10px; border-radius:8px; margin-top:12px; font-weight:700; font-size:13px;}
   #report .lbl td:first-child{background:#f7f7f7; font-weight:700; text-align:left;}
+  #report .pv{display:none; font-weight:700; font-size:13px; border-bottom:1px solid #ccc; min-height:17px;}
+  #report .meta input, #report .meta select{width:100%; border:none; border-bottom:1px solid #ccc; background:transparent;
+    color:#111; font-size:13px; padding:2px 0;}
+  #report .rsec{margin-top:16px; break-inside:avoid;}
+  #report .rsec h4{font-size:14px; margin:0 0 8px; padding-bottom:4px; border-bottom:2px solid #111; letter-spacing:.3px;}
+  #report .tgtwrap{display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; margin-top:12px;}
+  #report .tgtwrap canvas{flex:0 0 auto; width:300px; height:300px;}
+  #report .kpis{flex:1; min-width:200px; display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  #report .kpi{border:1px solid #ddd; border-radius:8px; padding:7px 9px;}
+  #report .kpi .kl{font-size:10px; color:#666; text-transform:uppercase; letter-spacing:.3px;}
+  #report .kpi .kv{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;}
+  #report .kpi .ks{font-size:10px; color:#666;}
+  #report .serie{margin-top:8px; font-size:12px; font-weight:700;}
+  #report .an p{margin:0 0 7px; line-height:1.5; font-size:12.5px;}
+  #report .an ul{margin:4px 0 8px 18px; padding:0;} #report .an li{margin-bottom:5px; line-height:1.45; font-size:12.5px;}
+  #report .diag{border-left:4px solid #111; background:#f6f6f6; padding:7px 10px; margin-bottom:7px; border-radius:0 6px 6px 0;}
+  #report .diag b{display:block; margin-bottom:2px;}
+  #report .plan{border:1px solid #ddd; border-radius:8px; padding:8px 10px; margin-bottom:7px;}
+  #report .plan .pt{font-weight:800; font-size:13px;}
+  #report .plan .pf{font-size:11px; color:#555; margin-top:3px;}
+  #report .goal{background:#111; color:#fff; border-radius:8px; padding:9px 11px; font-size:13px; margin-top:6px;}
+  #report .note{font-size:10px; color:#777; margin-top:8px; line-height:1.4;}
+  #report .optrow{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;}
+  #report .optrow .seg{flex:1; min-width:160px;}
+  #report .optrow .seg button{background:#f2f2f2; color:#555; font-size:12px; padding:8px 4px;}
+  #report .optrow .seg button.sel{background:#111; color:#fff;}
 
   @media print{
-    body *{visibility:hidden;}
-    #sheetReport,#sheetReport *{visibility:visible;}
-    #sheetReport{position:absolute; inset:0; transform:none; display:block; padding:0; background:#fff;}
-    #report{border-radius:0;}
-    .close,#report .noprint,.sheet .noprint{display:none !important;}
+    @page{size:A4; margin:11mm;}
+    *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    html,body{height:auto !important; overflow:visible !important; background:#fff !important;}
+    #app{display:block !important; height:auto !important;}
+    #app > *:not(#sheetReport){display:none !important;}
+    #sheetReport{display:block !important; position:static !important; transform:none !important;
+      overflow:visible !important; padding:0 !important; background:#fff !important;}
+    #report{border-radius:0; padding:0;}
+    .close, .noprint{display:none !important;}
+    #report .pv{display:block !important;}
+    #report .rsec{break-inside:avoid;}
   }
 </style>
 </head>
@@ -231,6 +267,10 @@
         <div class="seg" id="targetType">
           <button data-tt="laser" class="sel">🔴 Punteros láser</button>
           <button data-tt="holes">🎯 Impactos en cartón</button>
+        </div>
+        <div id="suPfBox" style="display:none; margin-top:8px">
+          <p class="su-sub" style="margin-bottom:6px">Perfil de ajustes</p>
+          <select id="suPf"></select>
         </div>
         <p class="su-sub" style="margin-top:12px">¿Qué cámara vas a usar?</p>
         <button class="btn primary" id="suLocal">📷 Cámara de este móvil</button>
@@ -283,6 +323,16 @@
   <div class="sheet" id="sheetCfg">
     <button class="close" data-close>✕</button>
     <h2>Ajustes de detección</h2>
+    <div class="card">
+      <h3>Perfiles de ajustes</h3>
+      <p>Guarda con un nombre todos los ajustes (tipo de diana, perspectiva, detección, colores, temporizador y datos del tirador) y cárgalos cuando quieras. Se guardan en este móvil.</p>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="pfName" placeholder="Nombre, p. ej. Galería 25 m" style="flex:1">
+        <button class="btn sm" id="pfSave">Guardar</button>
+      </div>
+      <div id="pfList" style="margin-top:10px"></div>
+      <div class="warn" id="pfMsg"></div>
+    </div>
     <div class="card">
       <h3>Tipo de diana</h3>
       <div class="seg" id="cfgType">
@@ -460,22 +510,42 @@
     </div>
     <div id="report">
       <div class="rhead">
-        <div>
-          <input class="noprint" type="text" id="rTitle" value="Tirada" style="font-size:18px;font-weight:800;border:none;background:#f3f3f3;border-radius:6px;padding:4px 8px;width:100%">
+        <div style="flex:1; margin-right:10px">
+          <input class="noprint" type="text" id="rTitle" value="Tirada" style="font-size:18px;font-weight:800;border:none;background:#f3f3f3;border-radius:6px;padding:4px 8px;width:100%;color:#111">
+          <div class="pv rtitle" id="rTitleP" style="border:none"></div>
           <div class="rdate" id="rDateShow"></div>
         </div>
         <div class="rlogo">TIROFIJO</div>
       </div>
       <div class="meta">
-        <div><div class="k">Nombre</div><input class="noprint" id="rName" type="text" style="border:none;border-bottom:1px solid #ccc"><div class="v" id="rNameV" style="display:none"></div></div>
-        <div><div class="k">Disciplina</div><input class="noprint" id="rDisc" type="text" style="border:none;border-bottom:1px solid #ccc"></div>
-        <div><div class="k">Arma</div><input class="noprint" id="rWeap" type="text" style="border:none;border-bottom:1px solid #ccc"></div>
-        <div><div class="k">Calibre</div><input class="noprint" id="rCal" type="text" style="border:none;border-bottom:1px solid #ccc"></div>
+        <div><div class="k">Nombre</div><input class="noprint rf" id="rName" type="text"><div class="pv" id="rNameP"></div></div>
+        <div><div class="k">Disciplina</div><input class="noprint rf" id="rDisc" type="text"><div class="pv" id="rDiscP"></div></div>
+        <div><div class="k">Arma</div><input class="noprint rf" id="rWeap" type="text"><div class="pv" id="rWeapP"></div></div>
+        <div><div class="k">Calibre</div><input class="noprint rf" id="rCal" type="text"><div class="pv" id="rCalP"></div></div>
       </div>
-      <canvas id="repCanvas" width="340" height="340"></canvas>
-      <table id="countTable"></table>
-      <div class="sumline" id="sumLine"></div>
-      <table id="seriesTable"></table>
+      <div class="optrow noprint">
+        <div class="seg" id="rGun"><button data-g="pistol" class="sel">Pistola</button><button data-g="rifle">Carabina</button></div>
+        <div class="seg" id="rHand"><button data-h="R" class="sel">Diestro</button><button data-h="L">Zurdo</button></div>
+      </div>
+
+      <div class="tgtwrap">
+        <canvas id="repCanvas" width="680" height="680"></canvas>
+        <div class="kpis" id="kpis"></div>
+      </div>
+
+      <div class="rsec">
+        <h4>Resultado</h4>
+        <div class="sumline" id="sumLine" style="margin-top:0"></div>
+        <table id="countTable"></table>
+        <div id="seriesTable"></div>
+      </div>
+
+      <div class="rsec">
+        <h4>Puntuación por disparo</h4>
+        <canvas id="repChart" width="1360" height="360" style="width:100%; height:auto"></canvas>
+      </div>
+
+      <div class="rsec an" id="analysis"></div>
     </div>
   </div>
 </div>
@@ -532,7 +602,7 @@
   }
   function buildPersp(){
     const p=S.persp;
-    if(!(p.top&&p.right&&p.bottom&&p.left)){ S.Hf=null; S.Hinv=null; return; }
+    if(!(p.top&&p.right&&p.bottom&&p.left) || !S.W || !S.H){ S.Hf=null; S.Hinv=null; return; }
     const src=[p.top,p.right,p.bottom,p.left].map(o=>({x:o.x*S.W,y:o.y*S.H}));
     // destino: borde exterior (radio 1) arriba, derecha, abajo, izquierda
     const dst=[{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
@@ -874,40 +944,260 @@
   }
 
   /* ---------- REPORT ---------- */
-  function buildReport(){
-    const c=$('#repCanvas'), g=c.getContext('2d'), W=c.width, H=c.height, cx=W/2, cy=H/2, R=W*0.46;
-    g.fillStyle='#000'; g.beginPath(); g.arc(cx,cy,R,0,7); g.fill();
-    for(let k=S.rings;k>=1;k--){ const rr=R*k/S.rings; g.beginPath(); g.arc(cx,cy,rr,0,7);
-      g.strokeStyle=k>S.rings/2?'#fff':'#000'; g.lineWidth=1; g.stroke();
-      // número del anillo arriba
-      g.fillStyle=k>S.rings/2?'#fff':'#000'; g.font='9px sans-serif'; g.textAlign='center';
-      if(k<S.rings) g.fillText(S.rings-k+1, cx, cy-rr+10);
+  const REP={gun:'pistol', hand:'R'};
+  const f1=v=>(Math.round(v*10)/10).toFixed(1).replace('.',',');
+  const mean=a=>a.reduce((x,y)=>x+y,0)/(a.length||1);
+  const sdev=a=>{ if(a.length<2) return 0; const m=mean(a); return Math.sqrt(a.reduce((x,y)=>x+(y-m)*(y-m),0)/(a.length-1)); };
+
+  // estadísticas del tirador (coordenadas normalizadas: borde exterior = 1, y positiva hacia abajo)
+  function shotStats(){
+    const sh=S.shots, n=sh.length;
+    if(!n) return {n:0};
+    const dec=sh.map(s=>s.dec), rg=sh.map(s=>s.ring);
+    const mx=mean(sh.map(s=>s.rx)), my=mean(sh.map(s=>s.ry));
+    const dist=sh.map(s=>Math.hypot(s.rx-mx,s.ry-my));
+    let es=0; for(let i=0;i<n;i++)for(let j=i+1;j<n;j++) es=Math.max(es,Math.hypot(sh[i].rx-sh[j].rx, sh[i].ry-sh[j].ry));
+    const meanR=mean(dist), half=Math.floor(n/2);
+    const iv=[]; for(let i=1;i<n;i++){ const d=(sh[i].t-sh[i-1].t)/1000; if(d>0&&d<600) iv.push(d); }
+    const fliers = n>=5&&meanR>0 ? dist.map((d,i)=>({i,d})).filter(o=>o.d>2.5*meanR && o.d>0.08).map(o=>o.i+1) : [];
+    return { n, total:rg.reduce((a,b)=>a+b,0), totalDec:dec.reduce((a,b)=>a+b,0),
+      avg:mean(dec), sdS:sdev(dec), best:Math.max(...dec), worst:Math.min(...dec),
+      mx, my, mpi:Math.hypot(mx,my), meanR, es,
+      sdx:sdev(sh.map(s=>s.rx)), sdy:sdev(sh.map(s=>s.ry)),
+      h1:n>=4?mean(dec.slice(0,half)):null, h2:n>=4?mean(dec.slice(n-half)):null,
+      ivAvg:iv.length?mean(iv):null, ivSd:iv.length>1?sdev(iv):null, fliers };
+  }
+  // longitudes: en mm si se conoce el diámetro real, si no en anchos de anillo
+  function len(v){ return S.realmm>0 ? f1(v*S.realmm/2)+' mm' : f1(v*S.rings)+' anillos'; }
+  function clockOf(x,y){ const a=(Math.atan2(x,-y)*180/Math.PI+360)%360; let h=Math.round(a/30)%12; return h===0?12:h; }
+  const DIRN={12:'arriba',1:'arriba a la derecha',2:'arriba a la derecha',3:'a la derecha',4:'abajo a la derecha',
+    5:'abajo a la derecha',6:'abajo',7:'abajo a la izquierda',8:'abajo a la izquierda',9:'a la izquierda',
+    10:'arriba a la izquierda',11:'arriba a la izquierda'};
+
+  // diana del informe: blanca, zona negra de puntería y números en cada anillo
+  function drawReportTarget(st){
+    const c=$('#repCanvas'), g=c.getContext('2d'), W=c.width, cx=W/2, cy=W/2, R=W*0.45, rings=S.rings;
+    g.clearRect(0,0,W,W); g.fillStyle='#fff'; g.fillRect(0,0,W,W);
+    const band=R/rings, rOf=v=>R*(rings-v+1)/rings;
+    const blackFrom = REP.gun==='pistol' ? 7 : 4;
+    const blackK=Math.max(0,Math.min(rings, rings-blackFrom+1)), blackR=band*blackK;
+    g.fillStyle='#fff'; g.beginPath(); g.arc(cx,cy,R,0,7); g.fill();
+    if(blackK>0){ g.fillStyle='#111'; g.beginPath(); g.arc(cx,cy,blackR,0,7); g.fill(); }
+    for(let v=1; v<=rings; v++){
+      const r=rOf(v), inB=r<=blackR+0.5;
+      g.beginPath(); g.arc(cx,cy,r,0,7); g.strokeStyle=inB?'#fff':'#111'; g.lineWidth=v===1?3:2; g.stroke();
     }
-    g.beginPath(); g.arc(cx,cy,R,0,7); g.strokeStyle='#999'; g.lineWidth=1; g.stroke();
-    S.shots.forEach(s=>{ g.beginPath(); g.arc(cx+s.rx*R, cy+s.ry*R,5,0,7);
-      g.fillStyle='#2f81f7'; g.fill(); g.strokeStyle='#fff'; g.lineWidth=1; g.stroke(); });
+    // décimo interior (X), discontinuo
+    g.setLineDash([6,5]); g.beginPath(); g.arc(cx,cy,band*0.5,0,7);
+    g.strokeStyle=blackK>0?'#fff':'#111'; g.lineWidth=1.5; g.stroke(); g.setLineDash([]);
+    // números en los cuatro lados
+    const fs=Math.max(12,Math.min(28,band*0.55)); g.font='600 '+fs+'px sans-serif';
+    g.textAlign='center'; g.textBaseline='middle';
+    for(let v=1; v<rings; v++){
+      if(band<16 && v>=rings-1) continue;
+      const mid=rOf(v)-band/2; g.fillStyle = mid<blackR ? '#fff' : '#111';
+      [[0,-1],[1,0],[0,1],[-1,0]].forEach(([dx,dy])=>g.fillText(v, cx+dx*mid, cy+dy*mid));
+    }
+    if(!st.n) return;
+    // impactos (azul con borde blanco, se ve sobre blanco y negro) con su número de orden
+    const dot=W*0.017, clamp=v=>Math.max(dot,Math.min(W-dot,v));
+    S.shots.forEach((s,i)=>{
+      const x=clamp(cx+s.rx*R), y=clamp(cy+s.ry*R);
+      g.beginPath(); g.arc(x,y,dot,0,7); g.fillStyle='#2f6fdb'; g.fill();
+      g.lineWidth=3; g.strokeStyle='#fff'; g.stroke();
+      if(st.n<=30){ g.font='700 '+Math.round(dot*1.05)+'px sans-serif'; g.fillStyle='#fff'; g.fillText(i+1,x,y+1); }
+    });
+    // centro del grupo y radio medio
+    if(st.n>=2){
+      const x=cx+st.mx*R, y=cy+st.my*R;
+      g.setLineDash([10,7]); g.beginPath(); g.arc(x,y,Math.max(st.meanR*R,6),0,7);
+      g.strokeStyle='#e5322d'; g.lineWidth=3; g.stroke(); g.setLineDash([]);
+      g.beginPath(); g.moveTo(x-16,y); g.lineTo(x+16,y); g.moveTo(x,y-16); g.lineTo(x,y+16);
+      g.strokeStyle='#fff'; g.lineWidth=8; g.stroke(); g.strokeStyle='#e5322d'; g.lineWidth=4; g.stroke();
+    }
+  }
+
+  // gráfico: puntuación (décimas) de cada disparo, con la media
+  function drawReportChart(st){
+    const c=$('#repChart'), g=c.getContext('2d'), W=c.width, H=c.height;
+    g.clearRect(0,0,W,H); g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+    const L=70, Rm=24, T=36, B=56, pw=W-L-Rm, ph=H-T-B, ymax=S.rings;
+    g.font='22px sans-serif'; g.textBaseline='middle';
+    for(let v=0; v<=ymax; v+=2){ const y=T+ph-(v/ymax)*ph;
+      g.strokeStyle=v===0?'#999':'#e6e6e6'; g.lineWidth=v===0?2:1.5;
+      g.beginPath(); g.moveTo(L,y); g.lineTo(L+pw,y); g.stroke();
+      g.fillStyle='#666'; g.textAlign='right'; g.fillText(v, L-12, y); }
+    if(!st.n){ g.fillStyle='#666'; g.textAlign='center'; g.fillText('Sin disparos', L+pw/2, T+ph/2); return; }
+    const n=st.n, slot=pw/n, bw=Math.max(4,Math.min(56, slot-4)), rr=Math.min(8,bw/2);
+    S.shots.forEach((s,i)=>{
+      const h=(s.dec/ymax)*ph, x=L+i*slot+(slot-bw)/2, y=T+ph-h;
+      g.fillStyle='#3b6fd4'; g.beginPath();
+      if(h>rr){ g.moveTo(x,T+ph); g.lineTo(x,y+rr); g.quadraticCurveTo(x,y,x+rr,y); g.lineTo(x+bw-rr,y);
+        g.quadraticCurveTo(x+bw,y,x+bw,y+rr); g.lineTo(x+bw,T+ph); } else { g.rect(x,y,bw,h); }
+      g.closePath(); g.fill();
+      const every = n<=25 ? 1 : 5;
+      if((i+1)%every===0 || i===0){ g.fillStyle='#666'; g.textAlign='center'; g.fillText(i+1, L+i*slot+slot/2, T+ph+26); }
+    });
+    // etiquetas solo en el mejor y el peor
+    const iB=S.shots.findIndex(s=>s.dec===st.best), iW=S.shots.findIndex(s=>s.dec===st.worst);
+    g.font='700 20px sans-serif'; g.fillStyle='#111'; g.textAlign='center';
+    [iB,iW].forEach(i=>{ if(i<0) return; const s=S.shots[i]; g.fillText(f1(s.dec), L+i*slot+slot/2, T+ph-(s.dec/ymax)*ph-16); });
+    // línea de media
+    const ya=T+ph-(st.avg/ymax)*ph;
+    g.setLineDash([12,8]); g.strokeStyle='#555'; g.lineWidth=2.5;
+    g.beginPath(); g.moveTo(L,ya); g.lineTo(L+pw,ya); g.stroke(); g.setLineDash([]);
+    g.font='600 20px sans-serif'; g.fillStyle='#333'; g.textAlign='right'; g.fillText('media '+f1(st.avg), L+pw, ya-16);
+    g.textAlign='left'; g.fillStyle='#666'; g.font='20px sans-serif'; g.fillText('nº de disparo', L, H-12);
+  }
+
+  // causas habituales según la posición del grupo (tirador diestro; se refleja para zurdos)
+  const CAUSE_PISTOL={
+    12:['Muñeca que sube o anticipación','Se levanta la muñeca o se empuja con la base de la mano esperando el retroceso.','anticip'],
+    1:['Anticipación con la base de la mano','Presión de la base de la palma al esperar el disparo, que levanta la boca del arma.','anticip'],
+    2:['Anticipación con la base de la mano','Presión de la base de la palma al esperar el disparo, que levanta la boca del arma.','anticip'],
+    3:['Presión del pulgar o poco dedo en el disparador','El pulgar empuja el arma a la derecha, o el índice apoya demasiado poco en la cola del disparador.','trigger'],
+    4:['Empuje anticipando el retroceso','Se empuja el arma hacia delante en el momento del disparo.','anticip'],
+    5:['Empuje anticipando el retroceso','Se empuja el arma hacia delante en el momento del disparo.','anticip'],
+    6:['Muñeca que cae (anticipación)','Se baja la muñeca justo al disparar por anticipar el retroceso.','anticip'],
+    7:['Tirón del disparador','Se aprieta el disparador de golpe en lugar de una presión progresiva y continua.','trigger'],
+    8:['Cerrar la mano al disparar','Se aprieta toda la empuñadura a la vez que el índice y el arma se desvía abajo a la izquierda.','grip'],
+    9:['Demasiado dedo en el disparador','El índice entra en exceso en el disparador y arrastra el arma a la izquierda al presionar.','trigger'],
+    10:['Reacción al disparo, sin seguimiento','Movimiento de la mano o la cabeza en el momento del disparo; no se mantiene la puntería después.','follow'],
+    11:['Reacción al disparo, sin seguimiento','Movimiento de la mano o la cabeza en el momento del disparo; no se mantiene la puntería después.','follow'],
+  };
+  function causeRifle(h){
+    if(h===12||h===6) return ['Respiración o apoyo de mejilla variable','Se dispara en momentos distintos del ciclo respiratorio, o la mejilla no apoya siempre igual en la culata.','breath'];
+    if(h===3||h===9) return ['Punto natural de puntería desplazado','El cuerpo no apunta de forma natural al blanco y se corrige con los músculos, que ceden al disparar.','npa'];
+    if(h===7||h===8) return ['Tirón del disparador o presión irregular en el hombro','La presión del disparador no es progresiva o la culata no apoya siempre igual.','trigger'];
+    return ['Inclinación del arma o posición de la cabeza variable','El arma se inclina (canteo) o la cabeza cambia de posición entre disparos.','npa'];
+  }
+  const PLANS={
+    sights:(st)=>({t:'Reglaje de miras',d:'Tu grupo es compacto pero está desplazado: no es un problema de técnica sino de reglaje. '+sightTxt(st)+' Regla: mueve el alza en la dirección en la que quieres llevar los impactos. Si entrenas con láser, comprueba también que el láser está alineado con las miras.',f:'Antes de la próxima sesión · comprobar con 5 disparos'}),
+    trigger:()=>({t:'Control del disparador',d:'Tiro en seco 10 min: presión lenta y continua, sin saber el momento exacto en que sale el disparo. Coloca una moneda sobre el cañón: no debe caer al soltar el percutor.',f:'5 días por semana · 10 min · objetivo: 10 de 10 sin que caiga la moneda'}),
+    anticip:()=>({t:'Eliminar la anticipación del retroceso',d:'Ejercicio aleatorio: alterna disparos reales y en seco sin saber cuál toca (que otra persona prepare el arma). Si el arma "salta" en un disparo en seco, estás anticipando. Con láser: mantén la puntería 2 s después de cada disparo.',f:'3 sesiones · 20 disparos mezclados'}),
+    grip:()=>({t:'Empuñadura constante',d:'Presión firme y siempre igual (unos 2/3 de tu fuerza), sin aumentarla al presionar el disparador. Practica mover solo el índice con el resto de la mano relajada y quieta.',f:'5 min al inicio de cada sesión'}),
+    follow:()=>({t:'Seguimiento del disparo',d:'Tras cada disparo, mantén la posición, la vista en las miras y el dedo atrás durante 2 s. Anota dónde estaban las miras al salir el disparo (cantar el tiro) y compáralo con el impacto.',f:'Todos los disparos de la sesión'}),
+    breath:()=>({t:'Respiración y posición estable',d:'Dispara siempre en la pausa natural tras exhalar, con 6–8 s de puntería máxima. Si no sale en ese tiempo, baja el arma, respira y reinicia. Comprueba que la mejilla apoya siempre en el mismo punto.',f:'Cada disparo · usa el temporizador Alterno (7 s apuntar / 3 s descanso)'}),
+    npa:()=>({t:'Punto natural de puntería',d:'Cierra los ojos apuntando, relájate y ábrelos: si las miras se han ido del centro, mueve todo el cuerpo (no los brazos) hasta que al abrir sigan centradas. Revisa también que el arma no se incline.',f:'Al inicio y tras cada 5 disparos'}),
+    hold:()=>({t:'Estabilidad del mantenimiento',d:'Sostén el arma apuntando a un punto pequeño de la pared 5 × 30 s con 30 s de descanso. Busca reducir el área de movimiento de las miras. Refuerza hombro y antebrazo.',f:'4 días por semana · 10 min'}),
+    vstring:()=>({t:'Dispersión vertical',d:'Tus impactos se alinean en vertical: suele venir de la respiración o de cambios en la presión de la empuñadura o en la altura del brazo por cansancio. Dispara siempre en la misma fase respiratoria y mantén la misma presión.',f:'Próximas 3 sesiones · vigilar la altura del grupo'}),
+    hstring:()=>({t:'Dispersión horizontal',d:'Tus impactos se alinean en horizontal: suele venir de presionar el disparador con un ángulo lateral o de no centrar el punto de mira en el alza. Presión recta hacia atrás y alineación perfecta antes de presionar.',f:'Próximas 3 sesiones · tiro en seco 10 min'}),
+    fatigue:()=>({t:'Resistencia y concentración',d:'Tu puntuación cae en la segunda mitad. Trabaja series más cortas con descansos de 1–2 min, hidrátate y mejora la condición física (sostener el arma, core y hombros).',f:'Series de 5 disparos · descanso entre series'}),
+    warmup:()=>({t:'Calentamiento previo',d:'Mejoras al avanzar la sesión: necesitas entrar antes en ritmo. Haz 5 min de tiro en seco y 5 disparos de calentamiento antes de puntuar.',f:'Antes de cada sesión puntuable'}),
+    routine:()=>({t:'Rutina de disparo fija',d:'Repite siempre la misma secuencia: posición, respiración, puntería, presión y seguimiento. Si algo no está perfecto, baja el arma y empieza de nuevo: un disparo abortado es mejor que un 6.',f:'Todos los disparos · cronometra la rutina con el temporizador'}),
+  };
+  function sightTxt(st){
+    const parts=[];
+    if(Math.abs(st.my)*S.rings>=0.4) parts.push((st.my>0?'subir':'bajar')+' los impactos '+len(Math.abs(st.my)));
+    if(Math.abs(st.mx)*S.rings>=0.4) parts.push('llevarlos '+len(Math.abs(st.mx))+(st.mx>0?' a la izquierda':' a la derecha'));
+    return parts.length ? 'Necesitas '+parts.join(' y ')+'.' : '';
+  }
+
+  function analysisHTML(st){
+    const gunTxt = REP.gun==='pistol'?'Pistola':'Carabina', handTxt=REP.hand==='R'?'diestro':'zurdo';
+    let h='<h4>Análisis del entrenador</h4>';
+    if(st.n<5){
+      return h+'<p>Se necesitan al menos <b>5 disparos</b> para un análisis fiable. Completa una serie más larga y vuelve a generar el informe.</p>';
+    }
+    const rings=S.rings, mpiR=st.mpi*rings, grpR=st.meanR*rings;
+    const level = st.avg>=9.5?'alto':st.avg>=9?'avanzado':st.avg>=8?'intermedio':st.avg>=6.5?'en progresión':'de iniciación';
+    const grpQ = grpR<=1?'excelente':grpR<=2?'buena':grpR<=3?'aceptable':'amplia';
+    const offset = mpiR>=0.8 && st.mpi>0.5*st.meanR;
+    const hc = clockOf(st.mx, st.my), hDiag = clockOf(REP.hand==='L'?-st.mx:st.mx, st.my);
+    const ratio = st.sdx>0 ? st.sdy/st.sdx : 1;
+
+    h+='<p><b>Resumen.</b> '+st.n+' disparos con una media de <b>'+f1(st.avg)+'</b> por disparo (nivel '+level+'). '+
+       'La agrupación es <b>'+grpQ+'</b>: radio medio de '+len(st.meanR)+' y dispersión máxima de '+len(st.es)+'. '+
+       (offset ? 'El centro del grupo está desplazado '+len(st.mpi)+' hacia <b>'+DIRN[hc]+'</b> (las '+hc+' en punto).'
+               : 'El centro del grupo está prácticamente en el centro de la diana.')+'</p>';
+
+    // diagnóstico
+    const diags=[], plans=[];
+    if(offset && grpR<=1.6){
+      diags.push(['Grupo compacto pero desplazado','La técnica es consistente: los disparos se agrupan bien, pero fuera del centro. La causa más probable es el reglaje de miras, no un fallo técnico.']);
+      plans.push('sights');
+    } else if(offset){
+      const c = REP.gun==='pistol' ? CAUSE_PISTOL[hDiag] : causeRifle(hDiag);
+      diags.push(['Tendencia hacia '+DIRN[hc]+': '+c[0].toLowerCase(), c[1]]);
+      plans.push(c[2]);
+    }
+    if(st.n>=5 && ratio>1.6){ diags.push(['Dispersión vertical','Los impactos se reparten más en altura que en anchura ('+f1(ratio)+' veces).']); plans.push(REP.gun==='pistol'?'vstring':'breath'); }
+    else if(st.n>=5 && ratio<0.62){ diags.push(['Dispersión horizontal','Los impactos se reparten más en anchura que en altura ('+f1(1/ratio)+' veces).']); plans.push(REP.gun==='pistol'?'hstring':'npa'); }
+    if(grpR>2.2){ diags.push(['Grupo abierto','El radio medio supera los 2 anillos: la estabilidad del arma en la puntería es el factor que más puntos te quita.']); plans.push('hold'); }
+    if(st.h1!==null && st.h2<st.h1-0.4){ diags.push(['Bajada al final','Media de la 1ª mitad '+f1(st.h1)+' frente a '+f1(st.h2)+' en la 2ª: signo de fatiga o pérdida de concentración.']); plans.push('fatigue'); }
+    else if(st.h1!==null && st.h2>st.h1+0.4){ diags.push(['Mejora al avanzar','Media de la 1ª mitad '+f1(st.h1)+' frente a '+f1(st.h2)+' en la 2ª: empiezas sin entrar en ritmo.']); plans.push('warmup'); }
+    if(st.fliers.length){ diags.push(['Disparos fuera de grupo','Disparo'+(st.fliers.length>1?'s':'')+' nº '+st.fliers.join(', ')+': se separan claramente del resto. Suelen ser fallos puntuales de concentración o de rutina.']); plans.push('routine'); }
+    if(st.ivAvg && st.ivSd && st.ivSd/st.ivAvg>0.6){ diags.push(['Ritmo irregular','El tiempo entre disparos varía mucho (media '+f1(st.ivAvg)+' s). Un ritmo constante ayuda a repetir la técnica.']); if(!plans.includes('routine')) plans.push('routine'); }
+    if(!diags.length){ diags.push(['Serie sólida','No se aprecian tendencias claras: grupo centrado y regular. Para progresar, trabaja la estabilidad y reduce el tamaño del grupo.']); plans.push('hold'); }
+
+    h+='<p style="margin-top:10px"><b>Diagnóstico</b></p>';
+    diags.forEach(d=>{ h+='<div class="diag"><b>'+d[0]+'</b>'+d[1]+'</div>'; });
+
+    h+='<p style="margin-top:10px"><b>Plan de acción</b> (por prioridad)</p>';
+    [...new Set(plans)].slice(0,4).forEach((k,i)=>{ const p=PLANS[k](st);
+      h+='<div class="plan"><div class="pt">'+(i+1)+'. '+p.t+'</div><div>'+p.d+'</div><div class="pf">'+p.f+'</div></div>'; });
+
+    const tAvg=Math.min(rings, st.avg+0.3), tGrp=st.meanR*0.85;
+    h+='<div class="goal"><b>Objetivo para la próxima sesión:</b> media ≥ '+f1(tAvg)+' y radio de grupo ≤ '+len(tGrp)+'.</div>';
+    h+='<div class="note">Análisis automático orientativo basado en la posición de los impactos, para '+gunTxt.toLowerCase()+' y tirador '+handTxt+
+       '. Las causas indicadas son las más habituales para cada tendencia; conviene confirmarlas con un entrenador. '+
+       (S.realmm>0?'':'Indica el diámetro real de la diana en ◎ Diana para ver las medidas en milímetros.')+'</div>';
+    return h;
+  }
+
+  function buildReport(){
+    const st=shotStats();
+    drawReportTarget(st);
+    drawReportChart(st);
+
+    // indicadores clave
+    const k=(l,v,s)=>'<div class="kpi"><div class="kl">'+l+'</div><div class="kv">'+v+'</div>'+(s?'<div class="ks">'+s+'</div>':'')+'</div>';
+    if(st.n){
+      const hc=clockOf(st.mx,st.my);
+      $('#kpis').innerHTML =
+        k('Total', f1(st.totalDec), st.total+' anillos completos') +
+        k('Media por disparo', f1(st.avg), '± '+f1(st.sdS)+' (regularidad)') +
+        k('Mejor / peor', f1(st.best)+' / '+f1(st.worst)) +
+        k('Radio de grupo', len(st.meanR), 'distancia media al centro del grupo') +
+        k('Dispersión máxima', len(st.es), 'entre los 2 disparos más separados') +
+        k('Desvío del grupo', len(st.mpi), st.n>=2 && st.mpi*S.rings>=0.3 ? 'hacia '+DIRN[hc]+' ('+hc+' h)' : 'centrado') +
+        (st.ivAvg ? k('Ritmo', f1(st.ivAvg)+' s', 'entre disparos') : '') +
+        (st.h1!==null ? k('1ª / 2ª mitad', f1(st.h1)+' / '+f1(st.h2), 'media por disparo') : '') +
+        '<div class="ks" style="grid-column:1/-1">● impacto (nº de orden) · ✚ rojo: centro del grupo · círculo rojo: radio medio</div>';
+    } else $('#kpis').innerHTML='<div class="kpi" style="grid-column:1/-1">Sin disparos en esta sesión.</div>';
 
     // conteo por anillo
-    const counts={}; for(let k=0;k<=S.rings;k++)counts[k]=0;
+    const counts={}; for(let v=0; v<=S.rings; v++) counts[v]=0;
     S.shots.forEach(s=>counts[s.ring]++);
-    let ct='<tr><th>Anillo</th>'; for(let k=S.rings;k>=1;k--)ct+='<th>'+k+'</th>'; ct+='<th>0</th></tr>';
+    let ct='<tr><th>Anillo</th>'; for(let v=S.rings; v>=1; v--) ct+='<th>'+v+'</th>'; ct+='<th>0</th></tr>';
     ct+='<tr><td style="background:#f7f7f7;font-weight:700">Nº</td>';
-    for(let k=S.rings;k>=1;k--)ct+='<td>'+counts[k]+'</td>'; ct+='<td>'+counts[0]+'</td></tr>';
+    for(let v=S.rings; v>=1; v--) ct+='<td>'+counts[v]+'</td>'; ct+='<td>'+counts[0]+'</td></tr>';
     $('#countTable').innerHTML=ct;
 
-    const n=S.shots.length, tot=S.shots.reduce((a,s)=>a+s.ring,0), dec=S.shots.reduce((a,s)=>a+s.dec,0);
-    let devTxt='';
-    if(S.realmm>0 && n){ const mmPer=(S.realmm/2); // radio real mm
-      const avgdev=S.shots.reduce((a,s)=>a+s.dRel,0)/n*mmPer;
-      devTxt=' · Desv. media centro: '+avgdev.toFixed(1)+' mm'; }
-    $('#sumLine').textContent='Suma: '+dec.toFixed(1)+' (anillos: '+tot+') · Tiros: '+n+devTxt;
+    $('#sumLine').textContent = st.n
+      ? 'Suma: '+f1(st.totalDec)+' (anillos completos: '+st.total+') · Tiros: '+st.n+' · Media: '+f1(st.avg)
+      : 'Sin disparos';
 
-    let st='<tr class="lbl"><td>Tiro</td>'; for(let i=0;i<n;i++)st+='<th>'+(i+1)+'</th>'; st+='<th>Σ</th></tr>';
-    st+='<tr class="lbl"><td>Anillos</td>'; S.shots.forEach(s=>st+='<td>'+s.ring+'</td>'); st+='<td><b>'+tot+'</b></td></tr>';
-    st+='<tr class="lbl"><td>Décimas</td>'; S.shots.forEach(s=>st+='<td>'+s.dec.toFixed(1)+'</td>'); st+='<td><b>'+dec.toFixed(1)+'</b></td></tr>';
-    $('#seriesTable').innerHTML=st;
+    // series de 10 disparos
+    let sh='';
+    for(let s0=0; s0<S.shots.length; s0+=10){
+      const part=S.shots.slice(s0,s0+10);
+      const sr=part.reduce((a,s)=>a+s.ring,0), sd=part.reduce((a,s)=>a+s.dec,0);
+      sh+='<div class="serie">Serie '+(s0/10+1)+'</div><table>';
+      sh+='<tr class="lbl"><td>Tiro</td>'+part.map((_,i)=>'<th>'+(s0+i+1)+'</th>').join('')+'<th>Σ</th></tr>';
+      sh+='<tr class="lbl"><td>Anillos</td>'+part.map(s=>'<td>'+s.ring+'</td>').join('')+'<td><b>'+sr+'</b></td></tr>';
+      sh+='<tr class="lbl"><td>Décimas</td>'+part.map(s=>'<td>'+f1(s.dec)+'</td>').join('')+'<td><b>'+f1(sd)+'</b></td></tr></table>';
+    }
+    $('#seriesTable').innerHTML=sh;
 
-    const d=new Date(); $('#rDateShow').textContent=d.toLocaleDateString('es-ES');
+    $('#analysis').innerHTML=analysisHTML(st);
+    $('#rDateShow').textContent=new Date().toLocaleDateString('es-ES');
+    copyPrintFields();
+  }
+  // los campos editables se copian a texto para que salgan en el PDF
+  function copyPrintFields(){
+    $('#rTitleP').textContent=$('#rTitle').value;
+    [['rName','rNameP'],['rDisc','rDiscP'],['rWeap','rWeapP'],['rCal','rCalP']].forEach(([a,b])=>{ $('#'+b).textContent=$('#'+a).value||'—'; });
   }
 
   /* ---------- SESIÓN Y TEMPORIZADOR ---------- */
@@ -1222,7 +1512,97 @@
   $('#startcd').oninput=e=>{T.startCount=+e.target.value;$('#vStart').textContent=T.startCount;};
   $('#swSound').onclick=e=>{T.sound=!T.sound;e.target.classList.toggle('on',T.sound);};
 
-  $('#btnPrint').onclick=()=>{ window.print(); };
+  $('#btnPrint').onclick=()=>{ copyPrintFields(); window.print(); };
+  document.querySelectorAll('#report .rf, #rTitle').forEach(i=>i.addEventListener('input',copyPrintFields));
+  document.querySelectorAll('#rGun button').forEach(b=>b.onclick=()=>{ REP.gun=b.dataset.g;
+    document.querySelectorAll('#rGun button').forEach(x=>x.classList.toggle('sel',x===b)); buildReport(); });
+  document.querySelectorAll('#rHand button').forEach(b=>b.onclick=()=>{ REP.hand=b.dataset.h;
+    document.querySelectorAll('#rHand button').forEach(x=>x.classList.toggle('sel',x===b)); buildReport(); });
+
+  /* ---------- PERFILES DE AJUSTES (guardados con nombre en este dispositivo) ---------- */
+  const PKEY='tirofijo_perfiles';
+  function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PKEY)||'{}')||{}; }catch(e){ return {}; } }
+  function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
+  const SKEYS=['fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW',
+    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge'];
+  const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
+  function snapshot(){
+    const o={S:{},T:{},REP:{...REP},fields:{},saved:Date.now()};
+    SKEYS.forEach(k=>o.S[k]=S[k]); o.S.persp=JSON.parse(JSON.stringify(S.persp));
+    TKEYS.forEach(k=>o.T[k]=T[k]);
+    ['rName','rDisc','rWeap','rCal'].forEach(id=>o.fields[id]=$('#'+id).value);
+    return o;
+  }
+  function applySnapshot(o){
+    if(!o) return;
+    SKEYS.forEach(k=>{ if(o.S && k in o.S) S[k]=o.S[k]; });
+    if(o.S && o.S.persp) S.persp={top:null,right:null,bottom:null,left:null,...o.S.persp};
+    TKEYS.forEach(k=>{ if(o.T && k in o.T) T[k]=o.T[k]; });
+    if(o.REP) Object.assign(REP,o.REP);
+    if(o.fields) Object.entries(o.fields).forEach(([id,v])=>{ const el=$('#'+id); if(el) el.value=v||''; });
+    syncUI();
+  }
+  function selSeg(sel,key,val){ document.querySelectorAll(sel+' button').forEach(b=>b.classList.toggle('sel', b.dataset[key]===val)); }
+  function setR(id,val,vid,txt){ const el=$(id); if(el) el.value=val; if(vid&&$(vid)) $(vid).textContent=(txt===undefined?val:txt); }
+  function syncUI(){
+    setR('#thr',S.thr,'#vThr'); setR('#minpx',S.minpx,'#vMin');
+    setR('#cd',Math.round(S.cooldown*10),'#vCd',(+S.cooldown).toFixed(1));
+    setR('#radius',S.radiusPct,'#vR'); setR('#rings',S.rings,'#vRings'); $('#realmm').value=S.realmm||'';
+    setR('#holeThr',S.holeThr,'#vHole'); setR('#minHole',S.minHole,'#vMinHole'); setR('#maxHole',S.maxHole,'#vMaxHole');
+    setR('#confirm',S.confirm,'#vConfirm'); setR('#roundv',Math.round(S.roundMax*10),'#vRound',(+S.roundMax).toFixed(1));
+    setR('#ringW',Math.round(S.ringW*10),'#vRingW',(+S.ringW).toFixed(1));
+    $('#swInside').classList.toggle('on',S.insideOnly); $('#swLight').classList.toggle('on',S.lightComp);
+    selSeg('#fireMode','fm',S.fireMode); selSeg('#dianaMode','dm',S.dianaMode); selSeg('#fitMode','fit',S.fit);
+    document.querySelectorAll('#ringColors .rc').forEach(x=>x.classList.toggle('sel',x.dataset.c===S.ringColor));
+    $('#cardStd').style.display=S.dianaMode==='standard'?'block':'none';
+    $('#cardCal').style.display=S.dianaMode==='calib'?'block':'none';
+    $('#cardPersp').style.display=S.dianaMode==='persp'?'block':'none';
+    video.style.objectFit=S.fit; setDetectType(S.detectType); buildPersp();
+    $('#perspState').textContent='Puntos: '+perspCount()+' / 4'+(perspCount()===4?' ✓ listo':'');
+    $('#calState').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—');
+    selSeg('#timerMode','tm',T.mode);
+    $('#cardDown').style.display=T.mode==='down'?'block':'none';
+    $('#cardBeep').style.display=T.mode==='beep'?'block':'none';
+    $('#cardAlt').style.display=T.mode==='alt'?'block':'none';
+    $('#downSecs').value=T.downSecs; $('#beepSecs').value=T.beepSecs; $('#altA').value=T.altA; $('#altB').value=T.altB;
+    $('#swLoop').classList.toggle('on',T.loop); setR('#startcd',T.startCount,'#vStart'); $('#swSound').classList.toggle('on',T.sound);
+    selSeg('#rGun','g',REP.gun); selSeg('#rHand','h',REP.hand);
+  }
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function renderProfiles(){
+    const P=loadProfiles(), names=Object.keys(P).sort((a,b)=>(P[b].saved||0)-(P[a].saved||0));
+    $('#pfList').innerHTML = names.length ? names.map(n=>
+      '<div class="pfi"><div class="pfn">'+esc(n)+'<span>'+new Date(P[n].saved||0).toLocaleDateString('es-ES')+'</span></div>'+
+      '<button class="btn sm" data-load="'+esc(n)+'">Cargar</button><button class="btn sm" data-del="'+esc(n)+'">✕</button></div>').join('')
+      : '<p>Aún no hay perfiles guardados.</p>';
+    $('#pfList').querySelectorAll('[data-load]').forEach(b=>b.onclick=()=>{ applySnapshot(loadProfiles()[b.dataset.load]);
+      $('#pfMsg').textContent='Perfil "'+b.dataset.load+'" cargado.'; try{localStorage.setItem(PKEY+'_last',b.dataset.load);}catch(e){} });
+    $('#pfList').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ if(!confirm('¿Borrar el perfil "'+b.dataset.del+'"?')) return;
+      const P2=loadProfiles(); delete P2[b.dataset.del]; storeProfiles(P2); renderProfiles(); renderStartupProfiles(); });
+    renderStartupProfiles();
+  }
+  function renderStartupProfiles(){
+    const P=loadProfiles(), names=Object.keys(P);
+    $('#suPfBox').style.display = names.length ? 'block' : 'none';
+    let last=''; try{ last=localStorage.getItem(PKEY+'_last')||''; }catch(e){}
+    $('#suPf').innerHTML='<option value="">— Ajustes por defecto —</option>'+names.map(n=>'<option value="'+esc(n)+'"'+(n===last?' selected':'')+'>'+esc(n)+'</option>').join('');
+  }
+  $('#pfSave').onclick=()=>{
+    const name=($('#pfName').value||'').trim();
+    if(!name){ $('#pfMsg').textContent='Escribe un nombre para el perfil.'; return; }
+    const P=loadProfiles();
+    if(P[name] && !confirm('Ya existe "'+name+'". ¿Sobrescribirlo?')) return;
+    P[name]=snapshot();
+    if(storeProfiles(P)){ $('#pfMsg').textContent='Perfil "'+name+'" guardado.'; try{localStorage.setItem(PKEY+'_last',name);}catch(e){} }
+    else $('#pfMsg').textContent='No se pudo guardar (almacenamiento del navegador no disponible).';
+    renderProfiles();
+  };
+  $('#suPf').onchange=e=>{ const n=e.target.value; if(!n) return;
+    applySnapshot(loadProfiles()[n]); try{localStorage.setItem(PKEY+'_last',n);}catch(err){} };
+  renderProfiles();
+  // al abrir, carga automáticamente el último perfil usado
+  (function(){ let last=''; try{ last=localStorage.getItem(PKEY+'_last')||''; }catch(e){}
+    const P=loadProfiles(); if(last && P[last]) applySnapshot(P[last]); })();
 })();
 </script>
 </body>
