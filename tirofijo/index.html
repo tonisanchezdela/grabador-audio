@@ -37,12 +37,12 @@
   #adjustBar.open{display:block;}
   #adjustBar .abT{font-size:11.5px; color:var(--gold); margin-bottom:5px; text-align:center; line-height:1.3;}
   #adjustBar .abLine{display:flex; gap:6px; align-items:center;}
-  #adjustBar .abRow{flex:1; display:flex; gap:6px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;
-    scrollbar-width:none; padding-bottom:1px;}
-  #adjustBar .abRow::-webkit-scrollbar{display:none;}
-  #adjustBar .abFix{display:flex; gap:6px; flex:0 0 auto;}
+  #adjustBar .abRow{flex:1; display:flex; gap:6px; flex-wrap:wrap; justify-content:center;}
+  #adjustBar .abBr{flex-basis:100%; height:0;}
+  #adjustBar .abFix{display:none;}
   #adjustBar .ab{flex:0 0 auto; border:1px solid var(--line); background:var(--panel); white-space:nowrap;
-    color:var(--txt); padding:10px 11px; border-radius:10px; font-size:14px; font-weight:700;}
+    color:var(--txt); padding:9px 10px; border-radius:10px; font-size:14px; font-weight:700; min-width:42px;}
+  #adjustBar .ab.arr{font-size:19px; padding:6px 12px; background:#22303f;}
   #adjustBar .ab:active{transform:scale(.95);}
   #adjustBar .ab.go{background:var(--ok); border-color:var(--ok); color:#06220f;}
   #adjustBar .ab.sel{background:var(--ring); border-color:var(--ring); color:#06182e;}
@@ -288,6 +288,7 @@
           <button class="btn primary" id="suConnect" style="margin-top:10px">Conectar</button>
         </div>
         <div class="su-status" id="suStatus"></div>
+        <p class="su-sub appVer" style="font-size:11px; opacity:.55; margin-top:6px"></p>
       </div>
     </div>
 
@@ -384,6 +385,7 @@
       <button class="btn primary" id="holeAdjust" style="margin-top:8px">Ajustar sobre la imagen</button>
       <div class="warn" id="liveHole">Cambios detectados: — </div>
     </div>
+    <p class="appVer" style="font-size:11px; color:var(--muted); text-align:center; margin:4px 0 10px"></p>
     <div class="card">
       <h3>Modo de disparo</h3>
       <div class="seg" id="fireMode">
@@ -568,6 +570,8 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
+  const APPVER='v22.10 · 1';   // versión visible para comprobar que se tiene la última
+  document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
   const work = document.createElement('canvas');
@@ -1546,7 +1550,14 @@
   }
 
   /* ----- barra de ajuste flotante ----- */
-  function refreshAbSel(){ document.querySelectorAll('#adjustBar .ab[data-cm]').forEach(b=>b.classList.toggle('sel', b.dataset.cm===calMode)); }
+  function refreshAbSel(){
+    const selCm={top:'pTop',right:'pRight',bottom:'pBottom',left:'pLeft',center:'pCenter'}[S.selP];
+    document.querySelectorAll('#adjustBar .ab[data-cm]').forEach(b=>{
+      b.classList.toggle('sel', b.dataset.cm===calMode);
+      // el punto que mueven las flechas lleva un borde blanco
+      b.style.borderColor = (!calMode && b.dataset.cm===selCm && S.persp[S.selP]) ? '#fff' : '';
+    });
+  }
   function abInfo(){
     const bar=$('#adjustBar'); if(!bar.classList.contains('open'))return;
     if(bar.dataset.kind==='persp') $('#abInfo').textContent=perspTxt()+(S.persp[S.selP]?' · Flechas mueven: '+PNAME[S.selP]:'');
@@ -1560,15 +1571,18 @@
     const row=$('#abRow'); row.innerHTML=''; calMode=null;
     const mk=(label,fn,cm)=>{ const b=document.createElement('button'); b.className='ab'; b.textContent=label;
       if(cm)b.dataset.cm=cm; b.onclick=()=>{fn(b);refreshAbSel();}; row.appendChild(b); return b; };
+    const br=()=>{ const d=document.createElement('div'); d.className='abBr'; row.appendChild(d); };
     if(kind==='persp'){
       $('#abT').textContent='Toca el borde donde lo cruza la línea de números (①–④) y el centro (⑤). Flechas = ajuste fino';
       mk('① Arr',()=>calMode='pTop','pTop'); mk('② Der',()=>calMode='pRight','pRight');
       mk('③ Abj',()=>calMode='pBottom','pBottom'); mk('④ Izq',()=>calMode='pLeft','pLeft');
       mk('⑤ Centro',()=>calMode='pCenter','pCenter');
+      br();
       // ajuste fino: mueve el punto seleccionado 1 píxel de pantalla (más fino con zoom)
       const nudge=(dx,dy)=>{ const k=S.selP, q=S.persp[k]; if(!q) return;
         q.x+=dx/(S.W*Z.s); q.y+=dy/(S.H*Z.s); buildPersp(); abInfo(); };
-      mk('←',()=>nudge(-1,0)); mk('↑',()=>nudge(0,-1)); mk('↓',()=>nudge(0,1)); mk('→',()=>nudge(1,0));
+      mk('◀',()=>nudge(-1,0)).classList.add('arr'); mk('▲',()=>nudge(0,-1)).classList.add('arr');
+      mk('▼',()=>nudge(0,1)).classList.add('arr');  mk('▶',()=>nudge(1,0)).classList.add('arr');
       mk('Sig. punto',()=>{ const ks=['top','right','bottom','left','center'].filter(k=>S.persp[k]);
         if(!ks.length) return; S.selP=ks[(ks.indexOf(S.selP)+1)%ks.length]; abInfo(); });
       mk('Borrar',()=>{S.persp={top:null,right:null,bottom:null,left:null,center:null};S.selP='center';buildPersp();abInfo();});
@@ -1591,14 +1605,11 @@
       mk('Olvidar fondo',()=>{LZ.base=null;});
     }
     mk('🔍 1×',()=>resetZoom());
-    // fijos a la derecha: mover la barra arriba/abajo y terminar
-    const fix=$('#abFix'); fix.innerHTML='';
-    const fb=(label,fn,cls)=>{ const b=document.createElement('button'); b.className='ab'+(cls?' '+cls:''); b.textContent=label;
-      b.onclick=fn; fix.appendChild(b); return b; };
-    fb('⇅',()=>bar.classList.toggle('top'));
-    fb('✓',()=>closeAdjust(),'go');
+    // mover la barra arriba/abajo y terminar (siempre visibles, sin deslizar)
+    mk('⇅ Mover barra',()=>bar.classList.toggle('top'));
+    mk('✓ Hecho',()=>closeAdjust()).classList.add('go');
     $('#stage').classList.add('adjusting');
-    bar.classList.add('open'); abInfo();
+    bar.classList.add('open'); abInfo(); refreshAbSel();
   }
   function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#stage').classList.remove('adjusting');
     $('#hud').style.display=''; calMode=null; showControlsTemp(); }
