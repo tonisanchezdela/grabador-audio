@@ -811,6 +811,7 @@
     $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on');
     updHud(); clearTick();
     T.tick=setInterval(sessionTick,1000);
+    showControlsTemp(4000); // visible al empezar, luego se oculta solo
   }
   function sessionTick(){
     if(S.phase!=='running') return;
@@ -955,8 +956,17 @@
       }
       calMode=null; refreshAbSel(); return;
     }
-    if(S.fireMode==='manual'&&S.phase==='running'){ registerShot(x,y); return; }
-    if(S.phase==='running'||S.phase==='paused') $('#stage').classList.toggle('controls-hidden');
+    if(S.phase==='running'||S.phase==='paused'){
+      if(S.fireMode==='manual'&&S.phase==='running') registerShot(x,y);
+      showControlsTemp();
+    }
+  }
+  // muestra los controles y los oculta solos a los pocos segundos
+  let hideTimer=null;
+  function showControlsTemp(ms=4000){
+    $('#stage').classList.remove('controls-hidden');
+    if(hideTimer) clearTimeout(hideTimer);
+    hideTimer=setTimeout(()=>{ if(S.phase==='running'||S.phase==='paused') $('#stage').classList.add('controls-hidden'); }, ms);
   }
 
   /* ----- barra de ajuste flotante ----- */
