@@ -31,18 +31,24 @@
 
   /* barra de ajuste flotante */
   #adjustBar{position:absolute; left:0; right:0; bottom:0; z-index:18; display:none;
-    background:rgba(13,17,23,.92); border-top:1px solid var(--line); padding:10px 12px 14px;
+    background:rgba(13,17,23,.88); border-top:1px solid var(--line); padding:6px 8px 8px;
     backdrop-filter:blur(6px);}
+  #adjustBar.top{top:0; bottom:auto; border-top:none; border-bottom:1px solid var(--line);}
   #adjustBar.open{display:block;}
-  #adjustBar .abT{font-size:13px; color:var(--gold); margin-bottom:8px; text-align:center;}
-  #adjustBar .abRow{display:flex; gap:7px; flex-wrap:wrap; justify-content:center;}
-  #adjustBar .ab{flex:0 0 auto; border:1px solid var(--line); background:var(--panel);
-    color:var(--txt); padding:12px 14px; border-radius:11px; font-size:15px; font-weight:700;}
+  #adjustBar .abT{font-size:11.5px; color:var(--gold); margin-bottom:5px; text-align:center; line-height:1.3;}
+  #adjustBar .abLine{display:flex; gap:6px; align-items:center;}
+  #adjustBar .abRow{flex:1; display:flex; gap:6px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;
+    scrollbar-width:none; padding-bottom:1px;}
+  #adjustBar .abRow::-webkit-scrollbar{display:none;}
+  #adjustBar .abFix{display:flex; gap:6px; flex:0 0 auto;}
+  #adjustBar .ab{flex:0 0 auto; border:1px solid var(--line); background:var(--panel); white-space:nowrap;
+    color:var(--txt); padding:10px 11px; border-radius:10px; font-size:14px; font-weight:700;}
   #adjustBar .ab:active{transform:scale(.95);}
   #adjustBar .ab.go{background:var(--ok); border-color:var(--ok); color:#06220f;}
   #adjustBar .ab.sel{background:var(--ring); border-color:var(--ring); color:#06182e;}
-  #adjustBar .abInfo{font-size:12px; color:var(--muted); text-align:center; margin-top:8px;}
-  #zoomHint{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:17;
+  #adjustBar .abInfo{font-size:11px; color:var(--muted); text-align:center; margin-top:5px;}
+  #stage.adjusting #pill{display:none !important;}
+  #zoomHint{position:absolute; top:22%; left:50%; transform:translate(-50%,-50%); z-index:17;
     background:rgba(13,17,23,.7); border:1px solid var(--line); color:var(--muted);
     font-size:13px; padding:8px 14px; border-radius:20px; display:none; pointer-events:none;}
 
@@ -315,7 +321,10 @@
     <!-- barra de ajuste flotante (sin salir del menú) -->
     <div id="adjustBar">
       <div class="abT" id="abT">Ajuste</div>
-      <div class="abRow" id="abRow"></div>
+      <div class="abLine">
+        <div class="abRow" id="abRow"></div>
+        <div class="abFix" id="abFix"></div>
+      </div>
       <div class="abInfo" id="abInfo"></div>
     </div>
   </div>
@@ -404,7 +413,7 @@
     <div class="card" id="cardPersp" style="display:none">
       <h3>Corrección trapezoidal (perspectiva)</h3>
       <p>Si la cámara no está frontal a la diana (queda ladeada arriba/abajo o a un lado), marca los 4 bordes y la app la verá plana para puntuar bien.</p>
-      <p style="margin-top:8px">Pulsa "Ajustar sobre la imagen": podrás <b>ampliar con dos dedos</b> y tocar el borde exterior de la diana (arriba, derecha, abajo, izquierda) sin salir de la cámara.</p>
+      <p style="margin-top:8px">Pulsa "Ajustar sobre la imagen" y <b>amplía con dos dedos</b>. Toca el borde exterior <b>justo donde lo cruza la línea de los números</b> (arriba, derecha, abajo, izquierda) y después el <b>⑤ centro</b>. No toques el punto más alto o más bajo que se ve: con la diana ladeada no coinciden con sus ejes.</p><p style="margin-top:6px">Comprueba que los anillos de color coinciden con los de la diana; si no, selecciona el punto y muévelo con las flechas.</p>
       <p style="margin-top:8px" id="perspState">Puntos: 0 / 4</p>
       <button class="btn primary" id="pAdjust" style="margin-top:6px">Ajustar sobre la imagen</button>
     </div>
@@ -572,7 +581,7 @@
     ringColor:'#ff2bd6', ringW:2.5, // anillos: color vivo y grosor
     holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0,
     insideOnly:true, lightComp:true, ref:null, cand:null,
-    persp:{top:null,right:null,bottom:null,left:null}, Hf:null, Hinv:null,
+    persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
     phase:'idle', // idle | ready | leadin | running | paused | camera
   };
@@ -605,14 +614,35 @@
     const det=a*A+b*B+c*C||1e-9;
     return [[A/det,D/det,G/det],[B/det,E/det,Hh/det],[C/det,F/det,I/det]];
   }
+  // homografía por mínimos cuadrados ponderados (más de 4 puntos; el de más peso queda casi exacto)
+  function homographyLS(src,dst,w){
+    // normaliza los puntos de imagen (centroide en 0, distancia media √2) para que el cálculo sea estable
+    const mx=src.reduce((a,p)=>a+p.x,0)/src.length, my=src.reduce((a,p)=>a+p.y,0)/src.length;
+    const md=src.reduce((a,p)=>a+Math.hypot(p.x-mx,p.y-my),0)/src.length||1, k=Math.SQRT2/md;
+    const ns=src.map(p=>({x:(p.x-mx)*k, y:(p.y-my)*k}));
+    const M=Array.from({length:8},()=>new Array(8).fill(0)), v=new Array(8).fill(0);
+    const add=(row,val,wt)=>{ for(let a=0;a<8;a++){ v[a]+=wt*row[a]*val; for(let b=0;b<8;b++) M[a][b]+=wt*row[a]*row[b]; } };
+    for(let i=0;i<ns.length;i++){ const {x,y}=ns[i], X=dst[i].x, Y=dst[i].y;
+      add([x,y,1,0,0,0,-x*X,-y*X],X,w[i]); add([0,0,0,x,y,1,-x*Y,-y*Y],Y,w[i]); }
+    const h=solveLin(M,v);
+    const Hn=[[h[0],h[1],h[2]],[h[3],h[4],h[5]],[h[6],h[7],1]];
+    const Tn=[[k,0,-k*mx],[0,k,-k*my],[0,0,1]];   // H = Hn · T
+    const H=[[0,0,0],[0,0,0],[0,0,0]];
+    for(let r=0;r<3;r++)for(let c=0;c<3;c++) for(let q=0;q<3;q++) H[r][c]+=Hn[r][q]*Tn[q][c];
+    return H;
+  }
   function buildPersp(){
     const p=S.persp;
     if(!(p.top&&p.right&&p.bottom&&p.left) || !S.W || !S.H){ S.Hf=null; S.Hinv=null; return; }
     const src=[p.top,p.right,p.bottom,p.left].map(o=>({x:o.x*S.W,y:o.y*S.H}));
     // destino: borde exterior (radio 1) arriba, derecha, abajo, izquierda
     const dst=[{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
-    S.Hf=homography(src,dst);   // imagen -> normalizado
-    S.Hinv=inv3(S.Hf);          // normalizado -> imagen
+    if(p.center){
+      // con centro marcado: el centro manda (peso alto) y los bordes se ajustan lo mejor posible
+      src.push({x:p.center.x*S.W, y:p.center.y*S.H}); dst.push({x:0,y:0});
+      S.Hf=homographyLS(src,dst,[1,1,1,1,25]);
+    } else S.Hf=homography(src,dst);   // imagen -> normalizado
+    S.Hinv=inv3(S.Hf);                // normalizado -> imagen
   }
 
   /* ---------- cámara ---------- */
@@ -959,7 +989,12 @@
     }
     if(S.dianaMode==='calib'){ if(S.center)mark(S.center.x*S.W,S.center.y*S.H,'#3fb950','C'); if(S.edge)mark(S.edge.x*S.W,S.edge.y*S.H,'#d29922','B'); }
     if(S.dianaMode==='persp'){ const p=S.persp;
-      [['top','①'],['right','②'],['bottom','③'],['left','④']].forEach(([k,t])=>{ if(p[k]) mark(p[k].x*S.W,p[k].y*S.H,'#d29922',t); }); }
+      [['top','①'],['right','②'],['bottom','③'],['left','④'],['center','⑤']].forEach(([k,t])=>{
+        if(!p[k]) return; const sel=$('#adjustBar').classList.contains('open') && S.selP===k;
+        const x=p[k].x*S.W, y=p[k].y*S.H;
+        if(k==='center'){ octx.beginPath(); octx.moveTo(x-7,y); octx.lineTo(x+7,y); octx.moveTo(x,y-7); octx.lineTo(x,y+7);
+          octx.strokeStyle='#d29922'; octx.lineWidth=1.5; octx.stroke(); }
+        mark(x,y, sel?'#ffffff':'#d29922', t); }); }
     S.shots.slice(-12).forEach(s=>{ const p=normToScreen(s.rx,s.ry);
       octx.beginPath(); octx.arc(p.x,p.y,6,0,7);
       octx.fillStyle='rgba(248,81,73,.9)'; octx.fill(); octx.strokeStyle='#fff'; octx.lineWidth=1.5; octx.stroke(); });
@@ -1423,6 +1458,9 @@
 
   let calMode=null;
   function perspCount(){ const p=S.persp; return ['top','right','bottom','left'].filter(k=>p[k]).length; }
+  const PNAME={top:'① arriba',right:'② derecha',bottom:'③ abajo',left:'④ izquierda',center:'⑤ centro'};
+  function perspTxt(){ return 'Bordes: '+perspCount()+' / 4 · Centro: '+(S.persp.center?'✓':'—')+
+    (perspCount()===4?' — ✓ corrección activa':''); }
 
   /* ----- ZOOM con dos dedos (pellizco) ----- */
   const Z={s:1,tx:0,ty:0};
@@ -1484,9 +1522,9 @@
       if(calMode==='center'){S.center={x:nx,y:ny}; $('#calState').textContent='Centro ✓'; abInfo();}
       else if(calMode==='edge'){S.edge={x:nx,y:ny}; $('#calState').textContent='Borde ✓'; abInfo();}
       else if(calMode.startsWith('p')){
-        const key={pTop:'top',pRight:'right',pBottom:'bottom',pLeft:'left'}[calMode];
-        S.persp[key]={x:nx,y:ny}; buildPersp();
-        $('#perspState').textContent='Puntos: '+perspCount()+' / 4'+(perspCount()===4?' ✓ listo':'');
+        const key={pTop:'top',pRight:'right',pBottom:'bottom',pLeft:'left',pCenter:'center'}[calMode];
+        S.persp[key]={x:nx,y:ny}; S.selP=key; buildPersp();
+        $('#perspState').textContent=perspTxt();
         abInfo();
       }
       calMode=null; refreshAbSel(); return;
@@ -1511,7 +1549,7 @@
   function refreshAbSel(){ document.querySelectorAll('#adjustBar .ab[data-cm]').forEach(b=>b.classList.toggle('sel', b.dataset.cm===calMode)); }
   function abInfo(){
     const bar=$('#adjustBar'); if(!bar.classList.contains('open'))return;
-    if(bar.dataset.kind==='persp') $('#abInfo').textContent='Puntos: '+perspCount()+' / 4'+(perspCount()===4?' — ✓ corrección activa':'');
+    if(bar.dataset.kind==='persp') $('#abInfo').textContent=perspTxt()+(S.persp[S.selP]?' · Flechas mueven: '+PNAME[S.selP]:'');
     else if(bar.dataset.kind==='calib') $('#abInfo').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—');
     else if(bar.dataset.kind==='holes') $('#abInfo').textContent='Umbral '+S.holeThr+' · Conf '+confTxt()+' s · '+($('#liveHole').textContent||'');
     else if(bar.dataset.kind==='laser') $('#abInfo').textContent='Umbral '+S.thr+' · Mín '+S.minpx+' px · '+($('#liveRed').textContent||'');
@@ -1523,10 +1561,17 @@
     const mk=(label,fn,cm)=>{ const b=document.createElement('button'); b.className='ab'; b.textContent=label;
       if(cm)b.dataset.cm=cm; b.onclick=()=>{fn(b);refreshAbSel();}; row.appendChild(b); return b; };
     if(kind==='persp'){
-      $('#abT').textContent='Marca los 4 bordes de la diana (pellizca para ampliar)';
+      $('#abT').textContent='Toca el borde donde lo cruza la línea de números (①–④) y el centro (⑤). Flechas = ajuste fino';
       mk('① Arr',()=>calMode='pTop','pTop'); mk('② Der',()=>calMode='pRight','pRight');
       mk('③ Abj',()=>calMode='pBottom','pBottom'); mk('④ Izq',()=>calMode='pLeft','pLeft');
-      mk('Borrar',()=>{S.persp={top:null,right:null,bottom:null,left:null};buildPersp();abInfo();});
+      mk('⑤ Centro',()=>calMode='pCenter','pCenter');
+      // ajuste fino: mueve el punto seleccionado 1 píxel de pantalla (más fino con zoom)
+      const nudge=(dx,dy)=>{ const k=S.selP, q=S.persp[k]; if(!q) return;
+        q.x+=dx/(S.W*Z.s); q.y+=dy/(S.H*Z.s); buildPersp(); abInfo(); };
+      mk('←',()=>nudge(-1,0)); mk('↑',()=>nudge(0,-1)); mk('↓',()=>nudge(0,1)); mk('→',()=>nudge(1,0));
+      mk('Sig. punto',()=>{ const ks=['top','right','bottom','left','center'].filter(k=>S.persp[k]);
+        if(!ks.length) return; S.selP=ks[(ks.indexOf(S.selP)+1)%ks.length]; abInfo(); });
+      mk('Borrar',()=>{S.persp={top:null,right:null,bottom:null,left:null,center:null};S.selP='center';buildPersp();abInfo();});
     } else if(kind==='calib'){
       $('#abT').textContent='Marca centro y borde (pellizca para ampliar)';
       mk('Centro',()=>calMode='center','center'); mk('Borde',()=>calMode='edge','edge');
@@ -1545,11 +1590,18 @@
       mk('Mín +',()=>{S.minpx=Math.min(30,S.minpx+1);$('#minpx').value=S.minpx;$('#vMin').textContent=S.minpx;abInfo();});
       mk('Olvidar fondo',()=>{LZ.base=null;});
     }
-    mk('🔍 Zoom 1×',()=>resetZoom());
-    const done=mk('✓ Hecho',()=>closeAdjust()); done.classList.add('go');
+    mk('🔍 1×',()=>resetZoom());
+    // fijos a la derecha: mover la barra arriba/abajo y terminar
+    const fix=$('#abFix'); fix.innerHTML='';
+    const fb=(label,fn,cls)=>{ const b=document.createElement('button'); b.className='ab'+(cls?' '+cls:''); b.textContent=label;
+      b.onclick=fn; fix.appendChild(b); return b; };
+    fb('⇅',()=>bar.classList.toggle('top'));
+    fb('✓',()=>closeAdjust(),'go');
+    $('#stage').classList.add('adjusting');
     bar.classList.add('open'); abInfo();
   }
-  function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#hud').style.display=''; calMode=null; showControlsTemp(); }
+  function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#stage').classList.remove('adjusting');
+    $('#hud').style.display=''; calMode=null; showControlsTemp(); }
 
   // color y grosor de los anillos
   document.querySelectorAll('#ringColors .rc').forEach(b=>b.onclick=()=>{
@@ -1625,7 +1677,7 @@
   function applySnapshot(o){
     if(!o) return;
     SKEYS.forEach(k=>{ if(o.S && k in o.S) S[k]=o.S[k]; });
-    if(o.S && o.S.persp) S.persp={top:null,right:null,bottom:null,left:null,...o.S.persp};
+    if(o.S && o.S.persp) S.persp={top:null,right:null,bottom:null,left:null,center:null,...o.S.persp};
     TKEYS.forEach(k=>{ if(o.T && k in o.T) T[k]=o.T[k]; });
     if(o.REP) Object.assign(REP,o.REP);
     if(o.fields) Object.entries(o.fields).forEach(([id,v])=>{ const el=$('#'+id); if(el) el.value=v||''; });
@@ -1649,7 +1701,7 @@
     $('#cardCal').style.display=S.dianaMode==='calib'?'block':'none';
     $('#cardPersp').style.display=S.dianaMode==='persp'?'block':'none';
     video.style.objectFit=S.fit; setDetectType(S.detectType); buildPersp();
-    $('#perspState').textContent='Puntos: '+perspCount()+' / 4'+(perspCount()===4?' ✓ listo':'');
+    $('#perspState').textContent=perspTxt();
     $('#calState').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—');
     selSeg('#timerMode','tm',T.mode);
     $('#cardDown').style.display=T.mode==='down'?'block':'none';
