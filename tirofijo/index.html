@@ -77,7 +77,7 @@
   #timerHud .tc{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
   #timerHud.alert .tc{color:var(--accent);}
   /* ocultar controles para ver la diana */
-  #stage.controls-hidden #hud{display:none;}
+  #stage.controls-hidden #hud, #stage.controls-hidden #pill{display:none !important;}
   #tapHint{position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
     background:rgba(13,17,23,.6); border:1px solid var(--line); color:var(--muted);
     font-size:12px; padding:6px 12px; border-radius:20px; display:none; backdrop-filter:blur(4px);}
@@ -558,7 +558,7 @@
     $('#rowCam').style.display='none'; $('#rowReady').style.display='flex';
     $('#pill').style.display='block';
     $('#pill').innerHTML='Cámara lista. Ajusta la diana y pulsa <b>Nueva sesión</b>';
-    resize(); loop();
+    resize(); loop(); showControlsTemp(6000);
     $('#zoomHint').style.display='block'; setTimeout(()=>{$('#zoomHint').style.display='none';},3500);
   }
   async function start(){ // cámara local
@@ -981,7 +981,10 @@
   $('#suView').onclick=()=>{ $('#suViewBox').style.display='block'; $('#suCode').focus(); };
   $('#suConnect').onclick=()=>startAsViewer(($('#suCode').value||'').trim());
   $('#btnStart').onclick=start;
-  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open')));
+  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
+    if(S.running && S.phase!=='camera') showControlsTemp();
+  });
   $('#btnCfg').onclick=()=>$('#sheetCfg').classList.add('open');
   $('#btnDiana').onclick=()=>$('#sheetDiana').classList.add('open');
   $('#btnTimer').onclick=()=>{$('#sheetTimer').classList.add('open');};
@@ -1085,7 +1088,7 @@
       }
       calMode=null; refreshAbSel(); return;
     }
-    if(S.phase==='running'||S.phase==='paused'){
+    if(S.running && S.phase!=='camera'){
       if(S.fireMode==='manual'&&S.phase==='running') registerShot(x,y);
       showControlsTemp();
     }
@@ -1095,7 +1098,10 @@
   function showControlsTemp(ms=4000){
     $('#stage').classList.remove('controls-hidden');
     if(hideTimer) clearTimeout(hideTimer);
-    hideTimer=setTimeout(()=>{ if(S.phase==='running'||S.phase==='paused') $('#stage').classList.add('controls-hidden'); }, ms);
+    hideTimer=setTimeout(()=>{
+      const adjOpen=$('#adjustBar').classList.contains('open');
+      if(S.running && S.phase!=='camera' && !adjOpen) $('#stage').classList.add('controls-hidden');
+    }, ms);
   }
 
   /* ----- barra de ajuste flotante ----- */
@@ -1132,7 +1138,7 @@
     const done=mk('✓ Hecho',()=>closeAdjust()); done.classList.add('go');
     bar.classList.add('open'); abInfo();
   }
-  function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#hud').style.display='block'; calMode=null; }
+  function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#hud').style.display=''; calMode=null; showControlsTemp(); }
 
   // ajuste de imagen: completa o llenar pantalla
   document.querySelectorAll('#fitMode button').forEach(b=>b.onclick=()=>{
@@ -1150,6 +1156,9 @@
     await setFocus(CC.af?'continuous':'manual');
   };
   $('#ccFocusNow').onclick=focusNow;
+
+  // usar el menú mantiene los controles visibles un rato más
+  $('#hud').addEventListener('pointerdown',()=>{ if(S.running && S.phase!=='camera') showControlsTemp(); });
 
   $('#calAdjust').onclick=()=>openAdjust('calib');
   $('#pAdjust').onclick=()=>openAdjust('persp');
