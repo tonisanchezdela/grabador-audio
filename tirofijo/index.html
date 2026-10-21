@@ -306,7 +306,8 @@
         <button class="btn primary" id="btnSession">▶ Nueva sesión</button>
       </div>
       <div class="row" id="rowRun" style="display:none">
-        <button class="btn on" id="btnPause">⏸ Pausar detección</button>
+        <button class="btn" id="btnUndoQuick" style="flex:0 0 auto; padding-left:16px; padding-right:16px">↩ Anular</button>
+        <button class="btn on" id="btnPause">⏸ Pausar</button>
         <button class="btn danger" id="btnFinish">■ Finalizar</button>
       </div>
     </div>
@@ -341,14 +342,18 @@
       </div>
     </div>
     <div class="card">
-      <h3>Sensibilidad al rojo del láser</h3>
-      <p>Si capta destellos falsos, baja la sensibilidad. Si no detecta el punto, súbela.</p>
+      <h3>Punto láser</h3>
+      <p>Solo cuenta un punto rojo <b>nuevo</b> que aparece y se apaga como un destello. Lo que ya era rojo en la imagen se ignora. Si marca disparos falsos, sube el umbral; si no detecta el punto, bájalo.</p>
       <label class="fld">Umbral de rojo: <span class="val" id="vThr">160</span></label>
       <input type="range" id="thr" min="90" max="250" value="160">
       <label class="fld">Tamaño mínimo del punto (px): <span class="val" id="vMin">4</span></label>
       <input type="range" id="minpx" min="1" max="30" value="4">
+      <label class="fld">Duración máxima del destello: <span class="val" id="vLaserMax">1,0</span> s</label>
+      <input type="range" id="laserMax" min="2" max="30" value="10">
       <label class="fld">Espera entre tiros (s): <span class="val" id="vCd">2.0</span></label>
       <input type="range" id="cd" min="5" max="60" value="20">
+      <div class="switchrow" style="margin-top:10px"><span>Solo dentro de la diana</span><div class="sw on" id="swInsideL"></div></div>
+      <button class="btn primary" id="laserAdjust" style="margin-top:8px">Ajustar sobre la imagen</button>
       <div class="warn" id="liveRed">Rojo detectado ahora: — </div>
     </div>
     <div class="card">
@@ -360,8 +365,8 @@
       <input type="range" id="minHole" min="2" max="80" value="6">
       <label class="fld">Tamaño máximo (px): <span class="val" id="vMaxHole">400</span></label>
       <input type="range" id="maxHole" min="40" max="1500" value="400">
-      <label class="fld">Confirmación (fotogramas): <span class="val" id="vConfirm">2</span></label>
-      <input type="range" id="confirm" min="1" max="5" value="2">
+      <label class="fld">Confirmación (el impacto debe permanecer): <span class="val" id="vConfirm">0,6</span> s</label>
+      <input type="range" id="confirm" min="1" max="10" value="3">
       <label class="fld">Redondez exigida: <span class="val" id="vRound">2.6</span></label>
       <input type="range" id="roundv" min="12" max="40" value="26">
       <div class="switchrow" style="margin-top:10px"><span>Solo dentro de la diana</span><div class="sw on" id="swInside"></div></div>
@@ -565,7 +570,7 @@
     thr:160, minpx:4, cooldown:2.0, rings:10, radiusPct:42, realmm:0,
     fit:'contain', // contain = imagen completa | cover = llenar pantalla
     ringColor:'#ff2bd6', ringW:2.5, // anillos: color vivo y grosor
-    holeThr:45, minHole:6, maxHole:400, confirm:2, roundMax:2.6,
+    holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0,
     insideOnly:true, lightComp:true, ref:null, cand:null,
     persp:{top:null,right:null,bottom:null,left:null}, Hf:null, Hinv:null,
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
@@ -787,20 +792,83 @@
     return {ring, dec:Math.round(dec*10)/10};
   }
 
-  /* ---------- detección rojo ---------- */
+  /* ---------- manchas conectadas (separa una mancha real del ruido suelto) ---------- */
+  const LAB={buf:null};
+  function blobs(mask,w,h){
+    const N=w*h; if(!LAB.buf||LAB.buf.length!==N) LAB.buf=new Int32Array(N); const lab=LAB.buf; lab.fill(0);
+    const out=[], st=[]; let id=0;
+    for(let i=0;i<N;i++){
+      if(!mask[i]||lab[i]) continue;
+      id++; lab[i]=id; st.push(i);
+      let n=0,sx=0,sy=0,minx=w,miny=h,maxx=0,maxy=0;
+      while(st.length){
+        const j=st.pop(), x=j%w, y=(j/w)|0; n++; sx+=x; sy+=y;
+        if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+        for(let dy=-1;dy<=1;dy++){ const yy=y+dy; if(yy<0||yy>=h) continue;
+          for(let dx=-1;dx<=1;dx++){ const xx=x+dx; if(xx<0||xx>=w) continue;
+            const k=yy*w+xx; if(mask[k]&&!lab[k]){ lab[k]=id; st.push(k); } } }
+      }
+      const bw=maxx-minx+1, bh=maxy-miny+1;
+      out.push({n, cx:sx/n, cy:sy/n, bw, bh, ar:Math.max(bw/bh,bh/bw), fill:n/(bw*bh)});
+    }
+    return out;
+  }
+
+  /* ---------- detección del punto láser ----------
+     Solo cuenta una mancha roja NUEVA (no lo que ya era rojo en la escena), compacta, dentro de la diana,
+     y que aparece y se apaga como un destello. Se registra al apagarse; para el siguiente debe volver a apagarse. */
+  const LRES=200;
+  const LZ={base:null, raw:null, active:false, t0:0, last:0, x:0, y:0, f:0, bad:false, lastT:0};
+  const LASER_MIN_MS=45;   // un destello real dura más que el ruido de un solo fotograma
   function detectRed(){
     if(video.videoWidth===0) return null;
-    const sw=160, sh=Math.round(sw*video.videoHeight/video.videoWidth);
+    const sw=LRES, sh=Math.round(sw*video.videoHeight/video.videoWidth), N=sw*sh;
     work.width=sw; work.height=sh; wctx.drawImage(video,0,0,sw,sh);
-    const data=wctx.getImageData(0,0,sw,sh).data;
-    let sx=0,sy=0,n=0,mx=0;
-    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
-      const i=(y*sw+x)*4, r=data[i], g=data[i+1], b=data[i+2];
-      if(r>S.thr && r-g>60 && r-b>60){ sx+=x; sy+=y; n++; if(r>mx)mx=r; }
+    const d=wctx.getImageData(0,0,sw,sh).data;
+    if(!LZ.base||LZ.base.length!==N){ LZ.base=new Float32Array(N); LZ.raw=new Uint8Array(N); LZ.active=false; }
+    const now=performance.now();
+    // el fondo rojo se aprende por tiempo real (independiente de los fps), más lento que la duración máxima del destello
+    const dt=LZ.lastT ? Math.min(0.25,(now-LZ.lastT)/1000) : 0.033; LZ.lastT=now;
+    const a=1-Math.exp(-dt/Math.max(3, S.laserMax*4));
+    const mask=new Uint8Array(N), raw=LZ.raw; let nAll=0, mx=0;
+    for(let i=0;i<N;i++){
+      const p=i*4, r=d[p], g=d[p+1], b=d[p+2];
+      const red = r>S.thr && r-g>60 && r-b>60;
+      const was = LZ.base[i];
+      LZ.base[i] = was + ((red?1:0)-was)*a;           // memoria del rojo que ya estaba (fondo)
+      raw[i]=red?1:0;
+      if(red){ nAll++; if(r>mx) mx=r;
+        if(was<0.3 && (!S.insideOnly || insideDiana((i%sw)/sw, ((i/sw)|0)/sh))) mask[i]=1; }
     }
-    $('#liveRed').textContent='Rojo detectado ahora: '+n+' px (máx '+mx+')';
-    if(n<S.minpx) return null;
-    return mapCover(sx/n/sw, sy/n/sh);
+    const cands=blobs(mask,sw,sh).filter(c=>c.n>=S.minpx && c.n<=600 && c.ar<=3 && c.fill>=0.3).sort((a,b)=>b.n-a.n);
+    // si ya se sigue un punto, solo vale una mancha cercana a él; si no, la mayor
+    const ok = LZ.active ? (cands.find(c=>Math.hypot(c.cx-LZ.x,c.cy-LZ.y)<10)||null) : (cands[0]||null);
+    $('#liveRed').textContent='Rojo ahora: '+nAll+' px · punto nuevo: '+(ok?ok.n+' px':'—')+' (máx '+mx+')';
+    let live=null;
+    if(ok){
+      if(!LZ.active){ LZ.active=true; LZ.bad=false; LZ.t0=now; LZ.x=ok.cx; LZ.y=ok.cy; LZ.f=0; }
+      LZ.f++; LZ.x+=(ok.cx-LZ.x)/LZ.f; LZ.y+=(ok.cy-LZ.y)/LZ.f; LZ.last=now;
+      live=mapCover(ok.cx/sw, ok.cy/sh);
+    } else if(LZ.active){
+      // ¿sigue encendido en el mismo sitio aunque ya no sea "nuevo"? entonces no se ha apagado
+      let near=0; const R=6, x0=Math.round(LZ.x), y0=Math.round(LZ.y);
+      for(let y=Math.max(0,y0-R); y<=Math.min(sh-1,y0+R); y++)
+        for(let x=Math.max(0,x0-R); x<=Math.min(sw-1,x0+R); x++) near+=raw[y*sw+x];
+      if(near>=Math.max(2,S.minpx/2)) LZ.last=now;
+    }
+    if(LZ.active && now-LZ.t0 > S.laserMax*1000){
+      // dura demasiado: es un objeto rojo o un puntero fijo, no un destello → pasa a ser fondo y se libera
+      const R=10, x0=Math.round(LZ.x), y0=Math.round(LZ.y);
+      for(let y=Math.max(0,y0-R); y<=Math.min(sh-1,y0+R); y++)
+        for(let x=Math.max(0,x0-R); x<=Math.min(sw-1,x0+R); x++){ const i=y*sw+x; if(raw[i]) LZ.base[i]=1; }
+      LZ.active=false;
+      return live ? {live} : null;
+    }
+    if(LZ.active && now-LZ.last>70){                            // el destello se ha apagado
+      LZ.active=false;
+      if(!LZ.bad && (LZ.last-LZ.t0)>=LASER_MIN_MS) return {live, shot:mapCover(LZ.x/sw, LZ.y/sh)};
+    }
+    return live ? {live} : null;
   }
   // coords normalizadas del vídeo (0..1) -> pantalla, según el ajuste de imagen
   function mapCover(nx,ny){
@@ -841,18 +909,24 @@
     $('#liveHole').textContent='Cambios detectados: '+n+' px';
     // cambio global enorme (movimiento del móvil / luz brusca) → re-referenciar, descartar
     if(n > N*0.18){ S.ref=cur; S.cand=null; return null; }
-    if(n < S.minHole || n > S.maxHole){ S.cand=null; return null; }
-    // forma: rechaza manchas alargadas (sombras) exigiendo caja casi cuadrada
-    const bw=(maxx-minx)+1, bh=(maxy-miny)+1, ar=Math.max(bw/bh, bh/bw);
-    if(ar > S.roundMax){ S.cand=null; return null; }
-    const cx=sx/n, cy=sy/n;
-    // confirmación en N fotogramas: el impacto debe persistir cerca
-    if(!S.cand){ S.cand={x:cx,y:cy,f:1}; return null; }
-    if(Math.hypot(cx-S.cand.x, cy-S.cand.y) < 6){ S.cand.f++; S.cand.x=cx; S.cand.y=cy; }
-    else { S.cand={x:cx,y:cy,f:1}; return null; }
-    if(S.cand.f < S.confirm) return null;
+    // máscara de cambios para separar manchas reales del ruido suelto
+    const mask=new Uint8Array(N);
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){ const i=y*sw+x;
+      if((S.ref[i]-(cur[i]-gBias)) > S.holeThr && (!S.insideOnly || insideDiana(x/sw,y/sh))) mask[i]=1; }
+    // la referencia se adapta despacio a cambios de luz, salvo donde hay un cambio (un agujero no se borra)
+    for(let i=0;i<N;i++) if(!mask[i]) S.ref[i]=S.ref[i]*0.97+cur[i]*0.03;
+    const ok=blobs(mask,sw,sh)
+      .filter(c=>c.n>=S.minHole && c.n<=S.maxHole && c.ar<=S.roundMax && c.fill>=0.3)
+      .sort((a,b)=>b.n-a.n)[0];
+    $('#liveHole').textContent='Cambios: '+n+' px · mancha válida: '+(ok?ok.n+' px':'—');
+    if(!ok){ S.cand=null; return null; }
+    // confirmación por tiempo: un agujero es permanente; una sombra o alguien que pasa, no
+    const now=performance.now();
+    if(!S.cand || Math.hypot(ok.cx-S.cand.x, ok.cy-S.cand.y) >= 6){ S.cand={x:ok.cx,y:ok.cy,t0:now}; return null; }
+    S.cand.x=ok.cx; S.cand.y=ok.cy;
+    if(now-S.cand.t0 < S.confirm*200) return null;
     S.cand=null;
-    return { pt:mapCover(cx/sw, cy/sh), cur };
+    return { pt:mapCover(ok.cx/sw, ok.cy/sh), cur };
   }
 
   /* ---------- dibujo overlay ---------- */
@@ -910,11 +984,13 @@
     if(!S.running) return; drawDiana();
     const adjHoles = $('#adjustBar').classList.contains('open') && $('#adjustBar').dataset.kind==='holes';
     const live = S.phase==='running' && S.fireMode==='auto';
-    if(live && S.detectType==='laser'){
+    const adjLaser = $('#adjustBar').classList.contains('open') && $('#adjustBar').dataset.kind==='laser';
+    if(S.phase!=='camera' && S.detectType==='laser'){   // siempre activo: aprende el rojo del fondo y muestra el punto
       const p=detectRed();
-      if(p){ const now=performance.now()/1000;
-        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.x,p.y); }
-        octx.beginPath(); octx.arc(p.x,p.y,10,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=2; octx.stroke(); }
+      if(p && p.live){ octx.beginPath(); octx.arc(p.live.x,p.live.y,12,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=3; octx.stroke(); }
+      if(p && p.shot && live){ const now=performance.now()/1000;
+        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.shot.x,p.shot.y); } }
+      if(adjLaser) abInfo();
     } else if((live && S.detectType==='holes') || adjHoles){
       const h=detectHole();
       if(h && live){ const now=performance.now()/1000;
@@ -1245,11 +1321,11 @@
     } else empezarTiro();
   }
   function empezarTiro(){
-    S.phase='running'; T.beepAcc=0; S.ref=null; S.cand=null; // referencia limpia para agujeros
+    S.phase='running'; T.beepAcc=0; S.ref=null; S.cand=null; LZ.active=false; // referencias limpias
     if(T.mode==='down') T.clock=T.downSecs;
     else if(T.mode==='alt'){ T.altOn='A'; T.clock=T.altA; }
     else T.clock=0;
-    $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on');
+    $('#btnPause').textContent='⏸ Pausar'; $('#btnPause').classList.add('on');
     updHud(); clearTick();
     T.tick=setInterval(sessionTick,1000);
     showControlsTemp(4000); // visible al empezar, luego se oculta solo
@@ -1277,7 +1353,7 @@
   }
   function togglePausa(){
     if(S.phase==='running'){ S.phase='paused'; $('#btnPause').textContent='▶ Reanudar'; $('#btnPause').classList.remove('on'); }
-    else if(S.phase==='paused'){ S.phase='running'; $('#btnPause').textContent='⏸ Pausar detección'; $('#btnPause').classList.add('on');
+    else if(S.phase==='paused'){ S.phase='running'; $('#btnPause').textContent='⏸ Pausar'; $('#btnPause').classList.add('on');
       if(!T.tick) T.tick=setInterval(sessionTick,1000); }
     updHud();
   }
@@ -1326,9 +1402,13 @@
   $('#holeThr').oninput=e=>{S.holeThr=+e.target.value;$('#vHole').textContent=S.holeThr;};
   $('#minHole').oninput=e=>{S.minHole=+e.target.value;$('#vMinHole').textContent=S.minHole;};
   $('#maxHole').oninput=e=>{S.maxHole=+e.target.value;$('#vMaxHole').textContent=S.maxHole;};
-  $('#confirm').oninput=e=>{S.confirm=+e.target.value;$('#vConfirm').textContent=S.confirm;};
+  const confTxt=()=>(S.confirm*0.2).toFixed(1).replace('.',',');
+  $('#confirm').oninput=e=>{S.confirm=+e.target.value;$('#vConfirm').textContent=confTxt();};
+  $('#laserMax').oninput=e=>{S.laserMax=(+e.target.value)/10;$('#vLaserMax').textContent=S.laserMax.toFixed(1).replace('.',',');};
+  $('#swInsideL').onclick=()=>{S.insideOnly=!S.insideOnly;$('#swInside').classList.toggle('on',S.insideOnly);$('#swInsideL').classList.toggle('on',S.insideOnly);};
+  $('#btnUndoQuick').onclick=()=>{ if(!S.shots.length) return; S.shots.pop(); renderStats(); flashScore('↩'); };
   $('#roundv').oninput=e=>{S.roundMax=(+e.target.value)/10;$('#vRound').textContent=S.roundMax.toFixed(1);};
-  $('#swInside').onclick=e=>{S.insideOnly=!S.insideOnly;e.target.classList.toggle('on',S.insideOnly);};
+  $('#swInside').onclick=()=>{S.insideOnly=!S.insideOnly;$('#swInside').classList.toggle('on',S.insideOnly);$('#swInsideL').classList.toggle('on',S.insideOnly);};
   $('#swLight').onclick=e=>{S.lightComp=!S.lightComp;e.target.classList.toggle('on',S.lightComp);};
   $('#btnRecalib').onclick=()=>{S.ref=null;S.cand=null;$('#liveHole').textContent='Fondo recalibrado.';};
 
@@ -1433,7 +1513,8 @@
     const bar=$('#adjustBar'); if(!bar.classList.contains('open'))return;
     if(bar.dataset.kind==='persp') $('#abInfo').textContent='Puntos: '+perspCount()+' / 4'+(perspCount()===4?' — ✓ corrección activa':'');
     else if(bar.dataset.kind==='calib') $('#abInfo').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—');
-    else if(bar.dataset.kind==='holes') $('#abInfo').textContent='Umbral '+S.holeThr+' · Conf '+S.confirm+' · '+($('#liveHole').textContent||'');
+    else if(bar.dataset.kind==='holes') $('#abInfo').textContent='Umbral '+S.holeThr+' · Conf '+confTxt()+' s · '+($('#liveHole').textContent||'');
+    else if(bar.dataset.kind==='laser') $('#abInfo').textContent='Umbral '+S.thr+' · Mín '+S.minpx+' px · '+($('#liveRed').textContent||'');
   }
   function openAdjust(kind){
     document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
@@ -1453,9 +1534,16 @@
       $('#abT').textContent='Ajusta en vivo mientras disparas de prueba';
       mk('Umbral −',()=>{S.holeThr=Math.max(15,S.holeThr-5);$('#holeThr').value=S.holeThr;$('#vHole').textContent=S.holeThr;abInfo();});
       mk('Umbral +',()=>{S.holeThr=Math.min(140,S.holeThr+5);$('#holeThr').value=S.holeThr;$('#vHole').textContent=S.holeThr;abInfo();});
-      mk('Conf −',()=>{S.confirm=Math.max(1,S.confirm-1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=S.confirm;abInfo();});
-      mk('Conf +',()=>{S.confirm=Math.min(5,S.confirm+1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=S.confirm;abInfo();});
+      mk('Conf −',()=>{S.confirm=Math.max(1,S.confirm-1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=confTxt();abInfo();});
+      mk('Conf +',()=>{S.confirm=Math.min(10,S.confirm+1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=confTxt();abInfo();});
       mk('Recalibrar',()=>{S.ref=null;S.cand=null;});
+    } else if(kind==='laser'){
+      $('#abT').textContent='Enciende el láser sobre la diana: el círculo rojo marca el punto detectado';
+      mk('Umbral −',()=>{S.thr=Math.max(90,S.thr-10);$('#thr').value=S.thr;$('#vThr').textContent=S.thr;abInfo();});
+      mk('Umbral +',()=>{S.thr=Math.min(250,S.thr+10);$('#thr').value=S.thr;$('#vThr').textContent=S.thr;abInfo();});
+      mk('Mín −',()=>{S.minpx=Math.max(1,S.minpx-1);$('#minpx').value=S.minpx;$('#vMin').textContent=S.minpx;abInfo();});
+      mk('Mín +',()=>{S.minpx=Math.min(30,S.minpx+1);$('#minpx').value=S.minpx;$('#vMin').textContent=S.minpx;abInfo();});
+      mk('Olvidar fondo',()=>{LZ.base=null;});
     }
     mk('🔍 Zoom 1×',()=>resetZoom());
     const done=mk('✓ Hecho',()=>closeAdjust()); done.classList.add('go');
@@ -1493,6 +1581,7 @@
   $('#calAdjust').onclick=()=>openAdjust('calib');
   $('#pAdjust').onclick=()=>openAdjust('persp');
   $('#holeAdjust').onclick=()=>openAdjust('holes');
+  $('#laserAdjust').onclick=()=>openAdjust('laser');
   $('#btnUndo').onclick=()=>{S.shots.pop();renderStats();};
   $('#btnReset2').onclick=()=>{S.shots=[];renderStats();};
 
@@ -1524,7 +1613,7 @@
   function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PKEY)||'{}')||{}; }catch(e){ return {}; } }
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
   const SKEYS=['fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW',
-    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge'];
+    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax'];
   const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
   function snapshot(){
     const o={S:{},T:{},REP:{...REP},fields:{},saved:Date.now()};
@@ -1549,7 +1638,9 @@
     setR('#cd',Math.round(S.cooldown*10),'#vCd',(+S.cooldown).toFixed(1));
     setR('#radius',S.radiusPct,'#vR'); setR('#rings',S.rings,'#vRings'); $('#realmm').value=S.realmm||'';
     setR('#holeThr',S.holeThr,'#vHole'); setR('#minHole',S.minHole,'#vMinHole'); setR('#maxHole',S.maxHole,'#vMaxHole');
-    setR('#confirm',S.confirm,'#vConfirm'); setR('#roundv',Math.round(S.roundMax*10),'#vRound',(+S.roundMax).toFixed(1));
+    setR('#confirm',S.confirm,'#vConfirm',confTxt()); setR('#roundv',Math.round(S.roundMax*10),'#vRound',(+S.roundMax).toFixed(1));
+    setR('#laserMax',Math.round(S.laserMax*10),'#vLaserMax',(+S.laserMax).toFixed(1).replace('.',','));
+    $('#swInsideL').classList.toggle('on',S.insideOnly);
     setR('#ringW',Math.round(S.ringW*10),'#vRingW',(+S.ringW).toFixed(1));
     $('#swInside').classList.toggle('on',S.insideOnly); $('#swLight').classList.toggle('on',S.lightComp);
     selSeg('#fireMode','fm',S.fireMode); selSeg('#dianaMode','dm',S.dianaMode); selSeg('#fitMode','fit',S.fit);
