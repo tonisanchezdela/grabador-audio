@@ -98,6 +98,15 @@
   #camBanner .cb-l{font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase;}
   #camBanner .cb-code{font-size:38px; font-weight:800; letter-spacing:6px; color:var(--accent);}
   #camBanner .cb-st{font-size:12px; color:var(--gold);}
+  /* controles de cámara del móvil que transmite */
+  #camCtrl{position:absolute; left:0; right:0; bottom:0; z-index:16; display:none;
+    background:rgba(13,17,23,.85); border-top:1px solid var(--line); padding:10px 14px 16px; backdrop-filter:blur(6px);}
+  #camCtrl .ccRow{display:flex; gap:8px; align-items:center;}
+  #camCtrl .ccB{flex:0 0 auto; border:1px solid var(--line); background:var(--panel); color:var(--txt);
+    min-width:52px; padding:12px 10px; border-radius:11px; font-size:18px; font-weight:800;}
+  #camCtrl .ccB.on{background:var(--ok); border-color:var(--ok); color:#06220f;}
+  #camCtrl input[type=range]{flex:1;}
+  #camCtrl .ccInfo{font-size:12px; color:var(--muted); text-align:center; margin-top:8px;}
 
   .scoreflash{position:absolute; top:14%; right:14px;
     font-size:58px; font-weight:800; color:var(--gold); opacity:0;
@@ -198,6 +207,19 @@
       <div class="cb-l">Cámara remota · código</div>
       <div class="cb-code" id="cbCode">----</div>
       <div class="cb-st" id="cbStatus">Iniciando…</div>
+    </div>
+
+    <div id="camCtrl">
+      <div class="ccRow">
+        <button class="ccB" id="ccZoomOut">−</button>
+        <input type="range" id="ccZoom" min="1" max="1" step="0.1" value="1">
+        <button class="ccB" id="ccZoomIn">＋</button>
+      </div>
+      <div class="ccRow" style="margin-top:10px">
+        <button class="ccB on" id="ccAF" style="flex:1; font-size:15px">Autoenfoque: ON</button>
+        <button class="ccB" id="ccFocusNow" style="flex:1; font-size:15px">Enfocar ahora</button>
+      </div>
+      <div class="ccInfo" id="ccInfo">Zoom 1.0×</div>
     </div>
 
     <div id="startup">
@@ -538,6 +560,53 @@
     catch(e){ $('#pill').style.display='block'; $('#pill').innerHTML='No se pudo abrir la cámara.<br><small>'+e.message+'</small>'; }
   }
 
+  /* ---------- zoom y enfoque de la cámara que transmite ---------- */
+  const CC={track:null, zoom:null, zMin:1, zMax:1, zStep:0.1, cur:1, af:true, focusModes:[], pend:false};
+  function camTrack(){ return camStream ? camStream.getVideoTracks()[0] : null; }
+  async function setupCamControls(){
+    const t=camTrack(); CC.track=t; if(!t) return;
+    let caps={}; try{ caps=t.getCapabilities ? t.getCapabilities() : {}; }catch(e){}
+    const st=t.getSettings ? t.getSettings() : {};
+    CC.focusModes=caps.focusMode||[];
+    if(caps.zoom){
+      CC.zoom=true; CC.zMin=caps.zoom.min; CC.zMax=caps.zoom.max; CC.zStep=caps.zoom.step||0.1;
+      CC.cur=st.zoom||CC.zMin;
+      const r=$('#ccZoom'); r.min=CC.zMin; r.max=CC.zMax; r.step=CC.zStep; r.value=CC.cur;
+    } else {
+      $('#ccZoom').disabled=true; $('#ccZoomIn').disabled=true; $('#ccZoomOut').disabled=true;
+    }
+    if(CC.focusModes.includes('continuous')) await setFocus('continuous');
+    else { $('#ccAF').disabled=true; $('#ccAF').textContent='Autoenfoque: no disponible'; }
+    if(!CC.focusModes.includes('single-shot') && !CC.focusModes.includes('continuous')) $('#ccFocusNow').disabled=true;
+    $('#camCtrl').style.display='block'; ccInfo();
+  }
+  function ccInfo(){
+    const z=CC.zoom ? 'Zoom '+(+CC.cur).toFixed(1)+'× (máx '+(+CC.zMax).toFixed(1)+'×)' : 'Zoom no disponible en esta cámara';
+    $('#ccInfo').textContent=z+' · pellizca la pantalla para ampliar';
+  }
+  async function setZoom(v){
+    if(!CC.zoom||!CC.track) return;
+    v=Math.max(CC.zMin,Math.min(CC.zMax,v)); CC.cur=v; $('#ccZoom').value=v; ccInfo();
+    if(CC.pend) return; CC.pend=true;   // limita la frecuencia de cambios
+    let applied=null;
+    while(applied!==CC.cur){            // aplica siempre el último valor pedido
+      applied=CC.cur;
+      try{ await CC.track.applyConstraints({advanced:[{zoom:applied}]}); }catch(e){ break; }
+    }
+    CC.pend=false;
+  }
+  async function setFocus(mode){
+    if(!CC.track) return;
+    try{ await CC.track.applyConstraints({advanced:[{focusMode:mode}]}); }catch(e){}
+  }
+  async function focusNow(){
+    $('#ccFocusNow').textContent='Enfocando…';
+    if(CC.focusModes.includes('single-shot')) await setFocus('single-shot');
+    else if(CC.focusModes.includes('continuous')){ await setFocus('manual'); await setFocus('continuous'); }
+    setTimeout(async()=>{ if(CC.af && CC.focusModes.includes('continuous')) await setFocus('continuous');
+      $('#ccFocusNow').textContent='Enfocar ahora'; },1200);
+  }
+
   /* ---------- cámara remota (WebRTC / PeerJS) ---------- */
   let peer=null, camStream=null;
   function peerAvailable(){ return typeof Peer!=='undefined'; }
@@ -552,7 +621,7 @@
     S.running=true; S.phase='camera'; $('#statusDot').classList.add('live'); $('#pill').style.display='none';
     $('#hud').style.display='none'; $('#camBanner').style.display='block';
     $('#cbCode').textContent=code; $('#cbStatus').textContent='Esperando al móvil que puntúa…';
-    resize(); loop();
+    resize(); loop(); setupCamControls();
     peer=new Peer('tirofijo-'+code);
     peer.on('error', err=>{ $('#cbStatus').textContent='Error: '+err.type; });
     peer.on('connection', conn=>{ conn.on('open', ()=>{
@@ -951,7 +1020,7 @@
       const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
       const sr=$('#stage').getBoundingClientRect();
       const mid={x:(p[0].x+p[1].x)/2-sr.left,y:(p[0].y+p[1].y)/2-sr.top};
-      pinch={d0:d,mid0:mid,z0:{...Z}};
+      pinch={d0:d,mid0:mid,z0:{...Z},cz0:CC.cur};
     }
   });
   overlay.addEventListener('pointermove',e=>{
@@ -959,6 +1028,12 @@
     ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(tapCand && e.pointerId===tapCand.id){
       if(Math.hypot(e.clientX-tapCand.x,e.clientY-tapCand.y)>12) tapCand.moved=true;
+    }
+    if(pinch && ptrs.size>=2 && S.phase==='camera'){ // móvil-cámara: zoom real del sensor
+      const p=[...ptrs.values()];
+      const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+      if(CC.zoom) setZoom(pinch.cz0*(d/pinch.d0));
+      return;
     }
     if(pinch && ptrs.size>=2){
       const p=[...ptrs.values()];
@@ -983,6 +1058,7 @@
   overlay.addEventListener('pointercancel',e=>{ ptrs.delete(e.pointerId); if(ptrs.size<2)pinch=null; });
 
   function handleTap(x,y){
+    if(S.phase==='camera'){ focusNow(); return; } // móvil-cámara: tocar = enfocar
     if(calMode){
       const nx=x/S.W, ny=y/S.H;
       if(calMode==='center'){S.center={x:nx,y:ny}; $('#calState').textContent='Centro ✓'; abInfo();}
@@ -1043,6 +1119,17 @@
     bar.classList.add('open'); abInfo();
   }
   function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#hud').style.display='block'; calMode=null; }
+
+  // controles de la cámara que transmite
+  $('#ccZoom').oninput=e=>setZoom(+e.target.value);
+  $('#ccZoomIn').onclick=()=>setZoom(CC.cur+Math.max(CC.zStep,(CC.zMax-CC.zMin)/20));
+  $('#ccZoomOut').onclick=()=>setZoom(CC.cur-Math.max(CC.zStep,(CC.zMax-CC.zMin)/20));
+  $('#ccAF').onclick=async()=>{
+    CC.af=!CC.af; $('#ccAF').classList.toggle('on',CC.af);
+    $('#ccAF').textContent='Autoenfoque: '+(CC.af?'ON':'OFF');
+    await setFocus(CC.af?'continuous':'manual');
+  };
+  $('#ccFocusNow').onclick=focusNow;
 
   $('#calAdjust').onclick=()=>openAdjust('calib');
   $('#pAdjust').onclick=()=>openAdjust('persp');
