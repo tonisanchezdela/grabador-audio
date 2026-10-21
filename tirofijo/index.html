@@ -260,6 +260,7 @@
         <button class="btn primary" id="btnStart">▶ Iniciar cámara</button>
       </div>
       <div class="row" id="rowReady" style="display:none">
+        <button class="btn" id="btnType" style="flex:0 0 42%">🔴 Láser ⇄</button>
         <button class="btn primary" id="btnSession">▶ Nueva sesión</button>
       </div>
       <div class="row" id="rowRun" style="display:none">
@@ -280,6 +281,13 @@
   <div class="sheet" id="sheetCfg">
     <button class="close" data-close>✕</button>
     <h2>Ajustes de detección</h2>
+    <div class="card">
+      <h3>Tipo de diana</h3>
+      <div class="seg" id="cfgType">
+        <button data-tt="laser" class="sel">🔴 Punteros láser</button>
+        <button data-tt="holes">🎯 Impactos en cartón</button>
+      </div>
+    </div>
     <div class="card">
       <h3>Sensibilidad al rojo del láser</h3>
       <p>Si capta destellos falsos, baja la sensibilidad. Si no detecta el punto, súbela.</p>
@@ -972,10 +980,14 @@
 
   /* ---------- UI ---------- */
   // pantalla inicial
-  document.querySelectorAll('#targetType button').forEach(b=>b.onclick=()=>{
-    document.querySelectorAll('#targetType button').forEach(x=>x.classList.remove('sel'));
-    b.classList.add('sel'); S.detectType=b.dataset.tt;
-  });
+  // tipo de diana: se puede cambiar en cualquier momento (inicio, ajustes o antes de cada sesión)
+  function setDetectType(t){
+    S.detectType=t; S.ref=null; S.cand=null;
+    document.querySelectorAll('#targetType button, #cfgType button').forEach(x=>x.classList.toggle('sel', x.dataset.tt===t));
+    $('#btnType').textContent = t==='laser' ? '🔴 Láser ⇄' : '🎯 Cartón ⇄';
+  }
+  document.querySelectorAll('#targetType button, #cfgType button').forEach(b=>b.onclick=()=>setDetectType(b.dataset.tt));
+  $('#btnType').onclick=()=>setDetectType(S.detectType==='laser'?'holes':'laser');
   $('#suLocal').onclick=()=>{ $('#startup').style.display='none'; start(); };
   $('#suCam').onclick=startAsCamera;
   $('#suView').onclick=()=>{ $('#suViewBox').style.display='block'; $('#suCode').focus(); };
