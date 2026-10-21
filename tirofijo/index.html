@@ -493,8 +493,39 @@
     return navigator.mediaDevices.getUserMedia({
       video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }, audio:false });
   }
+  /* ---------- mantener la pantalla encendida (Wake Lock) ---------- */
+  let wakeLock=null, wantAwake=false;
+  async function keepAwake(){
+    wantAwake=true;
+    try{
+      if('wakeLock' in navigator && !wakeLock){
+        wakeLock=await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release',()=>{ wakeLock=null; });
+      }
+    }catch(e){ /* sin soporte o denegado: se usa el respaldo */ }
+    if(!wakeLock) startNoSleepFallback();
+  }
+  // si el móvil suelta el bloqueo (al volver a la app), se vuelve a pedir
+  document.addEventListener('visibilitychange',()=>{
+    if(wantAwake && document.visibilityState==='visible') keepAwake();
+  });
+  // respaldo para navegadores sin Wake Lock: vídeo mudo en bucle
+  let nsVideo=null;
+  function startNoSleepFallback(){
+    if(nsVideo) return;
+    try{
+      const c=document.createElement('canvas'); c.width=2; c.height=2;
+      const st=c.captureStream ? c.captureStream(1) : null; if(!st) return;
+      nsVideo=document.createElement('video'); nsVideo.muted=true; nsVideo.playsInline=true;
+      nsVideo.setAttribute('playsinline',''); nsVideo.style.cssText='position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
+      nsVideo.srcObject=st; document.body.appendChild(nsVideo); nsVideo.play().catch(()=>{});
+      setInterval(()=>{ const g=c.getContext('2d'); g.fillStyle=Math.random()>.5?'#000':'#010101'; g.fillRect(0,0,2,2); },1000);
+    }catch(e){}
+  }
+
   // arranca la sesión de puntuación sobre el vídeo actual (local o remoto)
   function beginSession(){
+    keepAwake();
     S.running = true; S.phase='ready'; $('#statusDot').classList.add('live');
     $('#rowCam').style.display='none'; $('#rowReady').style.display='flex';
     $('#pill').style.display='block';
@@ -515,6 +546,7 @@
     if(!peerAvailable()){ $('#suStatus').textContent='No se pudo cargar el módulo remoto. Revisa tu conexión.'; return; }
     try{ camStream=await getCam(); video.srcObject=camStream; await video.play(); }
     catch(e){ $('#suStatus').textContent='No se pudo abrir la cámara: '+e.message; return; }
+    keepAwake();
     const code=String(Math.floor(1000+Math.random()*9000));
     $('#startup').style.display='none';
     S.running=true; S.phase='camera'; $('#statusDot').classList.add('live'); $('#pill').style.display='none';
