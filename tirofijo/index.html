@@ -153,6 +153,8 @@
   .period button{flex:0 0 auto; background:var(--panel); border:1px solid var(--line);
     color:var(--accent); border-radius:9px; padding:9px 11px; font-size:14px;}
   .switchrow{display:flex; align-items:center; justify-content:space-between; margin:10px 0;}
+  .rc{width:44px; height:44px; border-radius:50%; border:3px solid var(--line); flex:0 0 auto;}
+  .rc.sel{border-color:#fff; box-shadow:0 0 0 3px rgba(255,255,255,.25);}
   .sw{width:46px; height:26px; border-radius:20px; background:var(--line); position:relative; transition:.2s;}
   .sw.on{background:var(--ok);} .sw::after{content:''; position:absolute; top:3px; left:3px;
     width:20px; height:20px; border-radius:50%; background:#fff; transition:.2s;}
@@ -364,6 +366,19 @@
       <button class="btn primary" id="calAdjust" style="margin-top:6px">Ajustar sobre la imagen</button>
     </div>
     <div class="card">
+      <h3>Color de los anillos</h3>
+      <div class="row" id="ringColors" style="gap:10px; flex-wrap:wrap">
+        <button class="rc sel" data-c="#ff2bd6" style="background:#ff2bd6"></button>
+        <button class="rc" data-c="#39ff14" style="background:#39ff14"></button>
+        <button class="rc" data-c="#00e5ff" style="background:#00e5ff"></button>
+        <button class="rc" data-c="#ffea00" style="background:#ffea00"></button>
+        <button class="rc" data-c="#ff3b30" style="background:#ff3b30"></button>
+        <button class="rc" data-c="#ff8c00" style="background:#ff8c00"></button>
+      </div>
+      <label class="fld">Grosor de línea: <span class="val" id="vRingW">2.5</span></label>
+      <input type="range" id="ringW" min="10" max="60" value="25">
+    </div>
+    <div class="card">
       <h3>Anillos</h3>
       <label class="fld">Nº de zonas: <span class="val" id="vRings">10</span></label>
       <input type="range" id="rings" min="5" max="10" value="10">
@@ -479,6 +494,7 @@
     detectType:'laser', // laser | holes
     thr:160, minpx:4, cooldown:2.0, rings:10, radiusPct:42, realmm:0,
     fit:'contain', // contain = imagen completa | cover = llenar pantalla
+    ringColor:'#ff2bd6', ringW:2.5, // anillos: color vivo y grosor
     holeThr:45, minHole:6, maxHole:400, confirm:2, roundMax:2.6,
     insideOnly:true, lightComp:true, ref:null, cand:null,
     persp:{top:null,right:null,bottom:null,left:null}, Hf:null, Hinv:null,
@@ -786,23 +802,16 @@
     if(S.dianaMode==='persp' && S.Hinv){
       for(let k=S.rings;k>=1;k--){
         const rr=k/S.rings; octx.beginPath();
-        for(let a=0;a<=48;a++){ const t=a/48*Math.PI*2, p=normToScreen(rr*Math.cos(t), rr*Math.sin(t));
+        for(let a=0;a<=64;a++){ const t=a/64*Math.PI*2, p=normToScreen(rr*Math.cos(t), rr*Math.sin(t));
           if(a===0)octx.moveTo(p.x,p.y); else octx.lineTo(p.x,p.y); }
-        octx.strokeStyle=k%2?'rgba(88,166,255,.55)':'rgba(88,166,255,.28)';
-        octx.lineWidth=k===S.rings?2:1; octx.stroke();
+        strokeRing(k);
       }
-      const c=normToScreen(0,0); octx.strokeStyle='rgba(63,185,80,.9)'; octx.lineWidth=1.5;
-      octx.beginPath(); octx.moveTo(c.x-12,c.y); octx.lineTo(c.x+12,c.y);
-      octx.moveTo(c.x,c.y-12); octx.lineTo(c.x,c.y+12); octx.stroke();
+      const c=normToScreen(0,0); drawCross(c.x,c.y);
     } else {
       const {cx,cy,rOuter}=dianaGeom();
       for(let k=S.rings;k>=1;k--){ const rr=rOuter*k/S.rings;
-        octx.beginPath(); octx.arc(cx,cy,rr,0,7);
-        octx.strokeStyle=k%2?'rgba(88,166,255,.55)':'rgba(88,166,255,.28)';
-        octx.lineWidth=k===S.rings?2:1; octx.stroke(); }
-      octx.strokeStyle='rgba(63,185,80,.9)'; octx.lineWidth=1.5;
-      octx.beginPath(); octx.moveTo(cx-12,cy); octx.lineTo(cx+12,cy);
-      octx.moveTo(cx,cy-12); octx.lineTo(cx,cy+12); octx.stroke();
+        octx.beginPath(); octx.arc(cx,cy,rr,0,7); strokeRing(k); }
+      drawCross(cx,cy);
     }
     if(S.dianaMode==='calib'){ if(S.center)mark(S.center.x*S.W,S.center.y*S.H,'#3fb950','C'); if(S.edge)mark(S.edge.x*S.W,S.edge.y*S.H,'#d29922','B'); }
     if(S.dianaMode==='persp'){ const p=S.persp;
@@ -810,6 +819,18 @@
     S.shots.slice(-12).forEach(s=>{ const p=normToScreen(s.rx,s.ry);
       octx.beginPath(); octx.arc(p.x,p.y,6,0,7);
       octx.fillStyle='rgba(248,81,73,.9)'; octx.fill(); octx.strokeStyle='#fff'; octx.lineWidth=1.5; octx.stroke(); });
+  }
+  // anillo con color vivo + halo oscuro: se ve sobre blanco y sobre negro
+  function strokeRing(k){
+    const w=S.ringW*(k===S.rings?1.4:1);
+    octx.lineJoin='round';
+    octx.strokeStyle='rgba(0,0,0,.75)'; octx.lineWidth=w+2.5; octx.stroke(); // halo
+    octx.strokeStyle=S.ringColor; octx.lineWidth=w; octx.stroke();          // línea viva
+  }
+  function drawCross(x,y){
+    octx.beginPath(); octx.moveTo(x-14,y); octx.lineTo(x+14,y); octx.moveTo(x,y-14); octx.lineTo(x,y+14);
+    octx.strokeStyle='rgba(0,0,0,.75)'; octx.lineWidth=S.ringW+2.5; octx.stroke();
+    octx.strokeStyle=S.ringColor; octx.lineWidth=S.ringW; octx.stroke();
   }
   function mark(x,y,c,t){ octx.beginPath(); octx.arc(x,y,9,0,7); octx.strokeStyle=c; octx.lineWidth=2; octx.stroke();
     octx.fillStyle=c; octx.font='bold 12px sans-serif'; octx.fillText(t,x+11,y-6); }
@@ -1151,6 +1172,13 @@
     bar.classList.add('open'); abInfo();
   }
   function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#hud').style.display=''; calMode=null; showControlsTemp(); }
+
+  // color y grosor de los anillos
+  document.querySelectorAll('#ringColors .rc').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#ringColors .rc').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel'); S.ringColor=b.dataset.c;
+  });
+  $('#ringW').oninput=e=>{ S.ringW=(+e.target.value)/10; $('#vRingW').textContent=S.ringW.toFixed(1); };
 
   // ajuste de imagen: completa o llenar pantalla
   document.querySelectorAll('#fitMode button').forEach(b=>b.onclick=()=>{
