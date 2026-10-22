@@ -52,6 +52,10 @@
   #adjustBar .ab.sel{background:var(--ring); border-color:var(--ring); color:#06182e;}
   #adjustBar .abInfo{font-size:11px; color:var(--muted); text-align:center; margin-top:5px;}
   #stage.adjusting #pill{display:none !important;}
+  /* estado del detector de cartón (esquina superior derecha, pequeño) */
+  #holeStatus{position:absolute; top:8px; right:10px; z-index:12; display:none; font-size:12px; font-weight:700;
+    padding:5px 10px; border-radius:20px; background:rgba(13,17,23,.65); border:1px solid var(--line); color:var(--muted);}
+  #holeStatus.ok{color:var(--ok);} #holeStatus.mov{color:var(--gold);} #holeStatus.cand{color:#00e5ff;}
   #zoomHint{position:absolute; top:22%; left:50%; transform:translate(-50%,-50%); z-index:17;
     background:rgba(13,17,23,.7); border:1px solid var(--line); color:var(--muted);
     font-size:13px; padding:8px 14px; border-radius:20px; display:none; pointer-events:none;}
@@ -252,6 +256,7 @@
       <canvas id="overlay"></canvas>
     </div>
     <div id="zoomHint">Pellizca con dos dedos para ampliar</div>
+    <div id="holeStatus"></div>
     <div class="pill" id="pill">Pulsa <b>Iniciar</b></div>
     <div class="scoreflash" id="flash"></div>
     <div id="tapHint">Toca para mostrar los controles</div>
@@ -574,7 +579,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v22.10 · 5';   // versión visible para comprobar que se tiene la última
+  const APPVER='v23.10 · 1';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -951,7 +956,7 @@
     const scr=mapCover(nx,ny); const {dRel}=normFromScreen(scr.x,scr.y);
     return dRel<=1.05;
   }
-  const HD={RR:170, key:'', R:null, ins:null, snaps:[], lastSnap:0, lastRun:0, recent:[], view:null, info:''};
+  const HD={RR:170, key:'', R:null, ins:null, base:null, prevHalf:null, stableSince:0, quietSince:0, lastRun:0, recent:[], view:null, info:'', state:''};
   const HOLE_THR_L=40, HOLE_THR_D=22, HOLE_G0=40;
   function holeTb(){ return 0.50-0.04*S.holeSens; }          // sensibilidad 1..8 → umbral 0,46..0,18
   function holeSize(){                                        // tamaño esperado del impacto en px del análisis
@@ -1029,7 +1034,7 @@
     }
     return {g,o};
   }
-  function resetHoles(){ HD.snaps=[]; HD.key=''; HD.recent=[]; HD.cands=[]; HD.view=null; }
+  function resetHoles(){ HD.base=null; HD.prevHalf=null; HD.stableSince=0; HD.quietSince=0; HD.key=''; HD.recent=[]; HD.cands=[]; HD.view=null; }
   function detectHole(){
     if(video.videoWidth===0||!S.W) return null;
     const now=performance.now();
@@ -1037,19 +1042,29 @@
     const R=computeRoi(); if(!R) return null;
     const key=[R.x0,R.y0,R.bw,R.bh,R.w,R.h,S.insideOnly,S.dianaMode].join(',');
     if(key!==HD.key){                                                   // cambió la geometría: rehace la máscara de diana
-      HD.key=key; HD.R=R; HD.snaps=[]; HD.cands=[];
+      HD.key=key; HD.R=R; HD.base=null; HD.prevHalf=null; HD.stableSince=0; HD.cands=[];
       const lim=S.insideOnly?1.04:1.3, ins=new Uint8Array(R.w*R.h);
       for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const p=roiToScreen(R,x+0.5,y+0.5);
         if(normFromScreen(p.x,p.y).dRel<=lim) ins[y*R.w+x]=1; }
       HD.ins=ins;
     }
     const ins=HD.ins, w=R.w, h=R.h, n=w*h, cur=grabRoi(R);
-    // imagen de referencia renovada: una foto cada 0,4 s; se compara con la de hace ≥ 1,2 s
-    const delay=Math.max(1200, S.confirm*200+800);
-    if(now-HD.lastSnap>=400){ HD.snaps.push(prepSnap(cur,R,ins,now)); HD.lastSnap=now; }
-    while(HD.snaps.length>2 && now-HD.snaps[1].t>=delay) HD.snaps.shift();
-    const sn=HD.snaps[0];
-    if(!sn || now-sn.t<delay){ HD.info='Preparando referencia…'; $('#liveHole').textContent=HD.info; return null; }
+    const say=(t,st)=>{ HD.info=t; HD.state=st; $('#liveHole').textContent=t; };
+    // 1) ¿hay movimiento? (mano, persona, papel que tiembla, cámara tocada): se compara con el análisis anterior
+    const hw=w>>1, hh=h>>1, half=new Float32Array(hw*hh);
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; half[y*hw+x]=(cur[i]+cur[i+1]+cur[i+w]+cur[i+w+1])/4; }
+    let mov=0, tot=0;
+    if(HD.prevHalf && HD.prevHalf.length===half.length)
+      for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ if(!ins[2*y*w+2*x]) continue; tot++; if(Math.abs(half[y*hw+x]-HD.prevHalf[y*hw+x])>20) mov++; }
+    HD.prevHalf=half;
+    if(tot && mov/tot>0.004){ HD.stableSince=now; HD.cands=[]; HD.view=null;
+      say('Movimiento en la imagen: esperando a que se quede quieta…','mov'); return null; }
+    if(!HD.stableSince) HD.stableSince=now;
+    if(now-HD.stableSince<500){ say('Estabilizando…','wait'); return null; }
+    // 2) referencia ESTABLE: foto de la diana quieta con los impactos ya conocidos. No se toca mientras hay movimiento,
+    //    así un impacto que aparece mientras algo tapa la diana sigue siendo "nuevo" cuando todo vuelve a estar quieto
+    if(!HD.base){ HD.base=prepSnap(cur,R,ins,now); HD.quietSince=now; say('Referencia tomada: diana lista','ok'); return null; }
+    const sn=HD.base;
     // alinear y corregir luz
     const sh=estShift(sn,cur,R);
     const still=Math.abs(sh.dx)<0.12&&Math.abs(sh.dy)<0.12;             // sin temblor: no hace falta realinear
@@ -1060,8 +1075,9 @@
     for(let i=0;i<n;i++){ if(!ins[i]) continue; cnt++;
       const d=Math.abs(cur[i]-(L.g*ref[i]+L.o)), thr=ref[i]<sn.mid?HOLE_THR_D:HOLE_THR_L;
       let e=d/thr; if(e>1) big++; if(e>2) e=2; const q=grad[i]/HOLE_G0; E[i]=e/(1+q*q); }
-    if(big>cnt*0.15){ HD.cands=[]; HD.view=null; HD.info='Cambio general (movimiento o luz): esperando…';
-      $('#liveHole').textContent=HD.info; return null; }
+    if(big>cnt*0.15){   // la cámara se ha movido o la luz ha cambiado mucho: nueva referencia
+      HD.base=prepSnap(cur,R,ins,now); HD.cands=[]; HD.view=null; HD.quietSince=now;
+      say('Cámara movida o cambio fuerte de luz: referencia rehecha','ok'); return null; }
     // suavizado del tamaño de un impacto: une las fibras sueltas en una sola mancha y apaga el ruido
     const hs=holeSize(), r=hs.r, W1=w+1, I=new Float64Array(W1*(h+1));
     for(let y=0;y<h;y++){ let row=0; for(let x=0;x<w;x++){ row+=E[y*w+x]; I[(y+1)*W1+x+1]=I[y*W1+x+1]+row; } }
@@ -1071,15 +1087,27 @@
         const v=(I[yb*W1+xb]-I[ya*W1+xb]-I[yb*W1+xa]+I[ya*W1+xa])/((yb-ya)*(xb-xa));
         if(v>mx && ins[y*w+x]) mx=v; if(v>Tb) mask[y*w+x]=1; } }
     // manchas con tamaño y forma de impacto, que no estén donde ya se marcó uno
-    HD.recent=HD.recent.filter(o=>now-o.t<4000);
-    const near=hs.d*1.5/HD.RR;
-    const ok=blobs(mask,w,h).filter(c=>c.n>=0.12*hs.A && c.n<=3.5*hs.A && c.ar<=S.roundMax && c.fill>=0.3)
+    // (los impactos ya registrados se ignoran: así un parche pegado encima o un agujero que se rasga no cuentan)
+    const near=hs.d*1.5/HD.RR, known=S.shots.map(s=>({rx:s.rx,ry:s.ry})).concat(HD.recent);
+    const all=blobs(mask,w,h);
+    // algo grande tapa la diana (mano o persona quieta delante): no se cuenta nada ni se toca la referencia.
+    // Si sigue así más de 6 s, es un cambio permanente (p. ej. han movido la diana): nueva referencia
+    if(all.some(c=>c.n>12*hs.A)){
+      HD.cands=[]; HD.view=null; HD.quietSince=0;
+      if(!HD.occSince) HD.occSince=now;
+      else if(now-HD.occSince>6000){ HD.base=prepSnap(cur,R,ins,now); HD.occSince=0; say('Cambio permanente en la diana: referencia rehecha','ok'); return null; }
+      say('Algo tapa la diana: esperando…','mov'); return null;
+    }
+    HD.occSince=0;
+    const ok=all.filter(c=>c.n>=0.12*hs.A && c.n<=3.5*hs.A && c.ar<=S.roundMax && c.fill>=0.3)
       .map(c=>{ const p=roiToScreen(R,c.cx+0.5,c.cy+0.5), q=normFromScreen(p.x,p.y); return {...c,p,q}; })
-      .filter(c=>!HD.recent.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<near))
+      .filter(c=>!known.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<near))
       .sort((a,b)=>b.n-a.n);
     HD.view={R,ok};
-    HD.info='Cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas válidas: '+ok.length;
-    $('#liveHole').textContent=HD.info;
+    say('Diana quieta · cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas nuevas: '+ok.length, ok.length?'cand':'ok');
+    // 3) sin nada nuevo durante 1 s: la referencia se actualiza (absorbe impactos ya contados y cambios lentos de luz)
+    if(!ok.length){ if(!HD.quietSince) HD.quietSince=now; else if(now-HD.quietSince>=1000){ HD.base=prepSnap(cur,R,ins,now); HD.quietSince=now; } }
+    else HD.quietSince=0;
     // confirmación por tiempo de CADA mancha (varios impactos casi a la vez se siguen por separado):
     // un agujero se queda; una sombra o el papel que se mueve, no
     const prev=HD.cands||[], next=[], fired=[], used=new Set();
@@ -1160,6 +1188,7 @@
     const adjHoles = $('#adjustBar').classList.contains('open') && $('#adjustBar').dataset.kind==='holes';
     const live = S.phase==='running' && S.fireMode==='auto';
     const adjLaser = $('#adjustBar').classList.contains('open') && $('#adjustBar').dataset.kind==='laser';
+    if(S.detectType!=='holes' || S.phase==='camera') $('#holeStatus').style.display='none';
     if(S.phase!=='camera' && S.detectType==='laser'){   // siempre activo: aprende el rojo del fondo y muestra el punto
       const p=detectRed();
       if(p && p.live){ octx.beginPath(); octx.arc(p.live.x,p.live.y,12,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=3; octx.stroke(); }
@@ -1168,6 +1197,9 @@
       if(adjLaser) abInfo();
     } else if(S.phase!=='camera' && S.detectType==='holes'){   // siempre activo: mantiene la referencia al día
       const hs=detectHole();
+      const stEl=$('#holeStatus'), st=HD.state||'wait';
+      stEl.style.display='block'; stEl.className=st;
+      stEl.textContent = st==='mov'?'✋ Movimiento': st==='cand'?'◎ Impacto…': st==='ok'?'● Diana lista':'… Estabilizando';
       // en cartón no hay espera entre disparos: cada agujero es único por su posición
       if(hs) hs.forEach(h=>{
         HD.recent.push({rx:h.q.rx, ry:h.q.ry, t:performance.now()});
