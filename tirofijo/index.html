@@ -19,8 +19,8 @@
   header{padding:10px 14px; display:flex; align-items:center; gap:10px;
     border-bottom:1px solid var(--line); background:var(--panel);}
   header h1{font-size:18px; margin:0; font-weight:800; letter-spacing:2px; text-transform:uppercase;}
-  #btnMenu{flex:0 0 auto; width:42px; height:38px; border-radius:10px; border:1px solid var(--line);
-    background:var(--bg); color:var(--txt); font-size:20px; line-height:1; padding:0;}
+  #btnMenu{flex:0 0 auto; height:36px; padding:0 12px; border-radius:10px; border:1px solid var(--line);
+    background:var(--bg); color:var(--txt); font-size:13px; font-weight:800; letter-spacing:1px; line-height:1;}
   #btnMenu:active{transform:scale(.94);}
   #btnMenu.off{background:var(--ring); border-color:var(--ring); color:#06182e;}
   header .dot{width:9px; height:9px; border-radius:50%; background:var(--muted);}
@@ -242,7 +242,7 @@
 <body>
 <div id="app">
   <header>
-    <button id="btnMenu" aria-label="Mostrar u ocultar el menú">☰</button>
+    <button id="btnMenu" aria-label="Mostrar u ocultar el menú">MENÚ</button>
     <span class="dot" id="statusDot"></span>
     <h1>◎ Tirofijo</h1>
     <div style="margin-left:auto; font-size:13px; color:var(--muted)">
@@ -259,7 +259,7 @@
     <div id="holeStatus"></div>
     <div class="pill" id="pill">Pulsa <b>Iniciar</b></div>
     <div class="scoreflash" id="flash"></div>
-    <div id="tapHint">Toca para mostrar los controles</div>
+    <div id="tapHint">Pulsa MENÚ para ver los controles</div>
 
     <div id="camBanner">
       <div class="cb-l">Cámara remota · código</div>
@@ -579,7 +579,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v23.10 · 1';   // versión visible para comprobar que se tiene la última
+  const APPVER='v23.10 · 2';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -700,7 +700,7 @@
     $('#rowCam').style.display='none'; $('#rowReady').style.display='flex';
     $('#pill').style.display='block';
     $('#pill').innerHTML='Cámara lista. Ajusta la diana y pulsa <b>Nueva sesión</b>';
-    resize(); loop(); showControlsTemp(6000);
+    resize(); loop(); showControls();
     $('#zoomHint').style.display='block'; setTimeout(()=>{$('#zoomHint').style.display='none';},3500);
   }
   async function start(){ // cámara local
@@ -1162,10 +1162,15 @@
     const c0=normToScreen(0,0), ex=normToScreen(1,0), ey=normToScreen(0,1);
     const Rs=(Math.hypot(ex.x-c0.x,ex.y-c0.y)+Math.hypot(ey.x-c0.x,ey.y-c0.y))/2;
     const dot=Math.max(2.5, bulletR()*Rs);
+    const rev=S.phase==='review';
     S.shots.forEach((s,i)=>{ const p=normToScreen(s.rx,s.ry), last=i===S.shots.length-1;
       octx.beginPath(); octx.arc(p.x,p.y,dot,0,7);
-      octx.fillStyle=last?'rgba(255,214,10,.95)':'rgba(248,81,73,.9)'; octx.fill();
-      octx.strokeStyle='rgba(0,0,0,.85)'; octx.lineWidth=1.2; octx.stroke(); });
+      octx.fillStyle=(last&&!rev)?'rgba(255,214,10,.95)':'rgba(248,81,73,.9)'; octx.fill();
+      octx.strokeStyle='rgba(0,0,0,.85)'; octx.lineWidth=1.2; octx.stroke();
+      if(rev){ // en la revisión cada impacto lleva su número para elegirlo fácilmente
+        const fs=Math.max(9, 13/Z.s); octx.font='800 '+fs+'px sans-serif'; octx.textAlign='left'; octx.textBaseline='bottom';
+        const lx=p.x+dot+1, ly=p.y-dot-1; octx.lineWidth=3/Z.s; octx.strokeStyle='rgba(0,0,0,.9)'; octx.strokeText(i+1,lx,ly);
+        octx.fillStyle='#fff'; octx.fillText(i+1,lx,ly); } });
   }
   // anillo con color vivo + halo oscuro: se ve sobre blanco y sobre negro
   function strokeRing(outer){
@@ -1545,7 +1550,6 @@
     $('#btnPause').textContent='⏸ Pausar'; $('#btnPause').classList.add('on');
     updHud(); clearTick();
     T.tick=setInterval(sessionTick,1000);
-    showControlsTemp(4000); // visible al empezar, luego se oculta solo
   }
   function sessionTick(){
     if(S.phase!=='running') return;
@@ -1575,11 +1579,28 @@
     updHud();
   }
   function finalizarSesion(){
-    clearTick(); S.phase='ready'; $('#stage').classList.remove('controls-hidden');
+    clearTick(); S.phase='review';                       // revisión antes del informe: añadir o borrar impactos
     beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380);
-    $('#rowRun').style.display='none'; $('#rowReady').style.display='flex';
-    $('#timerHud').style.display='none';
+    $('#rowRun').style.display='none'; $('#timerHud').style.display='none';
+    openAdjust('review'); calMode=null; refreshAbSel();
+  }
+  function finishReview(){
+    S.phase='ready'; $('#rowReady').style.display='flex'; resetZoom();
     buildReport(); $('#sheetReport').classList.add('open');
+  }
+  // revisión: añadir un impacto donde se toca / borrar el más cercano
+  function addShotAt(x,y){
+    const prevT=S.shots.length?S.shots[S.shots.length-1].t:Date.now();
+    registerShot(x,y); const s=S.shots[S.shots.length-1]; s.t=prevT; s.manual=true;
+  }
+  function delShotAt(x,y){
+    if(!S.shots.length) return false;
+    let bi=-1, bd=1e9;
+    S.shots.forEach((s,i)=>{ const p=normToScreen(s.rx,s.ry), d=Math.hypot(p.x-x,p.y-y); if(d<bd){bd=d;bi=i;} });
+    const c0=normToScreen(0,0), e1=normToScreen(1,0), Rs=Math.hypot(e1.x-c0.x,e1.y-c0.y);
+    const lim=Math.max(bulletR()*Rs*2, 24/Z.s);         // margen de dedo (menor con zoom)
+    if(bi<0||bd>lim){ flashScore('?'); return false; }
+    S.shots.splice(bi,1); renderStats(); flashScore('−'); return true;
   }
 
   /* ---------- UI ---------- */
@@ -1599,7 +1620,7 @@
   $('#btnStart').onclick=start;
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
-    if(S.running && S.phase!=='camera') showControlsTemp();
+    if(S.running && S.phase!=='camera') showControls();
   });
   $('#btnCfg').onclick=()=>$('#sheetCfg').classList.add('open');
   $('#btnDiana').onclick=()=>$('#sheetDiana').classList.add('open');
@@ -1710,6 +1731,8 @@
 
   function handleTap(x,y){
     if(S.phase==='camera'){ focusNow(); return; } // móvil-cámara: tocar = enfocar
+    if(calMode==='rvAdd'){ addShotAt(x,y); abInfo(); return; }
+    if(calMode==='rvDel'){ delShotAt(x,y); abInfo(); return; }
     if(calMode){
       const nx=x/S.W, ny=y/S.H;
       if(calMode==='center'){S.center={x:nx,y:ny}; $('#calState').textContent='Centro ✓'; abInfo();}
@@ -1722,21 +1745,10 @@
       }
       calMode=null; refreshAbSel(); return;
     }
-    if(S.running && S.phase!=='camera'){
-      if(S.fireMode==='manual'&&S.phase==='running') registerShot(x,y);
-      showControlsTemp();
-    }
+    if(S.fireMode==='manual'&&S.phase==='running') registerShot(x,y);   // tocar la pantalla ya no abre el menú
   }
-  // muestra los controles y los oculta solos a los pocos segundos
-  let hideTimer=null;
-  function showControlsTemp(ms=4000){
-    $('#stage').classList.remove('controls-hidden');
-    if(hideTimer) clearTimeout(hideTimer);
-    hideTimer=setTimeout(()=>{
-      const adjOpen=$('#adjustBar').classList.contains('open');
-      if(S.running && S.phase!=='camera' && !adjOpen) $('#stage').classList.add('controls-hidden');
-    }, ms);
-  }
+  // el menú solo se muestra/oculta con el botón MENÚ (sin temporizador)
+  function showControls(){ $('#stage').classList.remove('controls-hidden'); }
 
   /* ----- barra de ajuste flotante ----- */
   function refreshAbSel(){
@@ -1753,13 +1765,16 @@
     else if(bar.dataset.kind==='calib') $('#abInfo').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—');
     else if(bar.dataset.kind==='holes') $('#abInfo').textContent='Sensibilidad '+S.holeSens+' · Conf '+confTxt()+' s · '+(HD.info||'');
     else if(bar.dataset.kind==='laser') $('#abInfo').textContent='Umbral '+S.thr+' · Mín '+S.minpx+' px · '+($('#liveRed').textContent||'');
+    else if(bar.dataset.kind==='review'){ const tot=S.shots.reduce((a,s)=>a+s.dec,0);
+      $('#abInfo').textContent=S.shots.length+' impactos · total '+tot.toFixed(1).replace('.',',')+' · '+
+        (calMode==='rvAdd'?'Toca donde AÑADIR un impacto':calMode==='rvDel'?'Toca el impacto a BORRAR':'Elige Impacto + o Impacto −'); }
   }
   function openAdjust(kind){
     document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
     const bar=$('#adjustBar'); bar.dataset.kind=kind; $('#hud').style.display='none';
     const row=$('#abRow'); row.innerHTML=''; calMode=null;
     const mk=(label,fn,cm)=>{ const b=document.createElement('button'); b.className='ab'; b.textContent=label;
-      if(cm)b.dataset.cm=cm; b.onclick=()=>{fn(b);refreshAbSel();}; row.appendChild(b); return b; };
+      if(cm)b.dataset.cm=cm; b.onclick=()=>{fn(b);refreshAbSel();abInfo();}; row.appendChild(b); return b; };
     const br=()=>{ const d=document.createElement('div'); d.className='abBr'; row.appendChild(d); };
     if(kind==='persp'){
       $('#abT').textContent='Toca el borde donde lo cruza la línea de números (①–④) y el centro (⑤). Flechas = ajuste fino';
@@ -1785,6 +1800,10 @@
       mk('Conf −',()=>{S.confirm=Math.max(1,S.confirm-1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=confTxt();abInfo();});
       mk('Conf +',()=>{S.confirm=Math.min(10,S.confirm+1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=confTxt();abInfo();});
       mk('Rehacer ref.',()=>resetHoles());
+    } else if(kind==='review'){
+      $('#abT').textContent='Revisión: amplía con dos dedos, elige Impacto + o Impacto − y toca en la diana';
+      mk('➕ Impacto',()=>calMode=(calMode==='rvAdd'?null:'rvAdd'),'rvAdd');
+      mk('➖ Impacto',()=>calMode=(calMode==='rvDel'?null:'rvDel'),'rvDel');
     } else if(kind==='laser'){
       $('#abT').textContent='Enciende el láser sobre la diana: el círculo rojo marca el punto detectado';
       mk('Umbral −',()=>{S.thr=Math.max(90,S.thr-10);$('#thr').value=S.thr;$('#vThr').textContent=S.thr;abInfo();});
@@ -1796,12 +1815,13 @@
     mk('🔍 1×',()=>resetZoom());
     // mover la barra arriba/abajo y terminar (siempre visibles, sin deslizar)
     mk('⇅ Mover barra',()=>bar.classList.toggle('top'));
-    mk('✓ Hecho',()=>closeAdjust()).classList.add('go');
+    if(kind==='review') mk('📄 Informe final',()=>{ closeAdjust(); finishReview(); }).classList.add('go');
+    else mk('✓ Hecho',()=>closeAdjust()).classList.add('go');
     $('#stage').classList.add('adjusting');
     bar.classList.add('open'); abInfo(); refreshAbSel();
   }
   function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#stage').classList.remove('adjusting');
-    $('#hud').style.display=''; calMode=null; showControlsTemp(); }
+    $('#hud').style.display=''; calMode=null; showControls(); }
 
   // color y grosor de los anillos
   document.querySelectorAll('#ringColors .rc').forEach(b=>b.onclick=()=>{
@@ -1827,18 +1847,11 @@
   };
   $('#ccFocusNow').onclick=focusNow;
 
-  // botón ☰ de la cabecera: oculta el menú al momento o lo muestra (y luego se oculta solo como siempre)
-  $('#btnMenu').onclick=()=>{
-    const st=$('#stage');
-    if(st.classList.contains('controls-hidden')) showControlsTemp();
-    else { if(hideTimer) clearTimeout(hideTimer); st.classList.add('controls-hidden'); }
-    syncMenuBtn();
-  };
+  // botón MENÚ de la cabecera: es lo único que muestra u oculta el menú
+  $('#btnMenu').onclick=()=>{ $('#stage').classList.toggle('controls-hidden'); syncMenuBtn(); };
   // el botón se marca cuando el menú está oculto
   function syncMenuBtn(){ $('#btnMenu').classList.toggle('off', $('#stage').classList.contains('controls-hidden')); }
   new MutationObserver(syncMenuBtn).observe($('#stage'),{attributes:true, attributeFilter:['class']});
-  // usar el menú mantiene los controles visibles un rato más
-  $('#hud').addEventListener('pointerdown',()=>{ if(S.running && S.phase!=='camera') showControlsTemp(); });
 
   $('#calAdjust').onclick=()=>openAdjust('calib');
   $('#pAdjust').onclick=()=>openAdjust('persp');
