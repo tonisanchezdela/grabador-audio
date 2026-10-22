@@ -19,6 +19,10 @@
   header{padding:10px 14px; display:flex; align-items:center; gap:10px;
     border-bottom:1px solid var(--line); background:var(--panel);}
   header h1{font-size:18px; margin:0; font-weight:800; letter-spacing:2px; text-transform:uppercase;}
+  #btnMenu{flex:0 0 auto; width:42px; height:38px; border-radius:10px; border:1px solid var(--line);
+    background:var(--bg); color:var(--txt); font-size:20px; line-height:1; padding:0;}
+  #btnMenu:active{transform:scale(.94);}
+  #btnMenu.off{background:var(--ring); border-color:var(--ring); color:#06182e;}
   header .dot{width:9px; height:9px; border-radius:50%; background:var(--muted);}
   header .dot.live{background:var(--accent); animation:pulse 1.4s infinite;}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(248,81,73,.5)}
@@ -234,6 +238,7 @@
 <body>
 <div id="app">
   <header>
+    <button id="btnMenu" aria-label="Mostrar u ocultar el menú">☰</button>
     <span class="dot" id="statusDot"></span>
     <h1>◎ Tirofijo</h1>
     <div style="margin-left:auto; font-size:13px; color:var(--muted)">
@@ -569,7 +574,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v22.10 · 4';   // versión visible para comprobar que se tiene la última
+  const APPVER='v22.10 · 5';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1790,6 +1795,16 @@
   };
   $('#ccFocusNow').onclick=focusNow;
 
+  // botón ☰ de la cabecera: oculta el menú al momento o lo muestra (y luego se oculta solo como siempre)
+  $('#btnMenu').onclick=()=>{
+    const st=$('#stage');
+    if(st.classList.contains('controls-hidden')) showControlsTemp();
+    else { if(hideTimer) clearTimeout(hideTimer); st.classList.add('controls-hidden'); }
+    syncMenuBtn();
+  };
+  // el botón se marca cuando el menú está oculto
+  function syncMenuBtn(){ $('#btnMenu').classList.toggle('off', $('#stage').classList.contains('controls-hidden')); }
+  new MutationObserver(syncMenuBtn).observe($('#stage'),{attributes:true, attributeFilter:['class']});
   // usar el menú mantiene los controles visibles un rato más
   $('#hud').addEventListener('pointerdown',()=>{ if(S.running && S.phase!=='camera') showControlsTemp(); });
 
