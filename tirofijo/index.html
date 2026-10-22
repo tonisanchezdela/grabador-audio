@@ -306,7 +306,6 @@
         <button class="btn" id="btnCfg">⚙︎</button>
         <button class="btn" id="btnDiana">◎</button>
         <button class="btn" id="btnTimer">⏱</button>
-        <button class="btn" id="btnHist">▤</button>
         <button class="btn" id="btnReport">📄</button>
       </div>
       <div class="row" id="rowCam">
@@ -375,7 +374,7 @@
       <p>Compara la imagen con la de hace un segundo y medio y busca manchas del tamaño de un impacto: fibras claras en la zona negra, agujero oscuro en la blanca. Los parches que ya estaban no cuentan. Indica el calibre y el diámetro de la diana para que sepa qué tamaño buscar.</p>
       <div class="grid2" style="margin-top:6px">
         <div><label class="fld">Calibre (mm)</label><input type="number" id="caliber" value="9" min="2" max="20" step="0.1" inputmode="decimal"></div>
-        <div><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm2" placeholder="500" inputmode="numeric"></div>
+        <div class="customOnly"><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm2" placeholder="500" inputmode="numeric"></div>
       </div>
       <label class="fld">Sensibilidad: <span class="val" id="vSens">5</span> (más alto = detecta impactos más débiles)</label>
       <input type="range" id="holeSens" min="1" max="8" value="5">
@@ -425,9 +424,7 @@
     </div>
     <div class="card" id="cardStd">
       <h3>Diana estándar centrada</h3>
-      <p>La diana se dibuja centrada. Encuadra para que coincida con la real.</p>
-      <label class="fld">Radio exterior: <span class="val" id="vR">42</span>% de la imagen</label>
-      <input type="range" id="radius" min="15" max="48" value="42">
+      <p>La diana se dibuja centrada. Acerca o aleja el móvil (o usa el zoom de la cámara) para que coincida con la real. Si la cámara no queda frontal, usa "Perspectiva".</p>
     </div>
     <div class="card" id="cardCal" style="display:none">
       <h3>Calibrar tocando</h3>
@@ -460,7 +457,7 @@
       </select>
       <div class="grid2" style="margin-top:6px">
         <div><label class="fld">Calibre (mm)</label><input type="number" id="caliber2" value="9" min="2" max="20" step="0.1" inputmode="decimal"></div>
-        <div><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm" placeholder="500" inputmode="numeric"></div>
+        <div class="customOnly"><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm" placeholder="500" inputmode="numeric"></div>
       </div>
       <p style="margin-top:6px">Puntuación ISSF: un impacto vale el anillo que toca con su borde, con décimas de x,0 a x,9. Por eso el calibre importa.</p>
       <div id="customRings" style="display:none">
@@ -516,23 +513,6 @@
     </div>
   </div>
 
-  <!-- HISTORIAL -->
-  <div class="sheet" id="sheetHist">
-    <button class="close" data-close>✕</button>
-    <h2>Serie de tiros</h2>
-    <div class="card">
-      <div class="grid2">
-        <div><div class="big val" id="stTotal">0</div><div class="sub">Anillos</div></div>
-        <div><div class="big val" id="stDec">0</div><div class="sub">Décimas</div></div>
-        <div><div class="big val" id="stCount">0</div><div class="sub">Tiros</div></div>
-      </div>
-      <div class="hist" id="histList"></div>
-    </div>
-    <div class="row">
-      <button class="btn" id="btnUndo">↩ Deshacer</button>
-      <button class="btn" id="btnReset2">🗑 Nueva serie</button>
-    </div>
-  </div>
 
   <!-- REPORT -->
   <div class="sheet" id="sheetReport">
@@ -589,7 +569,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v22.10 · 3';   // versión visible para comprobar que se tiene la última
+  const APPVER='v22.10 · 4';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1212,10 +1192,8 @@
   /* ---------- stats ---------- */
   function renderStats(){
     const n=S.shots.length, tot=S.shots.reduce((a,s)=>a+s.ring,0), dec=S.shots.reduce((a,s)=>a+s.dec,0);
-    $('#hdrTotal').textContent=tot; $('#stTotal').textContent=tot;
-    $('#stDec').textContent=dec.toFixed(1); $('#stCount').textContent=n;
-    const hl=$('#histList'); hl.innerHTML='';
-    S.shots.forEach(s=>{ const d=document.createElement('div'); d.className='s'; d.textContent=s.ring; if(s.ring===0)d.style.color='var(--muted)'; hl.appendChild(d); });
+    // cabecera: total con décimas y nº de tiros
+    $('#hdrTotal').textContent = n ? dec.toFixed(1).replace('.',',')+' · '+n+(n===1?' tiro':' tiros') : '0';
   }
 
   /* ---------- REPORT ---------- */
@@ -1433,7 +1411,7 @@
     if(st.n){
       const hc=clockOf(st.mx,st.my);
       $('#kpis').innerHTML =
-        k('Total', f1(st.totalDec), st.total+' anillos completos') +
+        k('Total', f1(st.totalDec), 'sin décimas: '+st.total) +
         k('Media por disparo', f1(st.avg), '± '+f1(st.sdS)+' (regularidad)') +
         k('Mejor / peor', f1(st.best)+' / '+f1(st.worst)) +
         k('Radio de grupo', len(st.meanR), 'distancia media al centro del grupo') +
@@ -1453,7 +1431,7 @@
     $('#countTable').innerHTML=ct;
 
     $('#sumLine').textContent = st.n
-      ? 'Suma: '+f1(st.totalDec)+' (anillos completos: '+st.total+') · Tiros: '+st.n+' · Media: '+f1(st.avg)
+      ? 'Total: '+f1(st.totalDec)+' (sin décimas: '+st.total+') · Tiros: '+st.n+' · Media: '+f1(st.avg)
       : 'Sin disparos';
 
     // series de 10 disparos
@@ -1592,24 +1570,24 @@
   $('#btnSession').onclick=iniciarSesion;
   $('#btnPause').onclick=togglePausa;
   $('#btnFinish').onclick=finalizarSesion;
-  $('#btnHist').onclick=()=>{renderStats();$('#sheetHist').classList.add('open');};
   $('#btnReport').onclick=()=>{buildReport();$('#sheetReport').classList.add('open');};
 
   $('#thr').oninput=e=>{S.thr=+e.target.value;$('#vThr').textContent=S.thr;};
   $('#minpx').oninput=e=>{S.minpx=+e.target.value;$('#vMin').textContent=S.minpx;};
   $('#cd').oninput=e=>{S.cooldown=(+e.target.value)/10;$('#vCd').textContent=S.cooldown.toFixed(1);};
-  $('#radius').oninput=e=>{S.radiusPct=+e.target.value;$('#vR').textContent=S.radiusPct;};
   $('#rings').oninput=e=>{S.rings=+e.target.value;$('#vRings').textContent=S.rings;rescoreAll();renderStats();};
   // modelo de diana: fija medidas oficiales, diámetro y (si la diana lo define) calibre habitual
   function setTarget(t){
     S.target=t; const T0=TARGETS[t];
     if(T0){ S.rings=10; S.realmm=T0.D; if(T0.cal) S.caliber=T0.cal; }
     $('#targetModel').value=t; $('#customRings').style.display=T0?'none':'block';
+    document.querySelectorAll('.customOnly').forEach(e=>e.style.display=T0?'none':'');
     $('#realmm').value=S.realmm||''; $('#realmm2').value=S.realmm||'';
     $('#caliber').value=S.caliber; $('#caliber2').value=S.caliber;
     setR('#rings',S.rings,'#vRings'); rescoreAll(); renderStats(); resetHoles();
   }
   $('#targetModel').onchange=e=>setTarget(e.target.value);
+  document.querySelectorAll('.customOnly').forEach(e=>e.style.display=TARGETS[S.target]?'none':'');   // estado inicial
   $('#caliber2').oninput=e=>{S.caliber=+e.target.value||9;$('#caliber').value=e.target.value;rescoreAll();renderStats();};
   $('#realmm').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm2').value=e.target.value;rescoreAll();renderStats();};
   $('#holeSens').oninput=e=>{S.holeSens=+e.target.value;$('#vSens').textContent=S.holeSens;};
@@ -1819,8 +1797,6 @@
   $('#pAdjust').onclick=()=>openAdjust('persp');
   $('#holeAdjust').onclick=()=>openAdjust('holes');
   $('#laserAdjust').onclick=()=>openAdjust('laser');
-  $('#btnUndo').onclick=()=>{S.shots.pop();renderStats();};
-  $('#btnReset2').onclick=()=>{S.shots=[];renderStats();};
 
   // temporizador
   document.querySelectorAll('#timerMode button').forEach(b=>b.onclick=()=>{
@@ -1939,9 +1915,10 @@
   function syncUI(){
     setR('#thr',S.thr,'#vThr'); setR('#minpx',S.minpx,'#vMin');
     setR('#cd',Math.round(S.cooldown*10),'#vCd',(+S.cooldown).toFixed(1));
-    setR('#radius',S.radiusPct,'#vR'); setR('#rings',S.rings,'#vRings'); $('#realmm').value=S.realmm||'';
+    setR('#rings',S.rings,'#vRings'); $('#realmm').value=S.realmm||'';
     setR('#holeSens',S.holeSens,'#vSens'); $('#caliber').value=S.caliber; $('#caliber2').value=S.caliber; $('#realmm2').value=S.realmm||'';
     $('#targetModel').value=S.target||'custom'; $('#customRings').style.display=TARGETS[S.target]?'none':'block';
+    document.querySelectorAll('.customOnly').forEach(e=>e.style.display=TARGETS[S.target]?'none':'');
     setR('#confirm',S.confirm,'#vConfirm',confTxt()); setR('#roundv',Math.round(S.roundMax*10),'#vRound',(+S.roundMax).toFixed(1));
     setR('#laserMax',Math.round(S.laserMax*10),'#vLaserMax',(+S.laserMax).toFixed(1).replace('.',','));
     $('#swInsideL').classList.toggle('on',S.insideOnly);
