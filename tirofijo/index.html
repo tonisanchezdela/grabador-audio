@@ -368,20 +368,20 @@
     </div>
     <div class="card">
       <h3>Impactos en cartón</h3>
-      <p>Solo en modo "Impactos en cartón". Ajusta hasta que marque los disparos reales sin falsos.</p>
-      <label class="fld">Umbral de oscurecimiento: <span class="val" id="vHole">45</span></label>
-      <input type="range" id="holeThr" min="15" max="140" value="45">
-      <label class="fld">Tamaño mínimo (px): <span class="val" id="vMinHole">6</span></label>
-      <input type="range" id="minHole" min="2" max="80" value="6">
-      <label class="fld">Tamaño máximo (px): <span class="val" id="vMaxHole">400</span></label>
-      <input type="range" id="maxHole" min="40" max="1500" value="400">
+      <p>Compara la imagen con la de hace un segundo y medio y busca manchas del tamaño de un impacto: fibras claras en la zona negra, agujero oscuro en la blanca. Los parches que ya estaban no cuentan. Indica el calibre y el diámetro de la diana para que sepa qué tamaño buscar.</p>
+      <div class="grid2" style="margin-top:6px">
+        <div><label class="fld">Calibre (mm)</label><input type="number" id="caliber" value="9" min="2" max="20" step="0.1" inputmode="decimal"></div>
+        <div><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm2" placeholder="500" inputmode="numeric"></div>
+      </div>
+      <label class="fld">Sensibilidad: <span class="val" id="vSens">5</span> (más alto = detecta impactos más débiles)</label>
+      <input type="range" id="holeSens" min="1" max="8" value="5">
       <label class="fld">Confirmación (el impacto debe permanecer): <span class="val" id="vConfirm">0,6</span> s</label>
       <input type="range" id="confirm" min="1" max="10" value="3">
       <label class="fld">Redondez exigida: <span class="val" id="vRound">2.6</span></label>
       <input type="range" id="roundv" min="12" max="40" value="26">
       <div class="switchrow" style="margin-top:10px"><span>Solo dentro de la diana</span><div class="sw on" id="swInside"></div></div>
       <div class="switchrow"><span>Compensar cambios de luz</span><div class="sw on" id="swLight"></div></div>
-      <button class="btn" id="btnRecalib" style="margin-top:10px">Recalibrar fondo ahora</button>
+      <button class="btn" id="btnRecalib" style="margin-top:10px">Rehacer referencia ahora</button>
       <button class="btn primary" id="holeAdjust" style="margin-top:8px">Ajustar sobre la imagen</button>
       <div class="warn" id="liveHole">Cambios detectados: — </div>
     </div>
@@ -570,7 +570,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v22.10 · 1';   // versión visible para comprobar que se tiene la última
+  const APPVER='v22.10 · 2';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -583,7 +583,7 @@
     thr:160, minpx:4, cooldown:2.0, rings:10, radiusPct:42, realmm:0,
     fit:'contain', // contain = imagen completa | cover = llenar pantalla
     ringColor:'#ff2bd6', ringW:2.5, // anillos: color vivo y grosor
-    holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0,
+    holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9,
     insideOnly:true, lightComp:true, ref:null, cand:null,
     persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
@@ -912,55 +912,154 @@
     return {x:ox+nx*dw, y:oy+ny*dh};
   }
 
-  /* ---------- detección de impactos en cartón (diferencia de fotogramas) ---------- */
-  const HRES=220;
-  function insideDiana(nx,ny){ // nx,ny en 0..1 del muestreo -> a pantalla -> normalizado
+  /* ---------- detección de impactos en cartón ----------
+     Analiza solo la zona de la diana a resolución fija (radio de la diana = 170 px) y compara con la imagen
+     de hace ~1,5 s (renovada continuamente), alineada por si la cámara tiembla y corregida por cambios de luz
+     (ganancia + desplazamiento). En la zona negra un impacto se ve como fibras claras; en la blanca, como un
+     agujero o anillo oscuro: se usa la diferencia en ambos sentidos con un umbral distinto para cada zona.
+     Los cambios cercanos se agrupan y la mancha debe tener el tamaño de un impacto (según calibre y diana). */
+  function insideDiana(nx,ny){ // nx,ny en 0..1 del vídeo -> pantalla -> normalizado (lo usa también el láser)
     if(!S.insideOnly) return true;
     const scr=mapCover(nx,ny); const {dRel}=normFromScreen(scr.x,scr.y);
     return dRel<=1.05;
   }
-  function detectHole(){
-    if(video.videoWidth===0) return null;
-    const sw=HRES, sh=Math.round(sw*video.videoHeight/video.videoWidth);
-    work.width=sw; work.height=sh; wctx.drawImage(video,0,0,sw,sh);
-    const d=wctx.getImageData(0,0,sw,sh).data, N=sw*sh;
-    const cur=new Uint8Array(N);
-    for(let i=0;i<N;i++){ const p=i*4; cur[i]=(d[p]*0.299+d[p+1]*0.587+d[p+2]*0.114); }
-    if(!S.ref || S.ref.length!==N){ S.ref=cur; return null; }
-
-    // compensar cambio global de brillo (luz): desplaza la referencia por la mediana de diferencia
-    let gsum=0; for(let i=0;i<N;i+=7) gsum+=(cur[i]-S.ref[i]); const gBias=S.lightComp? gsum/(N/7) : 0;
-
-    let sx=0,sy=0,n=0, minx=sw,miny=sh,maxx=0,maxy=0;
-    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
-      const i=y*sw+x;
-      if((S.ref[i]-(cur[i]-gBias)) > S.holeThr){
-        if(S.insideOnly && !insideDiana(x/sw,y/sh)) continue;
-        sx+=x; sy+=y; n++;
-        if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
-      }
+  const HD={RR:170, key:'', R:null, ins:null, snaps:[], lastSnap:0, lastRun:0, recent:[], view:null, info:''};
+  const HOLE_THR_L=40, HOLE_THR_D=22, HOLE_G0=40;
+  function holeTb(){ return 0.50-0.04*S.holeSens; }          // sensibilidad 1..8 → umbral 0,46..0,18
+  function holeSize(){                                        // tamaño esperado del impacto en px del análisis
+    const dmm=S.realmm>0?S.realmm:500, cal=S.caliber>0?S.caliber:9;
+    const d=cal/dmm*2*HD.RR, r=Math.max(1,Math.round(0.45*d));
+    return {d, r, A:Math.PI*Math.pow(d/2+r,2)};
+  }
+  function computeRoi(){
+    const vw=video.videoWidth, vh=video.videoHeight; if(!vw||!S.W) return null;
+    let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+    for(let a=0;a<32;a++){ const t=a/32*2*Math.PI, p=normToScreen(1.08*Math.cos(t),1.08*Math.sin(t));
+      mnx=Math.min(mnx,p.x); mny=Math.min(mny,p.y); mxx=Math.max(mxx,p.x); mxy=Math.max(mxy,p.y); }
+    const a0=mapCover(0,0), a1=mapCover(1,1), dw=a1.x-a0.x, dh=a1.y-a0.y;
+    const vx0=(mnx-a0.x)/dw*vw, vy0=(mny-a0.y)/dh*vh, vx1=(mxx-a0.x)/dw*vw, vy1=(mxy-a0.y)/dh*vh;
+    const x0=Math.max(0,Math.floor(vx0)), y0=Math.max(0,Math.floor(vy0));
+    const x1=Math.min(vw,Math.ceil(vx1)), y1=Math.min(vh,Math.ceil(vy1)), bw=x1-x0, bh=y1-y0;
+    if(bw<20||bh<20) return null;
+    const rv=Math.sqrt((vx1-vx0)*(vy1-vy0))/2/1.08, sc=HD.RR/rv;   // radio de la diana en px de vídeo
+    const w=Math.max(16,Math.min(460,Math.round(bw*sc))), h=Math.max(16,Math.min(460,Math.round(bh*sc)));
+    return {x0,y0,bw,bh,w,h,vw,vh};
+  }
+  function roiToScreen(R,x,y){ return mapCover((R.x0+x*R.bw/R.w)/R.vw, (R.y0+y*R.bh/R.h)/R.vh); }
+  function grabRoi(R){
+    work.width=R.w; work.height=R.h; wctx.imageSmoothingEnabled=true; wctx.imageSmoothingQuality='high';
+    wctx.drawImage(video,R.x0,R.y0,R.bw,R.bh,0,0,R.w,R.h);
+    const d=wctx.getImageData(0,0,R.w,R.h).data, n=R.w*R.h, g=new Float32Array(n);
+    for(let i=0,p=0;i<n;i++,p+=4) g[i]=d[p]*0.299+d[p+1]*0.587+d[p+2]*0.114;
+    return g;
+  }
+  function prepSnap(g,R,ins,t){
+    const w=R.w,h=R.h,n=w*h, grad=new Float32Array(n);
+    for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){ const i=y*w+x;
+      const gx=(g[i-w+1]+2*g[i+1]+g[i+w+1]-g[i-w-1]-2*g[i-1]-g[i+w-1])/4;
+      const gy=(g[i+w-1]+2*g[i+w]+g[i+w+1]-g[i-w-1]-2*g[i-w]-g[i-w+1])/4;
+      grad[i]=Math.sqrt(gx*gx+gy*gy); }
+    const hw=w>>1, hh=h>>1, half=new Float32Array(hw*hh);
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; half[y*hw+x]=(g[i]+g[i+1]+g[i+w]+g[i+w+1])/4; }
+    const sm=[]; for(let i=0;i<n;i+=5) if(ins[i]) sm.push(g[i]); sm.sort((a,b)=>a-b);
+    const mid=sm.length?(sm[Math.floor(sm.length*0.15)]+sm[Math.floor(sm.length*0.85)])/2:128;  // entre negro y blanco
+    return {t,g,grad,half,hw,hh,mid};
+  }
+  // desplazamiento de la imagen (temblor): cur(p) ≈ ref(p+d). Búsqueda ±4 px + ajuste subpíxel
+  function estShift(sn,cur,R){
+    const w=R.w, hw=sn.hw, hh=sn.hh, b=new Float32Array(hw*hh), a=sn.half, m=4, Sv={};
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; b[y*hw+x]=(cur[i]+cur[i+1]+cur[i+w]+cur[i+w+1])/4; }
+    let best=Infinity, bx=0, by=0;
+    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+      let s=0,q=0,n=0;
+      for(let y=m;y<hh-m;y++){ const r1=y*hw, r2=(y+dy)*hw+dx;
+        for(let x=m;x<hw-m;x++){ const d=b[r1+x]-a[r2+x]; s+=d; q+=d*d; n++; } }
+      const v=q/n-(s/n)*(s/n); Sv[dx+','+dy]=v; if(v<best){ best=v; bx=dx; by=dy; } }
+    const sub=(c,l,r)=>{ const den=l-2*c+r; return den<=0?0:0.5*(l-r)/den; };
+    const fx=Math.abs(bx)<2?sub(best,Sv[(bx-1)+','+by],Sv[(bx+1)+','+by]):0;
+    const fy=Math.abs(by)<2?sub(best,Sv[bx+','+(by-1)],Sv[bx+','+(by+1)]):0;
+    return {dx:2*(bx+fx), dy:2*(by+fy)};
+  }
+  function shifted(src,w,h,dx,dy){
+    const out=new Float32Array(w*h);
+    for(let y=0;y<h;y++){ const sy=Math.min(h-1.001,Math.max(0,y+dy)), y0=sy|0, fy=sy-y0;
+      for(let x=0;x<w;x++){ const sx=Math.min(w-1.001,Math.max(0,x+dx)), x0=sx|0, fx=sx-x0, i=y0*w+x0;
+        out[y*w+x]=(src[i]*(1-fx)+src[i+1]*fx)*(1-fy)+(src[i+w]*(1-fx)+src[i+w+1]*fx)*fy; } }
+    return out;
+  }
+  // luz: cur ≈ g·ref + o, ajuste robusto (2 pasadas sin los píxeles que cambian)
+  function fitLight(ref,cur,ins){
+    let g=1,o=0,sd=1e9;
+    for(let it=0;it<2;it++){
+      let sx=0,sy=0,sxx=0,sxy=0,n=0;
+      for(let i=0;i<ref.length;i+=3){ if(!ins[i]) continue; const x=ref[i], y=cur[i];
+        if(it>0 && Math.abs(y-(g*x+o))>3*sd+2) continue; sx+=x; sy+=y; sxx+=x*x; sxy+=x*y; n++; }
+      const den=n*sxx-sx*sx; if(n<50||Math.abs(den)<1e-6) break;
+      g=(n*sxy-sx*sy)/den; o=(sy-g*sx)/n;
+      let s2=0,m=0; for(let i=0;i<ref.length;i+=3){ if(!ins[i]) continue; const r=cur[i]-(g*ref[i]+o); s2+=r*r; m++; }
+      sd=Math.sqrt(s2/Math.max(1,m));
     }
-    $('#liveHole').textContent='Cambios detectados: '+n+' px';
-    // cambio global enorme (movimiento del móvil / luz brusca) → re-referenciar, descartar
-    if(n > N*0.18){ S.ref=cur; S.cand=null; return null; }
-    // máscara de cambios para separar manchas reales del ruido suelto
-    const mask=new Uint8Array(N);
-    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){ const i=y*sw+x;
-      if((S.ref[i]-(cur[i]-gBias)) > S.holeThr && (!S.insideOnly || insideDiana(x/sw,y/sh))) mask[i]=1; }
-    // la referencia se adapta despacio a cambios de luz, salvo donde hay un cambio (un agujero no se borra)
-    for(let i=0;i<N;i++) if(!mask[i]) S.ref[i]=S.ref[i]*0.97+cur[i]*0.03;
-    const ok=blobs(mask,sw,sh)
-      .filter(c=>c.n>=S.minHole && c.n<=S.maxHole && c.ar<=S.roundMax && c.fill>=0.3)
-      .sort((a,b)=>b.n-a.n)[0];
-    $('#liveHole').textContent='Cambios: '+n+' px · mancha válida: '+(ok?ok.n+' px':'—');
-    if(!ok){ S.cand=null; return null; }
-    // confirmación por tiempo: un agujero es permanente; una sombra o alguien que pasa, no
+    return {g,o};
+  }
+  function resetHoles(){ HD.snaps=[]; HD.key=''; HD.recent=[]; S.cand=null; HD.view=null; }
+  function detectHole(){
+    if(video.videoWidth===0||!S.W) return null;
     const now=performance.now();
-    if(!S.cand || Math.hypot(ok.cx-S.cand.x, ok.cy-S.cand.y) >= 6){ S.cand={x:ok.cx,y:ok.cy,t0:now}; return null; }
-    S.cand.x=ok.cx; S.cand.y=ok.cy;
-    if(now-S.cand.t0 < S.confirm*200) return null;
+    if(now-HD.lastRun<100) return null; HD.lastRun=now;                // 10 análisis por segundo
+    const R=computeRoi(); if(!R) return null;
+    const key=[R.x0,R.y0,R.bw,R.bh,R.w,R.h,S.insideOnly,S.dianaMode].join(',');
+    if(key!==HD.key){                                                   // cambió la geometría: rehace la máscara de diana
+      HD.key=key; HD.R=R; HD.snaps=[]; S.cand=null;
+      const lim=S.insideOnly?1.04:1.3, ins=new Uint8Array(R.w*R.h);
+      for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const p=roiToScreen(R,x+0.5,y+0.5);
+        if(normFromScreen(p.x,p.y).dRel<=lim) ins[y*R.w+x]=1; }
+      HD.ins=ins;
+    }
+    const ins=HD.ins, w=R.w, h=R.h, n=w*h, cur=grabRoi(R);
+    // imagen de referencia renovada: una foto cada 0,4 s; se compara con la de hace ≥ 1,2 s
+    const delay=Math.max(1200, S.confirm*200+800);
+    if(now-HD.lastSnap>=400){ HD.snaps.push(prepSnap(cur,R,ins,now)); HD.lastSnap=now; }
+    while(HD.snaps.length>2 && now-HD.snaps[1].t>=delay) HD.snaps.shift();
+    const sn=HD.snaps[0];
+    if(!sn || now-sn.t<delay){ HD.info='Preparando referencia…'; $('#liveHole').textContent=HD.info; return null; }
+    // alinear y corregir luz
+    const sh=estShift(sn,cur,R);
+    const still=Math.abs(sh.dx)<0.12&&Math.abs(sh.dy)<0.12;             // sin temblor: no hace falta realinear
+    const ref=still?sn.g:shifted(sn.g,w,h,sh.dx,sh.dy), grad=sn.grad;
+    const L=S.lightComp?fitLight(ref,cur,ins):{g:1,o:0};
+    // mapa de cambio (ambos sentidos), umbral por zona, bordes de líneas/números atenuados
+    const E=new Float32Array(n); let big=0,cnt=0;
+    for(let i=0;i<n;i++){ if(!ins[i]) continue; cnt++;
+      const d=Math.abs(cur[i]-(L.g*ref[i]+L.o)), thr=ref[i]<sn.mid?HOLE_THR_D:HOLE_THR_L;
+      let e=d/thr; if(e>1) big++; if(e>2) e=2; const q=grad[i]/HOLE_G0; E[i]=e/(1+q*q); }
+    if(big>cnt*0.15){ S.cand=null; HD.view=null; HD.info='Cambio general (movimiento o luz): esperando…';
+      $('#liveHole').textContent=HD.info; return null; }
+    // suavizado del tamaño de un impacto: une las fibras sueltas en una sola mancha y apaga el ruido
+    const hs=holeSize(), r=hs.r, W1=w+1, I=new Float64Array(W1*(h+1));
+    for(let y=0;y<h;y++){ let row=0; for(let x=0;x<w;x++){ row+=E[y*w+x]; I[(y+1)*W1+x+1]=I[y*W1+x+1]+row; } }
+    const Tb=holeTb(), mask=new Uint8Array(n); let mx=0;
+    for(let y=0;y<h;y++){ const ya=Math.max(0,y-r), yb=Math.min(h,y+r+1);
+      for(let x=0;x<w;x++){ const xa=Math.max(0,x-r), xb=Math.min(w,x+r+1);
+        const v=(I[yb*W1+xb]-I[ya*W1+xb]-I[yb*W1+xa]+I[ya*W1+xa])/((yb-ya)*(xb-xa));
+        if(v>mx && ins[y*w+x]) mx=v; if(v>Tb) mask[y*w+x]=1; } }
+    // manchas con tamaño y forma de impacto, que no estén donde ya se marcó uno
+    HD.recent=HD.recent.filter(o=>now-o.t<4000);
+    const near=hs.d*1.5/HD.RR;
+    const ok=blobs(mask,w,h).filter(c=>c.n>=0.2*hs.A && c.n<=3.5*hs.A && c.ar<=S.roundMax && c.fill>=0.3)
+      .map(c=>{ const p=roiToScreen(R,c.cx+0.5,c.cy+0.5), q=normFromScreen(p.x,p.y); return {...c,p,q}; })
+      .filter(c=>!HD.recent.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<near))
+      .sort((a,b)=>b.n-a.n);
+    HD.view={R,ok};
+    HD.info='Cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas válidas: '+ok.length;
+    $('#liveHole').textContent=HD.info;
+    const c=ok[0];
+    if(!c){ S.cand=null; return null; }
+    // confirmación por tiempo: un agujero se queda; una sombra o el papel que se mueve, no
+    if(!S.cand || Math.hypot(c.cx-S.cand.x,c.cy-S.cand.y)>Math.max(4,hs.d)){ S.cand={x:c.cx,y:c.cy,t0:now}; return null; }
+    S.cand.x=c.cx; S.cand.y=c.cy;
+    if(now-S.cand.t0<S.confirm*200) return null;
     S.cand=null;
-    return { pt:mapCover(ok.cx/sw, ok.cy/sh), cur };
+    return {pt:c.p, q:c.q};
   }
 
   /* ---------- dibujo overlay ---------- */
@@ -1030,11 +1129,20 @@
       if(p && p.shot && live){ const now=performance.now()/1000;
         if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.shot.x,p.shot.y); } }
       if(adjLaser) abInfo();
-    } else if((live && S.detectType==='holes') || adjHoles){
+    } else if(S.phase!=='camera' && S.detectType==='holes'){   // siempre activo: mantiene la referencia al día
       const h=detectHole();
-      if(h && live){ const now=performance.now()/1000;
-        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(h.pt.x,h.pt.y); S.ref=h.cur; } }
-      if(adjHoles) abInfo();
+      if(h){
+        HD.recent.push({rx:h.q.rx, ry:h.q.ry, t:performance.now()});
+        if(live){ const now=performance.now()/1000;
+          if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(h.pt.x,h.pt.y); } }
+        else if(adjHoles){ flashScore('●'); }                     // al ajustar: avisa de que lo habría contado
+      }
+      if(adjHoles){
+        // muestra las manchas que ve el detector (círculo cian = mancha con tamaño de impacto)
+        if(HD.view) HD.view.ok.forEach(c=>{ octx.beginPath(); octx.arc(c.p.x,c.p.y,10,0,7);
+          octx.strokeStyle='#00e5ff'; octx.lineWidth=2.5; octx.stroke(); });
+        abInfo();
+      }
     }
     requestAnimationFrame(loop);
   }
@@ -1360,7 +1468,7 @@
     } else empezarTiro();
   }
   function empezarTiro(){
-    S.phase='running'; T.beepAcc=0; S.ref=null; S.cand=null; LZ.active=false; // referencias limpias
+    S.phase='running'; T.beepAcc=0; S.cand=null; HD.recent=[]; LZ.active=false; // referencias limpias
     if(T.mode==='down') T.clock=T.downSecs;
     else if(T.mode==='alt'){ T.altOn='A'; T.clock=T.altA; }
     else T.clock=0;
@@ -1408,7 +1516,7 @@
   // pantalla inicial
   // tipo de diana: se puede cambiar en cualquier momento (inicio, ajustes o antes de cada sesión)
   function setDetectType(t){
-    S.detectType=t; S.ref=null; S.cand=null;
+    S.detectType=t; resetHoles();
     document.querySelectorAll('#targetType button, #cfgType button').forEach(x=>x.classList.toggle('sel', x.dataset.tt===t));
     $('#btnType').textContent = t==='laser' ? '🔴 Láser ⇄' : '🎯 Cartón ⇄';
   }
@@ -1437,10 +1545,10 @@
   $('#cd').oninput=e=>{S.cooldown=(+e.target.value)/10;$('#vCd').textContent=S.cooldown.toFixed(1);};
   $('#radius').oninput=e=>{S.radiusPct=+e.target.value;$('#vR').textContent=S.radiusPct;};
   $('#rings').oninput=e=>{S.rings=+e.target.value;$('#vRings').textContent=S.rings;};
-  $('#realmm').oninput=e=>{S.realmm=+e.target.value||0;};
-  $('#holeThr').oninput=e=>{S.holeThr=+e.target.value;$('#vHole').textContent=S.holeThr;};
-  $('#minHole').oninput=e=>{S.minHole=+e.target.value;$('#vMinHole').textContent=S.minHole;};
-  $('#maxHole').oninput=e=>{S.maxHole=+e.target.value;$('#vMaxHole').textContent=S.maxHole;};
+  $('#realmm').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm2').value=e.target.value;};
+  $('#holeSens').oninput=e=>{S.holeSens=+e.target.value;$('#vSens').textContent=S.holeSens;};
+  $('#caliber').oninput=e=>{S.caliber=+e.target.value||9;};
+  $('#realmm2').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm').value=e.target.value;};
   const confTxt=()=>(S.confirm*0.2).toFixed(1).replace('.',',');
   $('#confirm').oninput=e=>{S.confirm=+e.target.value;$('#vConfirm').textContent=confTxt();};
   $('#laserMax').oninput=e=>{S.laserMax=(+e.target.value)/10;$('#vLaserMax').textContent=S.laserMax.toFixed(1).replace('.',',');};
@@ -1449,7 +1557,7 @@
   $('#roundv').oninput=e=>{S.roundMax=(+e.target.value)/10;$('#vRound').textContent=S.roundMax.toFixed(1);};
   $('#swInside').onclick=()=>{S.insideOnly=!S.insideOnly;$('#swInside').classList.toggle('on',S.insideOnly);$('#swInsideL').classList.toggle('on',S.insideOnly);};
   $('#swLight').onclick=e=>{S.lightComp=!S.lightComp;e.target.classList.toggle('on',S.lightComp);};
-  $('#btnRecalib').onclick=()=>{S.ref=null;S.cand=null;$('#liveHole').textContent='Fondo recalibrado.';};
+  $('#btnRecalib').onclick=()=>{resetHoles();$('#liveHole').textContent='Referencia rehecha.';};
 
   document.querySelectorAll('#fireMode button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('#fireMode button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); S.fireMode=b.dataset.fm;
@@ -1562,7 +1670,7 @@
     const bar=$('#adjustBar'); if(!bar.classList.contains('open'))return;
     if(bar.dataset.kind==='persp') $('#abInfo').textContent=perspTxt()+(S.persp[S.selP]?' · Flechas mueven: '+PNAME[S.selP]:'');
     else if(bar.dataset.kind==='calib') $('#abInfo').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—');
-    else if(bar.dataset.kind==='holes') $('#abInfo').textContent='Umbral '+S.holeThr+' · Conf '+confTxt()+' s · '+($('#liveHole').textContent||'');
+    else if(bar.dataset.kind==='holes') $('#abInfo').textContent='Sensibilidad '+S.holeSens+' · Conf '+confTxt()+' s · '+(HD.info||'');
     else if(bar.dataset.kind==='laser') $('#abInfo').textContent='Umbral '+S.thr+' · Mín '+S.minpx+' px · '+($('#liveRed').textContent||'');
   }
   function openAdjust(kind){
@@ -1591,11 +1699,11 @@
       mk('Centro',()=>calMode='center','center'); mk('Borde',()=>calMode='edge','edge');
     } else if(kind==='holes'){
       $('#abT').textContent='Ajusta en vivo mientras disparas de prueba';
-      mk('Umbral −',()=>{S.holeThr=Math.max(15,S.holeThr-5);$('#holeThr').value=S.holeThr;$('#vHole').textContent=S.holeThr;abInfo();});
-      mk('Umbral +',()=>{S.holeThr=Math.min(140,S.holeThr+5);$('#holeThr').value=S.holeThr;$('#vHole').textContent=S.holeThr;abInfo();});
+      mk('Sens −',()=>{S.holeSens=Math.max(1,S.holeSens-1);$('#holeSens').value=S.holeSens;$('#vSens').textContent=S.holeSens;abInfo();});
+      mk('Sens +',()=>{S.holeSens=Math.min(8,S.holeSens+1);$('#holeSens').value=S.holeSens;$('#vSens').textContent=S.holeSens;abInfo();});
       mk('Conf −',()=>{S.confirm=Math.max(1,S.confirm-1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=confTxt();abInfo();});
       mk('Conf +',()=>{S.confirm=Math.min(10,S.confirm+1);$('#confirm').value=S.confirm;$('#vConfirm').textContent=confTxt();abInfo();});
-      mk('Recalibrar',()=>{S.ref=null;S.cand=null;});
+      mk('Rehacer ref.',()=>resetHoles());
     } else if(kind==='laser'){
       $('#abT').textContent='Enciende el láser sobre la diana: el círculo rojo marca el punto detectado';
       mk('Umbral −',()=>{S.thr=Math.max(90,S.thr-10);$('#thr').value=S.thr;$('#vThr').textContent=S.thr;abInfo();});
@@ -1624,7 +1732,7 @@
   // ajuste de imagen: completa o llenar pantalla
   document.querySelectorAll('#fitMode button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('#fitMode button').forEach(x=>x.classList.remove('sel'));
-    b.classList.add('sel'); S.fit=b.dataset.fit; video.style.objectFit=S.fit; S.ref=null; S.cand=null;
+    b.classList.add('sel'); S.fit=b.dataset.fit; video.style.objectFit=S.fit; resetHoles();
   });
 
   // controles de la cámara que transmite
@@ -1676,7 +1784,7 @@
   function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PKEY)||'{}')||{}; }catch(e){ return {}; } }
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
   const SKEYS=['fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW',
-    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax'];
+    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber'];
   const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
   function snapshot(){
     const o={S:{},T:{},REP:{...REP},fields:{},saved:Date.now()};
@@ -1700,7 +1808,7 @@
     setR('#thr',S.thr,'#vThr'); setR('#minpx',S.minpx,'#vMin');
     setR('#cd',Math.round(S.cooldown*10),'#vCd',(+S.cooldown).toFixed(1));
     setR('#radius',S.radiusPct,'#vR'); setR('#rings',S.rings,'#vRings'); $('#realmm').value=S.realmm||'';
-    setR('#holeThr',S.holeThr,'#vHole'); setR('#minHole',S.minHole,'#vMinHole'); setR('#maxHole',S.maxHole,'#vMaxHole');
+    setR('#holeSens',S.holeSens,'#vSens'); $('#caliber').value=S.caliber; $('#realmm2').value=S.realmm||'';
     setR('#confirm',S.confirm,'#vConfirm',confTxt()); setR('#roundv',Math.round(S.roundMax*10),'#vRound',(+S.roundMax).toFixed(1));
     setR('#laserMax',Math.round(S.laserMax*10),'#vLaserMax',(+S.laserMax).toFixed(1).replace('.',','));
     $('#swInsideL').classList.toggle('on',S.insideOnly);
