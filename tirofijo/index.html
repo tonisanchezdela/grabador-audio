@@ -211,6 +211,10 @@
   #report .optrow .seg{flex:1; min-width:160px;}
   #report .optrow .seg button{background:#f2f2f2; color:#555; font-size:12px; padding:8px 4px;}
   #report .optrow .seg button.sel{background:#111; color:#fff;}
+  /* modo captura para el PDF: ancho de folio, sin controles, con los textos de impresión */
+  #report.pdfmode{width:760px; border-radius:0;}
+  #report.pdfmode .noprint{display:none !important;}
+  #report.pdfmode .pv{display:block !important;}
 
   @media print{
     @page{size:A4; margin:11mm;}
@@ -360,8 +364,8 @@
       <input type="range" id="minpx" min="1" max="30" value="4">
       <label class="fld">Duración máxima del destello: <span class="val" id="vLaserMax">1,0</span> s</label>
       <input type="range" id="laserMax" min="2" max="30" value="10">
-      <label class="fld">Espera entre tiros (s): <span class="val" id="vCd">2.0</span></label>
-      <input type="range" id="cd" min="5" max="60" value="20">
+      <label class="fld">Espera mínima entre tiros (s): <span class="val" id="vCd">0.5</span></label>
+      <input type="range" id="cd" min="2" max="60" value="5">
       <div class="switchrow" style="margin-top:10px"><span>Solo dentro de la diana</span><div class="sw on" id="swInsideL"></div></div>
       <button class="btn primary" id="laserAdjust" style="margin-top:8px">Ajustar sobre la imagen</button>
       <div class="warn" id="liveRed">Rojo detectado ahora: — </div>
@@ -445,12 +449,24 @@
       <input type="range" id="ringW" min="10" max="60" value="25">
     </div>
     <div class="card">
-      <h3>Anillos</h3>
-      <label class="fld">Nº de zonas: <span class="val" id="vRings">10</span></label>
-      <input type="range" id="rings" min="5" max="10" value="10">
-      <label class="fld">Diámetro real de la diana (mm, opcional): </label>
-      <input type="number" id="realmm" placeholder="p.ej. 500" inputmode="numeric">
-      <p style="margin-top:6px">Si lo indicas, el report calcula la desviación al centro en mm.</p>
+      <h3>Modelo de diana y puntuación</h3>
+      <p>Elige tu diana: la app usa sus medidas oficiales para dibujar los anillos y puntuar.</p>
+      <select id="targetModel" style="margin-top:8px">
+        <option value="p25">Pistola 25/50 m precisión (Ø 500 mm)</option>
+        <option value="ap10">Pistola aire 10 m (Ø 155,5 mm)</option>
+        <option value="ar10">Carabina aire 10 m (Ø 45,5 mm)</option>
+        <option value="r50">Carabina 50 m (Ø 154,4 mm)</option>
+        <option value="custom">Personalizada (anillos iguales)</option>
+      </select>
+      <div class="grid2" style="margin-top:6px">
+        <div><label class="fld">Calibre (mm)</label><input type="number" id="caliber2" value="9" min="2" max="20" step="0.1" inputmode="decimal"></div>
+        <div><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm" placeholder="500" inputmode="numeric"></div>
+      </div>
+      <p style="margin-top:6px">Puntuación ISSF: un impacto vale el anillo que toca con su borde, con décimas de x,0 a x,9. Por eso el calibre importa.</p>
+      <div id="customRings" style="display:none">
+        <label class="fld">Nº de zonas: <span class="val" id="vRings">10</span></label>
+        <input type="range" id="rings" min="5" max="10" value="10">
+      </div>
     </div>
   </div>
 
@@ -522,8 +538,11 @@
   <div class="sheet" id="sheetReport">
     <button class="close" data-close>✕</button>
     <div class="noprint row" style="margin-bottom:12px">
-      <button class="btn primary" id="btnPrint">⬇ Exportar / Imprimir PDF</button>
+      <button class="btn primary" id="btnPdf">⬇ Descargar PDF</button>
+      <button class="btn" id="btnShare">↗ Compartir</button>
+      <button class="btn" id="btnPrint" style="flex:0 0 auto" title="Imprimir">🖨</button>
     </div>
+    <div class="noprint warn" id="pdfMsg" style="margin:-4px 0 10px; text-align:center"></div>
     <div id="report">
       <div class="rhead">
         <div style="flex:1; margin-right:10px">
@@ -570,7 +589,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v22.10 · 2';   // versión visible para comprobar que se tiene la última
+  const APPVER='v22.10 · 3';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -580,10 +599,10 @@
   const S = {
     running:false, fireMode:'auto', dianaMode:'standard',
     detectType:'laser', // laser | holes
-    thr:160, minpx:4, cooldown:2.0, rings:10, radiusPct:42, realmm:0,
+    thr:160, minpx:4, cooldown:0.5, rings:10, radiusPct:42, realmm:0,
     fit:'contain', // contain = imagen completa | cover = llenar pantalla
     ringColor:'#ff2bd6', ringW:2.5, // anillos: color vivo y grosor
-    holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9,
+    holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9, target:'p25',
     insideOnly:true, lightComp:true, ref:null, cand:null,
     persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
@@ -818,13 +837,37 @@
     const rx=(x-cx)/rOuter, ry=(y-cy)/rOuter;
     return {rx,ry,dRel:Math.hypot(rx,ry)};
   }
-  // relación distancia(en unidades de rOuter) -> anillo y décima
-  function scoreFromDist(dRel){ // dRel: 0 centro, 1 borde
-    if(dRel>1) return {ring:0, dec:0};
-    const band=1/S.rings, ring=Math.max(1, S.rings-Math.floor(dRel/band));
-    const dec=Math.max(0, Math.min(S.rings, S.rings - dRel/band));
-    return {ring, dec:Math.round(dec*10)/10};
+  /* ---------- modelos de diana ISSF (diámetros de cada anillo, del 1 al 10, en mm) ---------- */
+  const TARGETS={
+    p25 :{name:'Pistola 25/50 m (precisión)', D:500,   r:[0,500,450,400,350,300,250,200,150,100,50],          black:200,   x:25},
+    ap10:{name:'Pistola aire 10 m',           D:155.5, r:[0,155.5,139.5,123.5,107.5,91.5,75.5,59.5,43.5,27.5,11.5], black:59.5, x:5,   cal:4.5},
+    ar10:{name:'Carabina aire 10 m',          D:45.5,  r:[0,45.5,40.5,35.5,30.5,25.5,20.5,15.5,10.5,5.5,0.5],     black:30.5,  x:0,   cal:4.5},
+    r50 :{name:'Carabina 50 m',               D:154.4, r:[0,154.4,138.4,122.4,106.4,90.4,74.4,58.4,42.4,26.4,10.4], black:112.4, x:5,  cal:5.6},
+  };
+  // radio exterior de cada anillo (1..n), con el borde exterior de la diana = 1
+  function ringRadii(){
+    const t=TARGETS[S.target]; if(t) return t.r.map(d=>d/t.D);
+    const a=[0]; for(let v=1;v<=S.rings;v++) a.push((S.rings-v+1)/S.rings); return a;
   }
+  function blackRadius(){ const t=TARGETS[S.target]; if(t) return t.black/t.D;
+    return Math.max(0,S.rings-(REP.gun==='pistol'?7:4)+1)/S.rings; }
+  function xRadius(){ const t=TARGETS[S.target]; return t ? t.x/t.D : 0.5/S.rings; }
+  function targetD(){ return S.realmm>0 ? S.realmm : (TARGETS[S.target]?TARGETS[S.target].D:500); }
+  function bulletR(){ return S.caliber>0 ? S.caliber/targetD() : 0; }        // radio del impacto (normalizado)
+  // puntuación ISSF: vale el anillo que TOCA el borde del impacto; décimas dentro de ese anillo (x,0 a x,9)
+  function scoreShot(dRel){
+    const rr=ringRadii(), n=rr.length-1, de=Math.max(0, dRel-bulletR());
+    for(let v=n; v>=1; v--){
+      if(de<=rr[v]+1e-9){
+        const inner = v===n ? 0 : rr[v+1], frac=(rr[v]-de)/Math.max(1e-9, rr[v]-inner);
+        return {ring:v, dec:Math.round((v+Math.min(0.9, Math.floor(frac*10+1e-6)/10))*10)/10};
+      }
+    }
+    return {ring:0, dec:0};
+  }
+  function scoreFromDist(dRel){ return scoreShot(dRel); }
+  // recalcula todos los disparos con los ajustes actuales (calibre, modelo de diana…)
+  function rescoreAll(){ S.shots.forEach(s=>{ const r=scoreShot(s.dRel); s.ring=r.ring; s.dec=r.dec; }); }
 
   /* ---------- manchas conectadas (separa una mancha real del ruido suelto) ---------- */
   const LAB={buf:null};
@@ -927,7 +970,7 @@
   const HOLE_THR_L=40, HOLE_THR_D=22, HOLE_G0=40;
   function holeTb(){ return 0.50-0.04*S.holeSens; }          // sensibilidad 1..8 → umbral 0,46..0,18
   function holeSize(){                                        // tamaño esperado del impacto en px del análisis
-    const dmm=S.realmm>0?S.realmm:500, cal=S.caliber>0?S.caliber:9;
+    const dmm=targetD(), cal=S.caliber>0?S.caliber:9;
     const d=cal/dmm*2*HD.RR, r=Math.max(1,Math.round(0.45*d));
     return {d, r, A:Math.PI*Math.pow(d/2+r,2)};
   }
@@ -1001,7 +1044,7 @@
     }
     return {g,o};
   }
-  function resetHoles(){ HD.snaps=[]; HD.key=''; HD.recent=[]; S.cand=null; HD.view=null; }
+  function resetHoles(){ HD.snaps=[]; HD.key=''; HD.recent=[]; HD.cands=[]; HD.view=null; }
   function detectHole(){
     if(video.videoWidth===0||!S.W) return null;
     const now=performance.now();
@@ -1009,7 +1052,7 @@
     const R=computeRoi(); if(!R) return null;
     const key=[R.x0,R.y0,R.bw,R.bh,R.w,R.h,S.insideOnly,S.dianaMode].join(',');
     if(key!==HD.key){                                                   // cambió la geometría: rehace la máscara de diana
-      HD.key=key; HD.R=R; HD.snaps=[]; S.cand=null;
+      HD.key=key; HD.R=R; HD.snaps=[]; HD.cands=[];
       const lim=S.insideOnly?1.04:1.3, ins=new Uint8Array(R.w*R.h);
       for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const p=roiToScreen(R,x+0.5,y+0.5);
         if(normFromScreen(p.x,p.y).dRel<=lim) ins[y*R.w+x]=1; }
@@ -1032,7 +1075,7 @@
     for(let i=0;i<n;i++){ if(!ins[i]) continue; cnt++;
       const d=Math.abs(cur[i]-(L.g*ref[i]+L.o)), thr=ref[i]<sn.mid?HOLE_THR_D:HOLE_THR_L;
       let e=d/thr; if(e>1) big++; if(e>2) e=2; const q=grad[i]/HOLE_G0; E[i]=e/(1+q*q); }
-    if(big>cnt*0.15){ S.cand=null; HD.view=null; HD.info='Cambio general (movimiento o luz): esperando…';
+    if(big>cnt*0.15){ HD.cands=[]; HD.view=null; HD.info='Cambio general (movimiento o luz): esperando…';
       $('#liveHole').textContent=HD.info; return null; }
     // suavizado del tamaño de un impacto: une las fibras sueltas en una sola mancha y apaga el ruido
     const hs=holeSize(), r=hs.r, W1=w+1, I=new Float64Array(W1*(h+1));
@@ -1045,21 +1088,25 @@
     // manchas con tamaño y forma de impacto, que no estén donde ya se marcó uno
     HD.recent=HD.recent.filter(o=>now-o.t<4000);
     const near=hs.d*1.5/HD.RR;
-    const ok=blobs(mask,w,h).filter(c=>c.n>=0.2*hs.A && c.n<=3.5*hs.A && c.ar<=S.roundMax && c.fill>=0.3)
+    const ok=blobs(mask,w,h).filter(c=>c.n>=0.12*hs.A && c.n<=3.5*hs.A && c.ar<=S.roundMax && c.fill>=0.3)
       .map(c=>{ const p=roiToScreen(R,c.cx+0.5,c.cy+0.5), q=normFromScreen(p.x,p.y); return {...c,p,q}; })
       .filter(c=>!HD.recent.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<near))
       .sort((a,b)=>b.n-a.n);
     HD.view={R,ok};
     HD.info='Cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas válidas: '+ok.length;
     $('#liveHole').textContent=HD.info;
-    const c=ok[0];
-    if(!c){ S.cand=null; return null; }
-    // confirmación por tiempo: un agujero se queda; una sombra o el papel que se mueve, no
-    if(!S.cand || Math.hypot(c.cx-S.cand.x,c.cy-S.cand.y)>Math.max(4,hs.d)){ S.cand={x:c.cx,y:c.cy,t0:now}; return null; }
-    S.cand.x=c.cx; S.cand.y=c.cy;
-    if(now-S.cand.t0<S.confirm*200) return null;
-    S.cand=null;
-    return {pt:c.p, q:c.q};
+    // confirmación por tiempo de CADA mancha (varios impactos casi a la vez se siguen por separado):
+    // un agujero se queda; una sombra o el papel que se mueve, no
+    const prev=HD.cands||[], next=[], fired=[], used=new Set();
+    for(const c of ok){
+      const m=prev.find(p=>Math.hypot(c.cx-p.x,c.cy-p.y)<=Math.max(4,hs.d)), t0=m?m.t0:now;
+      if(m) used.add(m);
+      if(now-t0>=S.confirm*200) fired.push({pt:c.p, q:c.q}); else next.push({x:c.cx, y:c.cy, t0, seen:now});
+    }
+    // si una mancha falla uno o dos análisis sueltos, no pierde lo que llevaba confirmado (hasta 0,35 s)
+    prev.forEach(p=>{ if(!used.has(p) && now-p.seen<=350) next.push(p); });
+    HD.cands=next;
+    return fired.length?fired:null;
   }
 
   /* ---------- dibujo overlay ---------- */
@@ -1076,18 +1123,18 @@
       octx.beginPath(); octx.arc(cx,cy,3,0,7); octx.fillStyle='rgba(248,81,73,.9)'; octx.fill();
       return;
     }
+    const RAD=ringRadii(), NR=RAD.length-1;
     if(S.dianaMode==='persp' && S.Hinv){
-      for(let k=S.rings;k>=1;k--){
-        const rr=k/S.rings; octx.beginPath();
+      for(let v=1; v<=NR; v++){
+        const rr=RAD[v]; octx.beginPath();
         for(let a=0;a<=64;a++){ const t=a/64*Math.PI*2, p=normToScreen(rr*Math.cos(t), rr*Math.sin(t));
           if(a===0)octx.moveTo(p.x,p.y); else octx.lineTo(p.x,p.y); }
-        strokeRing(k);
+        strokeRing(v===1);
       }
       const c=normToScreen(0,0); drawCross(c.x,c.y);
     } else {
       const {cx,cy,rOuter}=dianaGeom();
-      for(let k=S.rings;k>=1;k--){ const rr=rOuter*k/S.rings;
-        octx.beginPath(); octx.arc(cx,cy,rr,0,7); strokeRing(k); }
+      for(let v=1; v<=NR; v++){ octx.beginPath(); octx.arc(cx,cy,rOuter*RAD[v],0,7); strokeRing(v===1); }
       drawCross(cx,cy);
     }
     if(S.dianaMode==='calib'){ if(S.center)mark(S.center.x*S.W,S.center.y*S.H,'#3fb950','C'); if(S.edge)mark(S.edge.x*S.W,S.edge.y*S.H,'#d29922','B'); }
@@ -1098,13 +1145,18 @@
         if(k==='center'){ octx.beginPath(); octx.moveTo(x-7,y); octx.lineTo(x+7,y); octx.moveTo(x,y-7); octx.lineTo(x,y+7);
           octx.strokeStyle='#d29922'; octx.lineWidth=1.5; octx.stroke(); }
         mark(x,y, sel?'#ffffff':'#d29922', t); }); }
-    S.shots.slice(-12).forEach(s=>{ const p=normToScreen(s.rx,s.ry);
-      octx.beginPath(); octx.arc(p.x,p.y,6,0,7);
-      octx.fillStyle='rgba(248,81,73,.9)'; octx.fill(); octx.strokeStyle='#fff'; octx.lineWidth=1.5; octx.stroke(); });
+    // todos los impactos de la sesión, a su tamaño real (calibre) en la diana
+    const c0=normToScreen(0,0), ex=normToScreen(1,0), ey=normToScreen(0,1);
+    const Rs=(Math.hypot(ex.x-c0.x,ex.y-c0.y)+Math.hypot(ey.x-c0.x,ey.y-c0.y))/2;
+    const dot=Math.max(2.5, bulletR()*Rs);
+    S.shots.forEach((s,i)=>{ const p=normToScreen(s.rx,s.ry), last=i===S.shots.length-1;
+      octx.beginPath(); octx.arc(p.x,p.y,dot,0,7);
+      octx.fillStyle=last?'rgba(255,214,10,.95)':'rgba(248,81,73,.9)'; octx.fill();
+      octx.strokeStyle='rgba(0,0,0,.85)'; octx.lineWidth=1.2; octx.stroke(); });
   }
   // anillo con color vivo + halo oscuro: se ve sobre blanco y sobre negro
-  function strokeRing(k){
-    const w=S.ringW*(k===S.rings?1.4:1);
+  function strokeRing(outer){
+    const w=S.ringW*(outer?1.4:1);
     octx.lineJoin='round';
     octx.strokeStyle='rgba(0,0,0,.75)'; octx.lineWidth=w+2.5; octx.stroke(); // halo
     octx.strokeStyle=S.ringColor; octx.lineWidth=w; octx.stroke();          // línea viva
@@ -1130,13 +1182,13 @@
         if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.shot.x,p.shot.y); } }
       if(adjLaser) abInfo();
     } else if(S.phase!=='camera' && S.detectType==='holes'){   // siempre activo: mantiene la referencia al día
-      const h=detectHole();
-      if(h){
+      const hs=detectHole();
+      // en cartón no hay espera entre disparos: cada agujero es único por su posición
+      if(hs) hs.forEach(h=>{
         HD.recent.push({rx:h.q.rx, ry:h.q.ry, t:performance.now()});
-        if(live){ const now=performance.now()/1000;
-          if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(h.pt.x,h.pt.y); } }
+        if(live){ S.lastShot=performance.now()/1000; registerShot(h.pt.x,h.pt.y); }
         else if(adjHoles){ flashScore('●'); }                     // al ajustar: avisa de que lo habría contado
-      }
+      });
       if(adjHoles){
         // muestra las manchas que ve el detector (círculo cian = mancha con tamaño de impacto)
         if(HD.view) HD.view.ok.forEach(c=>{ octx.beginPath(); octx.arc(c.p.x,c.p.y,10,0,7);
@@ -1181,7 +1233,7 @@
     const dist=sh.map(s=>Math.hypot(s.rx-mx,s.ry-my));
     let es=0; for(let i=0;i<n;i++)for(let j=i+1;j<n;j++) es=Math.max(es,Math.hypot(sh[i].rx-sh[j].rx, sh[i].ry-sh[j].ry));
     const meanR=mean(dist), half=Math.floor(n/2);
-    const iv=[]; for(let i=1;i<n;i++){ const d=(sh[i].t-sh[i-1].t)/1000; if(d>0&&d<600) iv.push(d); }
+    const iv=[]; for(let i=1;i<n;i++){ const d=(sh[i].t-sh[i-1].t)/1000; if(d>0.3&&d<600) iv.push(d); }
     const fliers = n>=5&&meanR>0 ? dist.map((d,i)=>({i,d})).filter(o=>o.d>2.5*meanR && o.d>0.08).map(o=>o.i+1) : [];
     return { n, total:rg.reduce((a,b)=>a+b,0), totalDec:dec.reduce((a,b)=>a+b,0),
       avg:mean(dec), sdS:sdev(dec), best:Math.max(...dec), worst:Math.min(...dec),
@@ -1199,36 +1251,38 @@
 
   // diana del informe: blanca, zona negra de puntería y números en cada anillo
   function drawReportTarget(st){
-    const c=$('#repCanvas'), g=c.getContext('2d'), W=c.width, cx=W/2, cy=W/2, R=W*0.45, rings=S.rings;
+    const c=$('#repCanvas'), g=c.getContext('2d'), W=c.width, cx=W/2, cy=W/2, R=W*0.45;
     g.clearRect(0,0,W,W); g.fillStyle='#fff'; g.fillRect(0,0,W,W);
-    const band=R/rings, rOf=v=>R*(rings-v+1)/rings;
-    const blackFrom = REP.gun==='pistol' ? 7 : 4;
-    const blackK=Math.max(0,Math.min(rings, rings-blackFrom+1)), blackR=band*blackK;
+    const RAD=ringRadii(), n=RAD.length-1, rOf=v=>R*RAD[v], blackR=R*blackRadius();
     g.fillStyle='#fff'; g.beginPath(); g.arc(cx,cy,R,0,7); g.fill();
-    if(blackK>0){ g.fillStyle='#111'; g.beginPath(); g.arc(cx,cy,blackR,0,7); g.fill(); }
-    for(let v=1; v<=rings; v++){
+    if(blackR>0){ g.fillStyle='#111'; g.beginPath(); g.arc(cx,cy,blackR,0,7); g.fill(); }
+    for(let v=1; v<=n; v++){
       const r=rOf(v), inB=r<=blackR+0.5;
       g.beginPath(); g.arc(cx,cy,r,0,7); g.strokeStyle=inB?'#fff':'#111'; g.lineWidth=v===1?3:2; g.stroke();
     }
     // décimo interior (X), discontinuo
-    g.setLineDash([6,5]); g.beginPath(); g.arc(cx,cy,band*0.5,0,7);
-    g.strokeStyle=blackK>0?'#fff':'#111'; g.lineWidth=1.5; g.stroke(); g.setLineDash([]);
-    // números en los cuatro lados
-    const fs=Math.max(12,Math.min(28,band*0.55)); g.font='600 '+fs+'px sans-serif';
+    const xr=R*xRadius();
+    if(xr>2){ g.setLineDash([6,5]); g.beginPath(); g.arc(cx,cy,xr,0,7);
+      g.strokeStyle=xr<blackR?'#fff':'#111'; g.lineWidth=1.5; g.stroke(); g.setLineDash([]); }
+    // números en los cuatro lados, en el centro de cada anillo
     g.textAlign='center'; g.textBaseline='middle';
-    for(let v=1; v<rings; v++){
-      if(band<16 && v>=rings-1) continue;
-      const mid=rOf(v)-band/2; g.fillStyle = mid<blackR ? '#fff' : '#111';
+    for(let v=1; v<n; v++){
+      const band=rOf(v)-rOf(v+1); if(band<14) continue;
+      const fs=Math.max(12,Math.min(28,band*0.55)); g.font='600 '+fs+'px sans-serif';
+      const mid=(rOf(v)+rOf(v+1))/2; g.fillStyle = mid<blackR ? '#fff' : '#111';
       [[0,-1],[1,0],[0,1],[-1,0]].forEach(([dx,dy])=>g.fillText(v, cx+dx*mid, cy+dy*mid));
     }
     if(!st.n) return;
-    // impactos (azul con borde blanco, se ve sobre blanco y negro) con su número de orden
-    const dot=W*0.017, clamp=v=>Math.max(dot,Math.min(W-dot,v));
+    // impactos a su tamaño real (calibre); el número de orden va al lado
+    const real=bulletR()*R, dot=Math.max(4, real), clamp=v=>Math.max(dot,Math.min(W-dot,v));
     S.shots.forEach((s,i)=>{
       const x=clamp(cx+s.rx*R), y=clamp(cy+s.ry*R);
-      g.beginPath(); g.arc(x,y,dot,0,7); g.fillStyle='#2f6fdb'; g.fill();
-      g.lineWidth=3; g.strokeStyle='#fff'; g.stroke();
-      if(st.n<=30){ g.font='700 '+Math.round(dot*1.05)+'px sans-serif'; g.fillStyle='#fff'; g.fillText(i+1,x,y+1); }
+      g.beginPath(); g.arc(x,y,dot,0,7); g.fillStyle='rgba(47,111,219,.85)'; g.fill();
+      g.lineWidth=2; g.strokeStyle='#fff'; g.stroke();
+      if(st.n<=40){ const fs=Math.max(15,Math.min(22,dot*1.2)); g.font='700 '+fs+'px sans-serif';
+        const lx=x+dot*0.75+fs*0.45, ly=y-dot*0.75-fs*0.45;
+        g.lineWidth=4; g.strokeStyle='rgba(255,255,255,.9)'; g.strokeText(i+1,lx,ly);
+        g.fillStyle='#1d4ed8'; g.fillText(i+1,lx,ly); }
     });
     // centro del grupo y radio medio
     if(st.n>=2){
@@ -1244,7 +1298,7 @@
   function drawReportChart(st){
     const c=$('#repChart'), g=c.getContext('2d'), W=c.width, H=c.height;
     g.clearRect(0,0,W,H); g.fillStyle='#fff'; g.fillRect(0,0,W,H);
-    const L=70, Rm=24, T=36, B=56, pw=W-L-Rm, ph=H-T-B, ymax=S.rings;
+    const L=70, Rm=24, T=36, B=56, pw=W-L-Rm, ph=H-T-B, ymax=S.rings+1;   // décimas hasta x,9
     g.font='22px sans-serif'; g.textBaseline='middle';
     for(let v=0; v<=ymax; v+=2){ const y=T+ph-(v/ymax)*ph;
       g.strokeStyle=v===0?'#999':'#e6e6e6'; g.lineWidth=v===0?2:1.5;
@@ -1323,7 +1377,7 @@
       return h+'<p>Se necesitan al menos <b>5 disparos</b> para un análisis fiable. Completa una serie más larga y vuelve a generar el informe.</p>';
     }
     const rings=S.rings, mpiR=st.mpi*rings, grpR=st.meanR*rings;
-    const level = st.avg>=9.5?'alto':st.avg>=9?'avanzado':st.avg>=8?'intermedio':st.avg>=6.5?'en progresión':'de iniciación';
+    const level = st.avg>=10?'alto':st.avg>=9.4?'avanzado':st.avg>=8.5?'intermedio':st.avg>=7?'en progresión':'de iniciación';
     const grpQ = grpR<=1?'excelente':grpR<=2?'buena':grpR<=3?'aceptable':'amplia';
     const offset = mpiR>=0.8 && st.mpi>0.5*st.meanR;
     const hc = clockOf(st.mx, st.my), hDiag = clockOf(REP.hand==='L'?-st.mx:st.mx, st.my);
@@ -1360,7 +1414,7 @@
     [...new Set(plans)].slice(0,4).forEach((k,i)=>{ const p=PLANS[k](st);
       h+='<div class="plan"><div class="pt">'+(i+1)+'. '+p.t+'</div><div>'+p.d+'</div><div class="pf">'+p.f+'</div></div>'; });
 
-    const tAvg=Math.min(rings, st.avg+0.3), tGrp=st.meanR*0.85;
+    const tAvg=Math.min(rings+0.9, st.avg+0.3), tGrp=st.meanR*0.85;
     h+='<div class="goal"><b>Objetivo para la próxima sesión:</b> media ≥ '+f1(tAvg)+' y radio de grupo ≤ '+len(tGrp)+'.</div>';
     h+='<div class="note">Análisis automático orientativo basado en la posición de los impactos, para '+gunTxt.toLowerCase()+' y tirador '+handTxt+
        '. Las causas indicadas son las más habituales para cada tendencia; conviene confirmarlas con un entrenador. '+
@@ -1369,6 +1423,7 @@
   }
 
   function buildReport(){
+    rescoreAll(); renderStats();               // puntuación con los ajustes actuales
     const st=shotStats();
     drawReportTarget(st);
     drawReportChart(st);
@@ -1468,7 +1523,7 @@
     } else empezarTiro();
   }
   function empezarTiro(){
-    S.phase='running'; T.beepAcc=0; S.cand=null; HD.recent=[]; LZ.active=false; // referencias limpias
+    S.phase='running'; T.beepAcc=0; HD.cands=[]; HD.recent=[]; LZ.active=false; // referencias limpias
     if(T.mode==='down') T.clock=T.downSecs;
     else if(T.mode==='alt'){ T.altOn='A'; T.clock=T.altA; }
     else T.clock=0;
@@ -1544,11 +1599,22 @@
   $('#minpx').oninput=e=>{S.minpx=+e.target.value;$('#vMin').textContent=S.minpx;};
   $('#cd').oninput=e=>{S.cooldown=(+e.target.value)/10;$('#vCd').textContent=S.cooldown.toFixed(1);};
   $('#radius').oninput=e=>{S.radiusPct=+e.target.value;$('#vR').textContent=S.radiusPct;};
-  $('#rings').oninput=e=>{S.rings=+e.target.value;$('#vRings').textContent=S.rings;};
-  $('#realmm').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm2').value=e.target.value;};
+  $('#rings').oninput=e=>{S.rings=+e.target.value;$('#vRings').textContent=S.rings;rescoreAll();renderStats();};
+  // modelo de diana: fija medidas oficiales, diámetro y (si la diana lo define) calibre habitual
+  function setTarget(t){
+    S.target=t; const T0=TARGETS[t];
+    if(T0){ S.rings=10; S.realmm=T0.D; if(T0.cal) S.caliber=T0.cal; }
+    $('#targetModel').value=t; $('#customRings').style.display=T0?'none':'block';
+    $('#realmm').value=S.realmm||''; $('#realmm2').value=S.realmm||'';
+    $('#caliber').value=S.caliber; $('#caliber2').value=S.caliber;
+    setR('#rings',S.rings,'#vRings'); rescoreAll(); renderStats(); resetHoles();
+  }
+  $('#targetModel').onchange=e=>setTarget(e.target.value);
+  $('#caliber2').oninput=e=>{S.caliber=+e.target.value||9;$('#caliber').value=e.target.value;rescoreAll();renderStats();};
+  $('#realmm').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm2').value=e.target.value;rescoreAll();renderStats();};
   $('#holeSens').oninput=e=>{S.holeSens=+e.target.value;$('#vSens').textContent=S.holeSens;};
-  $('#caliber').oninput=e=>{S.caliber=+e.target.value||9;};
-  $('#realmm2').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm').value=e.target.value;};
+  $('#caliber').oninput=e=>{S.caliber=+e.target.value||9;$('#caliber2').value=e.target.value;rescoreAll();renderStats();};
+  $('#realmm2').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm').value=e.target.value;rescoreAll();renderStats();};
   const confTxt=()=>(S.confirm*0.2).toFixed(1).replace('.',',');
   $('#confirm').oninput=e=>{S.confirm=+e.target.value;$('#vConfirm').textContent=confTxt();};
   $('#laserMax').oninput=e=>{S.laserMax=(+e.target.value)/10;$('#vLaserMax').textContent=S.laserMax.toFixed(1).replace('.',',');};
@@ -1773,6 +1839,71 @@
   $('#swSound').onclick=e=>{T.sound=!T.sound;e.target.classList.toggle('on',T.sound);};
 
   $('#btnPrint').onclick=()=>{ copyPrintFields(); window.print(); };
+
+  /* ---------- PDF directo: se genera en el móvil y se guarda en Descargas o se comparte ---------- */
+  function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src;
+    s.onload=res; s.onerror=()=>rej(new Error('No se pudo cargar '+src)); document.head.appendChild(s); }); }
+  function pdfName(){
+    const nm=($('#rName').value||'').trim(), d=new Date();
+    const f=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'_'+
+      String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+    return ('Tirofijo_'+(nm?nm+'_':'')+f).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9_-]+/g,'_')+'.pdf';
+  }
+  async function makePdf(){
+    if(!window.jspdf) await loadScript('vendor/jspdf.umd.min.js');
+    if(!window.html2canvas) await loadScript('vendor/html2canvas.min.js');
+    copyPrintFields();
+    const rep=$('#report'); rep.classList.add('pdfmode');
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    let canvas, breaks=[];
+    try{
+      const top=rep.getBoundingClientRect().top;
+      // posibles saltos de página: entre secciones, filas, bloques del análisis
+      rep.querySelectorAll('.rsec, .tgtwrap, .serie, table, .diag, .plan, .goal, .note, .an p, .an h4')
+        .forEach(e=>breaks.push(e.getBoundingClientRect().top-top));
+      canvas=await html2canvas(rep,{scale:2, backgroundColor:'#ffffff', windowWidth:820, logging:false});
+    } finally { rep.classList.remove('pdfmode'); }
+    const k=canvas.width/760; breaks=breaks.map(v=>Math.round(v*k)).filter(v=>v>0).sort((a,b)=>a-b);
+    const {jsPDF}=window.jspdf, pdf=new jsPDF({unit:'mm', format:'a4'});
+    const m=10, iw=210-2*m, pagePx=Math.floor(canvas.width*(297-2*m)/iw);
+    let y=0, first=true;
+    while(y<canvas.height-4){
+      let end=Math.min(canvas.height, y+pagePx);
+      if(end<canvas.height){ const b=breaks.filter(v=>v>y+pagePx*0.45 && v<=end).pop(); if(b) end=b; }
+      const c2=document.createElement('canvas'); c2.width=canvas.width; c2.height=end-y;
+      const g2=c2.getContext('2d'); g2.fillStyle='#fff'; g2.fillRect(0,0,c2.width,c2.height);
+      g2.drawImage(canvas,0,y,canvas.width,end-y,0,0,canvas.width,end-y);
+      if(!first) pdf.addPage(); first=false;
+      pdf.addImage(c2.toDataURL('image/jpeg',0.92),'JPEG',m,m,iw,(end-y)*iw/canvas.width);
+      y=end;
+    }
+    return pdf.output('blob');
+  }
+  function saveBlob(blob,name){
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }
+  async function pdfAction(share){
+    const msg=$('#pdfMsg'); msg.textContent='Generando PDF…';
+    try{
+      const blob=await makePdf(), name=pdfName();
+      if(share){
+        const file=new File([blob],name,{type:'application/pdf'});
+        if(navigator.canShare && navigator.canShare({files:[file]})){
+          try{ await navigator.share({files:[file], title:'Informe Tirofijo'}); msg.textContent='PDF compartido.'; return; }
+          catch(e){ if(e && e.name==='AbortError'){ msg.textContent=''; return; } }
+        }
+        saveBlob(blob,name);
+        msg.textContent='Este móvil no permite compartir directamente: el PDF se ha guardado en Descargas ('+name+').';
+        return;
+      }
+      saveBlob(blob,name);
+      msg.textContent='PDF guardado en la carpeta Descargas: '+name;
+    }catch(e){ msg.textContent='No se pudo generar el PDF ('+(e&&e.message||e)+'). Prueba con 🖨 Imprimir → Guardar como PDF.'; }
+  }
+  $('#btnPdf').onclick=()=>pdfAction(false);
+  $('#btnShare').onclick=()=>pdfAction(true);
   document.querySelectorAll('#report .rf, #rTitle').forEach(i=>i.addEventListener('input',copyPrintFields));
   document.querySelectorAll('#rGun button').forEach(b=>b.onclick=()=>{ REP.gun=b.dataset.g;
     document.querySelectorAll('#rGun button').forEach(x=>x.classList.toggle('sel',x===b)); buildReport(); });
@@ -1784,7 +1915,7 @@
   function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PKEY)||'{}')||{}; }catch(e){ return {}; } }
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
   const SKEYS=['fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW',
-    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber'];
+    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target'];
   const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
   function snapshot(){
     const o={S:{},T:{},REP:{...REP},fields:{},saved:Date.now()};
@@ -1796,6 +1927,7 @@
   function applySnapshot(o){
     if(!o) return;
     SKEYS.forEach(k=>{ if(o.S && k in o.S) S[k]=o.S[k]; });
+    if(o.S && !('target' in o.S)) S.target = S.rings===10 ? 'p25' : 'custom';   // perfiles antiguos
     if(o.S && o.S.persp) S.persp={top:null,right:null,bottom:null,left:null,center:null,...o.S.persp};
     TKEYS.forEach(k=>{ if(o.T && k in o.T) T[k]=o.T[k]; });
     if(o.REP) Object.assign(REP,o.REP);
@@ -1808,7 +1940,8 @@
     setR('#thr',S.thr,'#vThr'); setR('#minpx',S.minpx,'#vMin');
     setR('#cd',Math.round(S.cooldown*10),'#vCd',(+S.cooldown).toFixed(1));
     setR('#radius',S.radiusPct,'#vR'); setR('#rings',S.rings,'#vRings'); $('#realmm').value=S.realmm||'';
-    setR('#holeSens',S.holeSens,'#vSens'); $('#caliber').value=S.caliber; $('#realmm2').value=S.realmm||'';
+    setR('#holeSens',S.holeSens,'#vSens'); $('#caliber').value=S.caliber; $('#caliber2').value=S.caliber; $('#realmm2').value=S.realmm||'';
+    $('#targetModel').value=S.target||'custom'; $('#customRings').style.display=TARGETS[S.target]?'none':'block';
     setR('#confirm',S.confirm,'#vConfirm',confTxt()); setR('#roundv',Math.round(S.roundMax*10),'#vRound',(+S.roundMax).toFixed(1));
     setR('#laserMax',Math.round(S.laserMax*10),'#vLaserMax',(+S.laserMax).toFixed(1).replace('.',','));
     $('#swInsideL').classList.toggle('on',S.insideOnly);
