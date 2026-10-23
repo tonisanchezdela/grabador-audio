@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function compDoc(cid) { return get(/databases/$(database)/documents/comps/$(cid)).data; }
+    function isOrg(cid) { return signed() && compDoc(cid).org == me(); }
+    function isOpen(cid) { return compDoc(cid).status == 'open'; }
+    function admitted(cid) {
+      return exists(/databases/$(database)/documents/comps/$(cid)/parts/$(me()))
+        && get(/databases/$(database)/documents/comps/$(cid)/parts/$(me())).data.status == 'admitted';
+    }
+    function onlyKeys(ks) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(ks); }
+
+    // competiciones en las que me he inscrito (solo las veo yo)
+    match /users/{uid}/mine/{cid} {
+      allow read, write: if signed() && me() == uid;
+    }
+
+    match /comps/{cid} {
+      allow read: if signed();
+      allow create: if signed() && request.resource.data.org == me() && request.resource.data.status == 'open';
+      allow update: if signed() && resource.data.org == me() && request.resource.data.org == me();
+      allow delete: if signed() && resource.data.org == me();
+
+      // inscripciones: el tirador la pide, solo el organizador admite o rechaza
+      match /parts/{uid} {
+        allow read: if signed();
+        allow create: if signed() && uid == me() && request.resource.data.uid == me()
+          && request.resource.data.status == 'pending' && isOpen(cid);
+        allow update: if isOrg(cid) && onlyKeys(['status', 'by', 'at2'])
+          && request.resource.data.status in ['admitted', 'rejected', 'pending'];
+        allow delete: if isOrg(cid) || (signed() && uid == me() && resource.data.status == 'pending');
+      }
+
+      // resultados: cada tirador admitido envía los suyos; solo el organizador los valida
+      match /results/{rid} {
+        allow read: if signed();
+        allow create: if signed() && request.resource.data.uid == me()
+          && rid == me() + '_' + string(request.resource.data.sess)
+          && request.resource.data.status == 'pending' && admitted(cid) && isOpen(cid);
+        allow update: if (signed() && request.resource.data.uid == me()
+            && rid == me() + '_' + string(request.resource.data.sess)
+            && request.resource.data.status == 'pending' && admitted(cid) && isOpen(cid)
+            && resource.data.status != 'valid')
+          || (isOrg(cid) && onlyKeys(['status', 'note', 'vBy', 'vAt']));
+        allow delete: if isOrg(cid);
+      }
+    }
+  }
+}
