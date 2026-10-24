@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Tirofijo</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#161b22">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-180.png">
 <style>
   :root{
     --bg:#0d1117; --panel:#161b22; --line:#30363d; --txt:#e6edf3;
@@ -615,11 +619,11 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="vendor/peerjs.min.js"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v24.0';   // versión visible para comprobar que se tiene la última
+  const APPVER='v24.1';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2500,6 +2504,8 @@
   // enlace de invitación: ?comp=CÓDIGO abre la competición
   (function(){ const m=/[?&]comp=([A-Za-z0-9]{6})/.exec(location.search); if(!m) return;
     CP.wantOpen=m[1].toUpperCase(); openCompSheet(); })();
+  // instalable y sin conexión (necesario para publicarla en Google Play)
+  if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
 </body>
