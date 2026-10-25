@@ -431,6 +431,8 @@
       <input type="range" id="roundv" min="12" max="40" value="26">
       <div class="switchrow" style="margin-top:10px"><span>Solo dentro de la diana</span><div class="sw on" id="swInside"></div></div>
       <div class="switchrow"><span>Compensar cambios de luz</span><div class="sw on" id="swLight"></div></div>
+      <div class="switchrow"><span>🎥 Grabar vídeo de diagnóstico</span><div class="sw" id="swDiag"></div></div>
+      <p style="margin-top:-4px">Graba lo que ve la cámara durante la sesión y lo que detecta la app. Al terminar puedes descargarlo y enviarlo para ajustar la detección a tu galería.</p>
       <button class="btn" id="btnRecalib" style="margin-top:10px">Rehacer referencia ahora</button>
       <button class="btn primary" id="holeAdjust" style="margin-top:8px">Ajustar sobre la imagen</button>
       <div class="warn" id="liveHole">Cambios detectados: — </div>
@@ -577,6 +579,7 @@
     </div>
     <div class="noprint warn" id="pdfMsg" style="margin:-4px 0 10px; text-align:center"></div>
     <div class="noprint card" id="compSend" style="display:none; text-align:center"></div>
+    <div class="noprint card" id="diagBox" style="display:none; text-align:center"></div>
     <div id="report">
       <div class="rhead">
         <div style="flex:1; margin-right:10px">
@@ -623,7 +626,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v24.1';   // versión visible para comprobar que se tiene la última
+  const APPVER='v24.2';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1078,7 +1081,17 @@
     }
     return {g,o};
   }
-  function resetHoles(){ HD.base=null; HD.prevHalf=null; HD.stableSince=0; HD.quietSince=0; HD.key=''; HD.recent=[]; HD.cands=[]; HD.view=null; }
+  // mínimo y máximo de cada vecindario 3×3: un píxel solo "cambia" si se sale del rango de su entorno en la
+  // referencia (así el enfoque que respira, el desenfoque o un desplazamiento de medio píxel en las líneas no cuentan)
+  function minMax3(a,w,h){
+    const n=w*h, t1=new Float32Array(n), t2=new Float32Array(n), mn=new Float32Array(n), mx=new Float32Array(n);
+    for(let y=0;y<h;y++){ const o=y*w; for(let x=0;x<w;x++){ const i=o+x, l=x>0?a[i-1]:a[i], r=x<w-1?a[i+1]:a[i], c=a[i];
+      t1[i]=Math.min(l,c,r); t2[i]=Math.max(l,c,r); } }
+    for(let y=0;y<h;y++){ const o=y*w, u=y>0?o-w:o, d=y<h-1?o+w:o; for(let x=0;x<w;x++){
+      mn[o+x]=Math.min(t1[u+x],t1[o+x],t1[d+x]); mx[o+x]=Math.max(t2[u+x],t2[o+x],t2[d+x]); } }
+    return {mn,mx};
+  }
+  function resetHoles(){ HD.avg=null; HD.burstSince=0; HD.base=null; HD.prevHalf=null; HD.stableSince=0; HD.quietSince=0; HD.key=''; HD.recent=[]; HD.cands=[]; HD.view=null; }
   function detectHole(){
     if(video.videoWidth===0||!S.W) return null;
     const now=performance.now();
@@ -1086,7 +1099,7 @@
     const R=computeRoi(); if(!R) return null;
     const key=[R.x0,R.y0,R.bw,R.bh,R.w,R.h,S.insideOnly,S.dianaMode].join(',');
     if(key!==HD.key){                                                   // cambió la geometría: rehace la máscara de diana
-      HD.key=key; HD.R=R; HD.base=null; HD.prevHalf=null; HD.stableSince=0; HD.cands=[];
+      HD.key=key; HD.R=R; HD.base=null; HD.avg=null; HD.prevHalf=null; HD.stableSince=0; HD.cands=[];
       const lim=S.insideOnly?1.04:1.3, ins=new Uint8Array(R.w*R.h);
       for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const p=roiToScreen(R,x+0.5,y+0.5);
         if(normFromScreen(p.x,p.y).dRel<=lim) ins[y*R.w+x]=1; }
@@ -1101,13 +1114,19 @@
     if(HD.prevHalf && HD.prevHalf.length===half.length)
       for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ if(!ins[2*y*w+2*x]) continue; tot++; if(Math.abs(half[y*hw+x]-HD.prevHalf[y*hw+x])>20) mov++; }
     HD.prevHalf=half;
-    if(tot && mov/tot>0.004){ HD.stableSince=now; HD.cands=[]; HD.view=null;
+    if(tot && mov/tot>0.004){ HD.stableSince=now; HD.cands=[]; HD.view=null; HD.avg=null;
       say('Movimiento en la imagen: esperando a que se quede quieta…','mov'); return null; }
     if(!HD.stableSince) HD.stableSince=now;
-    if(now-HD.stableSince<500){ say('Estabilizando…','wait'); return null; }
+    // media de varios fotogramas quietos: la referencia sale con mucho menos ruido que una sola foto
+    // y cuánto "baila" cada píxel cuando no pasa nada (ruido, compresión, enfoque que busca, bordes de líneas):
+    // un cambio solo cuenta si destaca sobre lo que ese píxel suele variar
+    if(!HD.avg||HD.avg.length!==n){ HD.avg=Float32Array.from(cur); HD.avgN=1; if(!HD.vr||HD.vr.length!==n){ HD.vr=new Float32Array(n); HD.vrSince=now; } }
+    const avgUpd=()=>{ const a=HD.avg, v=HD.vr, k=Math.max(0.2,1/(++HD.avgN));
+      for(let i=0;i<n;i++){ const e=cur[i]-a[i], e2=e*e; v[i]=e2>v[i]?e2:v[i]*0.995; a[i]+=e*k; } };
+    if(now-HD.stableSince<500){ avgUpd(); say('Estabilizando…','wait'); return null; }
     // 2) referencia ESTABLE: foto de la diana quieta con los impactos ya conocidos. No se toca mientras hay movimiento,
     //    así un impacto que aparece mientras algo tapa la diana sigue siendo "nuevo" cuando todo vuelve a estar quieto
-    if(!HD.base){ HD.base=prepSnap(cur,R,ins,now); HD.quietSince=now; say('Referencia tomada: diana lista','ok'); return null; }
+    if(!HD.base){ avgUpd(); HD.base=prepSnap(Float32Array.from(HD.avg),R,ins,now); HD.quietSince=now; say('Referencia tomada: diana lista','ok'); return null; }
     const sn=HD.base;
     // alinear y corregir luz
     const sh=estShift(sn,cur,R);
@@ -1115,10 +1134,17 @@
     const ref=still?sn.g:shifted(sn.g,w,h,sh.dx,sh.dy), grad=sn.grad;
     const L=S.lightComp?fitLight(ref,cur,ins):{g:1,o:0};
     // mapa de cambio (ambos sentidos), umbral por zona, bordes de líneas/números atenuados
+    // ruido de la cámara (desviación robusta del residuo en zonas lisas): sube los umbrales si la imagen es ruidosa
+    const rs=[]; for(let i=0;i<n;i+=7){ if(ins[i] && grad[i]<HOLE_G0*0.25) rs.push(Math.abs(cur[i]-(L.g*ref[i]+L.o))); }
+    rs.sort((a,b)=>a-b); const sig=rs.length>50?1.4826*rs[rs.length>>1]:2; HD.sig=sig;
+    const thrD=Math.max(HOLE_THR_D,3.5*sig), thrL=Math.max(HOLE_THR_L,4.5*sig);
+    const gL=L.g, oL=L.o, vr=HD.vr, VK=2.2;
     const E=new Float32Array(n); let big=0,cnt=0;
     for(let i=0;i<n;i++){ if(!ins[i]) continue; cnt++;
-      const d=Math.abs(cur[i]-(L.g*ref[i]+L.o)), thr=ref[i]<sn.mid?HOLE_THR_D:HOLE_THR_L;
-      let e=d/thr; if(e>1) big++; if(e>2) e=2; const q=grad[i]/HOLE_G0; E[i]=e/(1+q*q); }
+      const c=cur[i], pr=gL*ref[i]+oL, raw=Math.abs(c-pr), d=raw;
+      const thr=Math.max(ref[i]<sn.mid?thrD:thrL, VK*Math.sqrt(vr[i]));
+      if(raw>thr) big++;
+      let e=d/thr; if(e>2) e=2; const q=grad[i]/HOLE_G0; E[i]=e/(1+q*q); }
     if(big>cnt*0.15){   // la cámara se ha movido o la luz ha cambiado mucho: nueva referencia
       HD.base=prepSnap(cur,R,ins,now); HD.cands=[]; HD.view=null; HD.quietSince=now;
       say('Cámara movida o cambio fuerte de luz: referencia rehecha','ok'); return null; }
@@ -1150,15 +1176,21 @@
     HD.view={R,ok};
     say('Diana quieta · cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas nuevas: '+ok.length, ok.length?'cand':'ok');
     // 3) sin nada nuevo durante 1 s: la referencia se actualiza (absorbe impactos ya contados y cambios lentos de luz)
-    if(!ok.length){ if(!HD.quietSince) HD.quietSince=now; else if(now-HD.quietSince>=1000){ HD.base=prepSnap(cur,R,ins,now); HD.quietSince=now; } }
+    if(!ok.length){ avgUpd(); if(!HD.quietSince) HD.quietSince=now; else if(now-HD.quietSince>=1000){ HD.base=prepSnap(Float32Array.from(HD.avg),R,ins,now); HD.quietSince=now; } }
     else HD.quietSince=0;
+    // muchas manchas a la vez no son disparos (luz, enfoque, compresión): no se cuenta nada y, si sigue, nueva referencia
+    if(ok.length>=5){ HD.cands=[]; avgUpd(); if(!HD.burstSince) HD.burstSince=now;
+      else if(now-HD.burstSince>1500){ HD.avg=Float32Array.from(cur); HD.avgN=1; HD.base=prepSnap(cur,R,ins,now); HD.burstSince=0; }
+      say('Muchos cambios a la vez: ignorados','mov'); return null; }
+    HD.burstSince=0;
     // confirmación por tiempo de CADA mancha (varios impactos casi a la vez se siguen por separado):
     // un agujero se queda; una sombra o el papel que se mueve, no
     const prev=HD.cands||[], next=[], fired=[], used=new Set();
     for(const c of ok){
       const m=prev.find(p=>Math.hypot(c.cx-p.x,c.cy-p.y)<=Math.max(4,hs.d)), t0=m?m.t0:now;
       if(m) used.add(m);
-      if(now-t0>=S.confirm*200) fired.push({pt:c.p, q:c.q}); else next.push({x:c.cx, y:c.cy, t0, seen:now});
+      // los primeros 6 s la app aún está aprendiendo cuánto varía la imagen: no dispara
+      if(now-t0>=S.confirm*200 && now-(HD.vrSince||0)>=6000) fired.push({pt:c.p, q:c.q}); else next.push({x:c.cx, y:c.cy, t0, seen:now});
     }
     // si una mancha falla uno o dos análisis sueltos, no pierde lo que llevaba confirmado (hasta 0,35 s)
     prev.forEach(p=>{ if(!used.has(p) && now-p.seen<=350) next.push(p); });
@@ -1242,7 +1274,7 @@
       const p=detectRed();
       if(p && p.live){ octx.beginPath(); octx.arc(p.live.x,p.live.y,12,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=3; octx.stroke(); }
       if(p && p.shot && live){ const now=performance.now()/1000;
-        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.shot.x,p.shot.y); } }
+        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.shot.x,p.shot.y); diagLog('auto'); } }
       if(adjLaser) abInfo();
     } else if(S.phase!=='camera' && S.detectType==='holes'){   // siempre activo: mantiene la referencia al día
       const hs=detectHole();
@@ -1252,7 +1284,7 @@
       // en cartón no hay espera entre disparos: cada agujero es único por su posición
       if(hs) hs.forEach(h=>{
         HD.recent.push({rx:h.q.rx, ry:h.q.ry, t:performance.now()});
-        if(live){ S.lastShot=performance.now()/1000; registerShot(h.pt.x,h.pt.y); }
+        if(live){ S.lastShot=performance.now()/1000; registerShot(h.pt.x,h.pt.y); diagLog('auto'); }
         else if(adjHoles){ flashScore('●'); }                     // al ajustar: avisa de que lo habría contado
       });
       if(adjHoles){
@@ -1588,7 +1620,47 @@
       },1000);
     } else empezarTiro();
   }
+  /* ---------- grabación de diagnóstico: vídeo de la cámara + lo que detecta la app ---------- */
+  let DIAG=null;
+  function diagStart(){
+    DIAG=null; $('#diagBox').style.display='none';
+    if(!S.diagRec || !video.srcObject || !window.MediaRecorder) return;
+    const types=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'];
+    const mt=types.find(t=>{ try{ return MediaRecorder.isTypeSupported(t); }catch(e){ return false; } })||'';
+    try{
+      const rec=new MediaRecorder(video.srcObject, mt?{mimeType:mt, videoBitsPerSecond:5000000}:{videoBitsPerSecond:5000000});
+      const D={rec, chunks:[], t0:performance.now(), ev:[], mt:rec.mimeType||mt||'video/webm'}; DIAG=D;
+      rec.ondataavailable=e=>{ if(e.data&&e.data.size) D.chunks.push(e.data); };
+      rec.start(1000);
+      DIAG.st=setInterval(()=>{ if(DIAG) DIAG.ev.push({t:diagT(), type:'st', st:HD.state, info:HD.info, sig:+(HD.sig||0).toFixed(1)}); },500);
+    }catch(e){ DIAG=null; }
+  }
+  const diagT=()=>DIAG?Math.round(performance.now()-DIAG.t0):0;
+  function diagLog(type, sh){
+    if(!DIAG) return; const s=sh||S.shots[S.shots.length-1]; if(!s) return;
+    DIAG.ev.push({t:diagT(), type, rx:+s.rx.toFixed(4), ry:+s.ry.toFixed(4), ring:s.ring, dec:s.dec});
+  }
+  function diagStop(){
+    if(!DIAG) return; const D=DIAG; DIAG=null; clearInterval(D.st);
+    const box=$('#diagBox'); box.style.display='block'; box.innerHTML='Preparando la grabación de diagnóstico…';
+    D.rec.onstop=()=>{
+      const ext=/mp4/.test(D.mt)?'mp4':'webm', stamp=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+      const vid=new File(D.chunks,'tirofijo_diag_'+stamp+'.'+ext,{type:D.mt});
+      const info={app:APPVER, ua:navigator.userAgent, screen:{W:S.W,H:S.H,dpr:devicePixelRatio, iw:innerWidth, ih:innerHeight},
+        video:{w:video.videoWidth,h:video.videoHeight}, remote:(()=>{ try{ return !video.srcObject.getVideoTracks()[0].getSettings().deviceId; }catch(e){ return null; } })(), settings:snapshot(), ev:D.ev,
+        final:S.shots.map(s=>({rx:+s.rx.toFixed(4), ry:+s.ry.toFixed(4), ring:s.ring, dec:s.dec, manual:!!s.manual}))};
+      const js=new File([JSON.stringify(info)],'tirofijo_diag_'+stamp+'.json',{type:'application/json'});
+      const mb=(vid.size/1048576).toFixed(1).replace('.',',');
+      box.innerHTML='🎥 Grabación de diagnóstico ('+mb+' MB)<div class="row" style="margin-top:8px"><button class="btn sm" id="diagShare" style="flex:1">↗ Compartir</button><button class="btn sm" id="diagDl" style="flex:1">⬇ Descargar</button></div>';
+      $('#diagDl').onclick=()=>[vid,js].forEach((f,i)=>setTimeout(()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); },i*600));
+      $('#diagShare').onclick=async()=>{ try{ if(navigator.canShare&&navigator.canShare({files:[vid,js]})) await navigator.share({files:[vid,js], title:'Tirofijo diagnóstico'}); else $('#diagDl').click(); }catch(e){} };
+    };
+    try{ D.rec.stop(); }catch(e){ box.textContent='No se pudo guardar la grabación.'; }
+  }
+  $('#swDiag').onclick=e=>{ S.diagRec=!S.diagRec; e.target.classList.toggle('on',S.diagRec); };
+
   function empezarTiro(){
+    diagStart();
     S.phase='running'; T.beepAcc=0; HD.cands=[]; HD.recent=[]; LZ.active=false; // referencias limpias
     if(T.mode==='down') T.clock=T.downSecs;
     else if(T.mode==='alt'){ T.altOn='A'; T.clock=T.altA; }
@@ -1631,6 +1703,7 @@
     openAdjust('review'); calMode=null; refreshAbSel();
   }
   function finishReview(){
+    diagStop();
     S.phase='ready'; $('#rowReady').style.display='flex'; resetZoom();
     buildReport(); $('#sheetReport').classList.add('open');
     if(CP.active&&CP.active.started) compSend();
@@ -1638,7 +1711,7 @@
   // revisión: añadir un impacto donde se toca / borrar el más cercano
   function addShotAt(x,y){
     const prevT=S.shots.length?S.shots[S.shots.length-1].t:Date.now();
-    registerShot(x,y); const s=S.shots[S.shots.length-1]; s.t=prevT; s.manual=true;
+    registerShot(x,y); const s=S.shots[S.shots.length-1]; s.t=prevT; s.manual=true; diagLog('add');
   }
   function delShotAt(x,y){
     if(!S.shots.length) return false;
@@ -1647,7 +1720,7 @@
     const c0=normToScreen(0,0), e1=normToScreen(1,0), Rs=Math.hypot(e1.x-c0.x,e1.y-c0.y);
     const lim=Math.max(bulletR()*Rs*2, 24/Z.s);         // margen de dedo (menor con zoom)
     if(bi<0||bd>lim){ flashScore('?'); return false; }
-    S.shots.splice(bi,1); if(CP.active) CP.active.removed++; renderStats(); updCompBanner(); flashScore('−'); return true;
+    diagLog('del',S.shots[bi]); S.shots.splice(bi,1); if(CP.active) CP.active.removed++; renderStats(); updCompBanner(); flashScore('−'); return true;
   }
 
   /* ---------- UI ---------- */
@@ -1702,7 +1775,7 @@
   $('#confirm').oninput=e=>{S.confirm=+e.target.value;$('#vConfirm').textContent=confTxt();};
   $('#laserMax').oninput=e=>{S.laserMax=(+e.target.value)/10;$('#vLaserMax').textContent=S.laserMax.toFixed(1).replace('.',',');};
   $('#swInsideL').onclick=()=>{S.insideOnly=!S.insideOnly;$('#swInside').classList.toggle('on',S.insideOnly);$('#swInsideL').classList.toggle('on',S.insideOnly);};
-  $('#btnUndoQuick').onclick=()=>{ if(!S.shots.length) return; S.shots.pop(); if(CP.active) CP.active.removed++; renderStats(); updCompBanner(); flashScore('↩'); };
+  $('#btnUndoQuick').onclick=()=>{ if(!S.shots.length) return; diagLog('undo',S.shots[S.shots.length-1]); S.shots.pop(); if(CP.active) CP.active.removed++; renderStats(); updCompBanner(); flashScore('↩'); };
   $('#roundv').oninput=e=>{S.roundMax=(+e.target.value)/10;$('#vRound').textContent=S.roundMax.toFixed(1);};
   $('#swInside').onclick=()=>{S.insideOnly=!S.insideOnly;$('#swInside').classList.toggle('on',S.insideOnly);$('#swInsideL').classList.toggle('on',S.insideOnly);};
   $('#swLight').onclick=e=>{S.lightComp=!S.lightComp;e.target.classList.toggle('on',S.lightComp);};
