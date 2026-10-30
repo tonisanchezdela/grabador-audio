@@ -59,6 +59,9 @@
   /* estado del detector de cartón (esquina superior derecha, pequeño) */
   #holeStatus{position:absolute; top:8px; right:10px; z-index:12; display:none; font-size:12px; font-weight:700;
     padding:5px 10px; border-radius:20px; background:rgba(13,17,23,.65); border:1px solid var(--line); color:var(--muted);}
+  #rxInfo{position:absolute; top:40px; right:8px; z-index:12; display:none; font-size:10.5px; font-weight:700; pointer-events:none;
+    padding:3px 8px; border-radius:12px; background:rgba(13,17,23,.6); color:var(--muted); font-variant-numeric:tabular-nums;}
+  #rxInfo.low{color:var(--gold);}
   #holeStatus.ok{color:var(--ok);} #holeStatus.mov{color:var(--gold);} #holeStatus.cand{color:#00e5ff;}
   #zoomHint{position:absolute; top:22%; left:50%; transform:translate(-50%,-50%); z-index:17;
     background:rgba(13,17,23,.7); border:1px solid var(--line); color:var(--muted);
@@ -292,6 +295,7 @@
     <div id="zoomHint">Pellizca con dos dedos para ampliar</div>
     <div id="holeStatus"></div>
     <div id="compBanner"></div>
+    <div id="rxInfo"></div>
     <div class="pill" id="pill">Pulsa <b>Iniciar</b></div>
     <div class="scoreflash" id="flash"></div>
     <div id="tapHint">Pulsa MENÚ para ver los controles</div>
@@ -626,7 +630,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v24.3';   // versión visible para comprobar que se tiene la última
+  const APPVER='v24.4';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1033,6 +1037,7 @@
     const x1=Math.min(vw,Math.ceil(vx1)), y1=Math.min(vh,Math.ceil(vy1)), bw=x1-x0, bh=y1-y0;
     if(bw<20||bh<20) return null;
     const rv=Math.sqrt((vx1-vx0)*(vy1-vy0))/2/1.08;                  // radio de la diana en px de vídeo
+    HD.rv=rv;
     // se analiza con todo el detalle que da la cámara (hasta 300 px de radio): los impactos pequeños se ven mejor
     HD.RR=170; const sc=HD.RR/rv;
     const w=Math.max(16,Math.min(720,Math.round(bw*sc))), h=Math.max(16,Math.min(720,Math.round(bh*sc)));
@@ -1646,6 +1651,24 @@
       },1000);
     } else empezarTiro();
   }
+  /* ---------- indicador de calidad del vídeo: resolución, imágenes por segundo y tamaño de la diana ---------- */
+  const VQ={n:0, last:0, fps:0};
+  (function countFrames(){
+    if(video.requestVideoFrameCallback){ const cb=()=>{ VQ.n++; video.requestVideoFrameCallback(cb); }; video.requestVideoFrameCallback(cb); }
+  })();
+  setInterval(()=>{
+    const el=$('#rxInfo');
+    if(!S.running || S.phase==='camera' || !video.videoWidth){ el.style.display='none'; return; }
+    let fps=0;
+    if(video.requestVideoFrameCallback){ fps=VQ.n; VQ.n=0; }
+    else if(video.getVideoPlaybackQuality){ const t=video.getVideoPlaybackQuality().totalVideoFrames; fps=t-(VQ.last||t); VQ.last=t; }
+    if(!S.dianaMode||!HD.rv) computeRoi();
+    const dpx=HD.rv?Math.round(2*HD.rv):0, vw=video.videoWidth, vh=video.videoHeight;
+    el.textContent=vw+'×'+vh+(fps?' · '+fps+' fps':'')+(dpx?' · diana '+dpx+' px':'');
+    el.classList.toggle('low', Math.min(vw,vh)<720 || (dpx && dpx<340) || (fps && fps<8));
+    el.style.display='block';
+  },1000);
+
   /* ---------- grabación de diagnóstico: vídeo de la cámara + lo que detecta la app ---------- */
   let DIAG=null;
   function diagStart(){

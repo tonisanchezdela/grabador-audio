@@ -1,5 +1,5 @@
 // Tirofijo: funciona sin conexión (la app y sus librerías quedan guardadas en el móvil)
-const CACHE='tirofijo-v24.3';
+const CACHE='tirofijo-v24.4';
 const FILES=['./','./index.html','./manifest.json','./icons/icon-192.png','./icons/icon-512.png',
   './vendor/jspdf.umd.min.js','./vendor/html2canvas.min.js','./vendor/peerjs.min.js',
   './vendor/firebase-app-compat.js','./vendor/firebase-auth-compat.js','./vendor/firebase-firestore-compat.js'];
