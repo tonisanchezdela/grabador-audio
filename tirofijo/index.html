@@ -489,7 +489,11 @@
       <button class="btn primary" id="calAdjust" style="margin-top:6px">Ajustar sobre la imagen</button>
     </div>
     <div class="card">
-      <h3>Color de los anillos</h3>
+      <h3>Anillos</h3>
+      <label class="fld" style="margin-top:4px">Anillos que se dibujan y puntúan</label>
+      <select id="minRing"></select>
+      <p style="margin-top:6px">Un impacto fuera del primer anillo elegido vale 0 (p. ej. diana de tiro rápido: del 5 al 10).</p>
+      <label class="fld">Color</label>
       <div class="row" id="ringColors" style="gap:10px; flex-wrap:wrap">
         <button class="rc sel" data-c="#ff2bd6" style="background:#ff2bd6"></button>
         <button class="rc" data-c="#39ff14" style="background:#39ff14"></button>
@@ -498,8 +502,8 @@
         <button class="rc" data-c="#ff3b30" style="background:#ff3b30"></button>
         <button class="rc" data-c="#ff8c00" style="background:#ff8c00"></button>
       </div>
-      <label class="fld">Grosor de línea: <span class="val" id="vRingW">2.5</span></label>
-      <input type="range" id="ringW" min="10" max="60" value="25">
+      <label class="fld">Grosor de línea: <span class="val" id="vRingW">1.0</span></label>
+      <input type="range" id="ringW" min="2" max="40" value="10">
     </div>
     <div class="card">
       <h3>Modelo de diana y puntuación</h3>
@@ -633,7 +637,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v24.5';   // versión visible para comprobar que se tiene la última
+  const APPVER='v24.6';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -645,7 +649,7 @@
     detectType:'laser', // laser | holes
     thr:160, minpx:4, cooldown:0.5, rings:10, radiusPct:42, realmm:0,
     fit:'contain', // contain = imagen completa | cover = llenar pantalla
-    ringColor:'#ff2bd6', ringW:2.5, // anillos: color vivo y grosor
+    ringColor:'#ff2bd6', ringW:1.0, minRing:1, // anillos: color vivo y grosor
     holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9, target:'p25',
     insideOnly:true, lightComp:true, ref:null, cand:null,
     persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
@@ -912,7 +916,7 @@
   // puntuación ISSF: vale el anillo que TOCA el borde del impacto; décimas dentro de ese anillo (x,0 a x,9)
   function scoreShot(dRel){
     const rr=ringRadii(), n=rr.length-1, de=Math.max(0, dRel-bulletR());
-    for(let v=n; v>=1; v--){
+    for(let v=n; v>=Math.min(n,S.minRing||1); v--){
       if(de<=rr[v]+1e-9){
         const inner = v===n ? 0 : rr[v+1], frac=(rr[v]-de)/Math.max(1e-9, rr[v]-inner);
         return {ring:v, dec:Math.round((v+Math.min(0.9, Math.floor(frac*10+1e-6)/10))*10)/10};
@@ -1248,16 +1252,16 @@
     }
     const RAD=ringRadii(), NR=RAD.length-1;
     if(S.dianaMode==='persp' && S.Hinv){
-      for(let v=1; v<=NR; v++){
+      for(let v=Math.min(NR,S.minRing||1); v<=NR; v++){
         const rr=RAD[v]; octx.beginPath();
         for(let a=0;a<=64;a++){ const t=a/64*Math.PI*2, p=normToScreen(rr*Math.cos(t), rr*Math.sin(t));
           if(a===0)octx.moveTo(p.x,p.y); else octx.lineTo(p.x,p.y); }
-        strokeRing(v===1);
+        strokeRing(v===(S.minRing||1));
       }
       const c=normToScreen(0,0); drawCross(c.x,c.y);
     } else {
       const {cx,cy,rOuter}=dianaGeom();
-      for(let v=1; v<=NR; v++){ octx.beginPath(); octx.arc(cx,cy,rOuter*RAD[v],0,7); strokeRing(v===1); }
+      for(let v=Math.min(NR,S.minRing||1); v<=NR; v++){ octx.beginPath(); octx.arc(cx,cy,rOuter*RAD[v],0,7); strokeRing(v===(S.minRing||1)); }
       drawCross(cx,cy);
     }
     if(S.dianaMode==='calib'){ if(S.center)mark(S.center.x*S.W,S.center.y*S.H,'#3fb950','C'); if(S.edge)mark(S.edge.x*S.W,S.edge.y*S.H,'#d29922','B'); }
@@ -1284,15 +1288,16 @@
   }
   // anillo con color vivo + halo oscuro: se ve sobre blanco y sobre negro
   function strokeRing(outer){
-    const w=S.ringW*(outer?1.4:1);
+    const z=Z.s||1, w=S.ringW*(outer?1.3:1)/z;   // con zoom la línea no engorda
     octx.lineJoin='round';
-    octx.strokeStyle='rgba(0,0,0,.75)'; octx.lineWidth=w+2.5; octx.stroke(); // halo
+    octx.strokeStyle='rgba(0,0,0,.6)'; octx.lineWidth=w+Math.min(1.5,0.4+S.ringW*0.5)/z; octx.stroke(); // halo fino
     octx.strokeStyle=S.ringColor; octx.lineWidth=w; octx.stroke();          // línea viva
   }
   function drawCross(x,y){
     octx.beginPath(); octx.moveTo(x-14,y); octx.lineTo(x+14,y); octx.moveTo(x,y-14); octx.lineTo(x,y+14);
-    octx.strokeStyle='rgba(0,0,0,.75)'; octx.lineWidth=S.ringW+2.5; octx.stroke();
-    octx.strokeStyle=S.ringColor; octx.lineWidth=S.ringW; octx.stroke();
+    const z=Z.s||1;
+    octx.strokeStyle='rgba(0,0,0,.6)'; octx.lineWidth=(S.ringW+Math.min(1.5,0.4+S.ringW*0.5))/z; octx.stroke();
+    octx.strokeStyle=S.ringColor; octx.lineWidth=S.ringW/z; octx.stroke();
   }
   function mark(x,y,c,t){ octx.beginPath(); octx.arc(x,y,9,0,7); octx.strokeStyle=c; octx.lineWidth=2; octx.stroke();
     octx.fillStyle=c; octx.font='bold 12px sans-serif'; octx.fillText(t,x+11,y-6); }
@@ -1808,7 +1813,7 @@
   $('#thr').oninput=e=>{S.thr=+e.target.value;$('#vThr').textContent=S.thr;};
   $('#minpx').oninput=e=>{S.minpx=+e.target.value;$('#vMin').textContent=S.minpx;};
   $('#cd').oninput=e=>{S.cooldown=(+e.target.value)/10;$('#vCd').textContent=S.cooldown.toFixed(1);};
-  $('#rings').oninput=e=>{S.rings=+e.target.value;$('#vRings').textContent=S.rings;rescoreAll();renderStats();};
+  $('#rings').oninput=e=>{S.rings=+e.target.value;$('#vRings').textContent=S.rings;fillMinRing();rescoreAll();renderStats();};
   // modelo de diana: fija medidas oficiales, diámetro y (si la diana lo define) calibre habitual
   function setTarget(t){
     S.target=t; const T0=TARGETS[t];
@@ -2004,6 +2009,11 @@
     b.classList.add('sel'); S.ringColor=b.dataset.c;
   });
   $('#ringW').oninput=e=>{ S.ringW=(+e.target.value)/10; $('#vRingW').textContent=S.ringW.toFixed(1); };
+  function fillMinRing(){ const n=Math.max(5,S.rings||10), sel=$('#minRing');
+    sel.innerHTML=Array.from({length:n-1},(_,i)=>i+1).map(v=>'<option value="'+v+'">Del '+v+' al '+n+(v===1?' (todos)':'')+'</option>').join('');
+    if((S.minRing||1)>n-1) S.minRing=1; sel.value=S.minRing||1; }
+  $('#minRing').onchange=e=>{ S.minRing=+e.target.value||1; rescoreAll(); renderStats(); };
+  fillMinRing();
 
   // ajuste de imagen: completa o llenar pantalla
   document.querySelectorAll('#fitMode button').forEach(b=>b.onclick=()=>{
@@ -2125,7 +2135,7 @@
   const PKEY='tirofijo_perfiles';
   function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PKEY)||'{}')||{}; }catch(e){ return {}; } }
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
-  const SKEYS=['fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW',
+  const SKEYS=['fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
     'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target'];
   const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
   function snapshot(){
@@ -2157,7 +2167,7 @@
     setR('#confirm',S.confirm,'#vConfirm',confTxt()); setR('#roundv',Math.round(S.roundMax*10),'#vRound',(+S.roundMax).toFixed(1));
     setR('#laserMax',Math.round(S.laserMax*10),'#vLaserMax',(+S.laserMax).toFixed(1).replace('.',','));
     $('#swInsideL').classList.toggle('on',S.insideOnly);
-    setR('#ringW',Math.round(S.ringW*10),'#vRingW',(+S.ringW).toFixed(1));
+    setR('#ringW',Math.round(S.ringW*10),'#vRingW',(+S.ringW).toFixed(1)); fillMinRing();
     $('#swInside').classList.toggle('on',S.insideOnly); $('#swLight').classList.toggle('on',S.lightComp);
     selSeg('#fireMode','fm',S.fireMode); selSeg('#dianaMode','dm',S.dianaMode); selSeg('#fitMode','fit',S.fit);
     document.querySelectorAll('#ringColors .rc').forEach(x=>x.classList.toggle('sel',x.dataset.c===S.ringColor));
