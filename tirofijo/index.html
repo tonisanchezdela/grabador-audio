@@ -64,6 +64,11 @@
   #rxInfo.low{color:var(--gold);}
   #recDot{position:absolute; top:72px; right:8px; z-index:12; display:none; font-size:11px; font-weight:800; pointer-events:none;
     padding:3px 8px; border-radius:12px; background:rgba(248,81,73,.9); color:#fff; animation:pulse 1.4s infinite;}
+  #linkLost{position:absolute; top:46%; left:50%; transform:translate(-50%,-50%); z-index:19; display:none; width:86%; max-width:360px;
+    background:rgba(120,10,10,.92); border:2px solid var(--accent); border-radius:16px; padding:14px; text-align:center; color:#fff;}
+  #linkLost b{display:block; font-size:18px; letter-spacing:.5px; margin-bottom:4px;}
+  #linkLost span{font-size:13px; opacity:.9;}
+  #linkLost button{margin-top:10px; width:100%;}
   #holeStatus.ok{color:var(--ok);} #holeStatus.mov{color:var(--gold);} #holeStatus.cand{color:#00e5ff;}
   #zoomHint{position:absolute; top:22%; left:50%; transform:translate(-50%,-50%); z-index:17;
     background:rgba(13,17,23,.7); border:1px solid var(--line); color:var(--muted);
@@ -299,6 +304,8 @@
     <div id="compBanner"></div>
     <div id="rxInfo"></div>
     <div id="recDot">● REC</div>
+    <div id="linkLost"><b>⚠ SIN SEÑAL DEL MÓVIL-CÁMARA</b><span id="llTxt">La imagen está congelada. Reconectando…</span>
+      <button class="btn primary" id="llRetry">Reconectar ahora</button></div>
     <div class="pill" id="pill">Pulsa <b>Iniciar</b></div>
     <div class="scoreflash" id="flash"></div>
     <div id="tapHint">Pulsa MENÚ para ver los controles</div>
@@ -318,6 +325,7 @@
       <div class="ccRow" style="margin-top:10px">
         <button class="ccB on" id="ccAF" style="flex:1; font-size:15px">Autoenfoque: ON</button>
         <button class="ccB" id="ccFocusNow" style="flex:1; font-size:15px">Enfocar ahora</button>
+        <button class="ccB" id="ccTorch" style="flex:0 0 auto; font-size:15px">🔦</button>
       </div>
       <div class="ccInfo" id="ccInfo">Zoom 1.0×</div>
     </div>
@@ -361,6 +369,7 @@
         <button class="btn" id="btnDiana">◎</button>
         <button class="btn" id="btnTimer">⏱</button>
         <button class="btn" id="btnReport">📄</button>
+        <button class="btn" id="btnTorch" style="display:none">🔦</button>
       </div>
       <div class="row" id="rowCam">
         <button class="btn primary" id="btnStart">▶ Iniciar cámara</button>
@@ -637,7 +646,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v24.6';   // versión visible para comprobar que se tiene la última
+  const APPVER='v24.8';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -768,7 +777,7 @@
     $('#rowCam').style.display='none'; $('#rowReady').style.display='flex';
     $('#pill').style.display='block';
     $('#pill').innerHTML='Cámara lista. Ajusta la diana y pulsa <b>Nueva sesión</b>';
-    resize(); loop(); showControls(); updCompBanner();
+    resize(); loop(); showControls(); updCompBanner(); setTimeout(torchUI,800);
     $('#zoomHint').style.display='block'; setTimeout(()=>{$('#zoomHint').style.display='none';},3500);
   }
   async function start(){ // cámara local
@@ -791,6 +800,7 @@
     } else {
       $('#ccZoom').disabled=true; $('#ccZoomIn').disabled=true; $('#ccZoomOut').disabled=true;
     }
+    if(!torchCap(t)){ $('#ccTorch').disabled=true; $('#ccTorch').style.opacity=.4; }
     if(CC.focusModes.includes('continuous')) await setFocus('continuous');
     else { $('#ccAF').disabled=true; $('#ccAF').textContent='Autoenfoque: no disponible'; }
     if(!CC.focusModes.includes('single-shot') && !CC.focusModes.includes('continuous')) $('#ccFocusNow').disabled=true;
@@ -823,6 +833,26 @@
       $('#ccFocusNow').textContent='Enfocar ahora'; },1200);
   }
 
+  /* ---------- linterna del móvil (luz uniforme sobre la diana) ---------- */
+  const TORCH={on:false, remote:null, remoteCap:false};
+  function localTrack(){ const st=video.srcObject; return st&&st.getVideoTracks ? st.getVideoTracks()[0] : null; }
+  function torchCap(t){ try{ const c=t&&t.getCapabilities?t.getCapabilities():{}; return !!c.torch; }catch(e){ return false; } }
+  async function setTorchOn(t,on){ try{ await t.applyConstraints({advanced:[{torch:!!on}]}); return true; }catch(e){ return false; } }
+  function torchUI(){
+    const b=$('#btnTorch'), cc=$('#ccTorch');
+    const can = TORCH.remote ? TORCH.remoteCap : (S.phase!=='camera' && torchCap(localTrack()));
+    b.style.display = can ? '' : 'none';
+    b.classList.toggle('on', !!TORCH.on); b.style.background=TORCH.on?'var(--gold)':''; b.style.color=TORCH.on?'#1a1200':'';
+    if(cc){ cc.classList.toggle('on', !!TORCH.on); }
+  }
+  async function toggleTorch(){
+    const want=!TORCH.on;
+    if(TORCH.remote){ try{ TORCH.remote.send({torch:want}); }catch(e){} return; }   // la respuesta llega del móvil-cámara
+    const t=S.phase==='camera'?camTrack():localTrack(); if(!t) return;
+    if(await setTorchOn(t,want)){ TORCH.on=want; torchUI(); }
+    else { $('#pill').style.display='block'; $('#pill').textContent='Este móvil no permite encender la linterna desde la app.'; }
+  }
+
   /* ---------- cámara remota (WebRTC / PeerJS) ---------- */
   let peer=null, camStream=null;
   function peerAvailable(){ return typeof Peer!=='undefined'; }
@@ -840,36 +870,83 @@
     $('#cbCode').textContent=code; $('#cbStatus').textContent='Esperando al móvil que puntúa…';
     resize(); loop(); setupCamControls();
     peer=new Peer('tirofijo-'+code);
+    peer.on('disconnected', ()=>{ try{ peer.reconnect(); }catch(e){} });
     peer.on('error', err=>{ $('#cbStatus').textContent='Error: '+err.type; });
     peer.on('connection', conn=>{ conn.on('open', ()=>{
       $('#cbStatus').textContent='Conectado ✓ transmitiendo vídeo';
       tuneSender(peer.call(conn.peer, camStream));
-    }); });
+      CC.conns=(CC.conns||[]).concat(conn);
+      conn.on('close', ()=>{ CC.conns=(CC.conns||[]).filter(c=>c!==conn);
+        if(!CC.conns.length) $('#cbStatus').textContent='⚠ Se ha cortado. Esperando a que el otro móvil se reconecte…'; });
+      try{ conn.send({torchCap:torchCap(camTrack()), torch:TORCH.on}); }catch(e){}
+    });
+      conn.on('data', async d=>{                                 // el móvil que puntúa enciende o apaga la linterna
+        if(d && typeof d.torch==='boolean'){ if(await setTorchOn(camTrack(),d.torch)) TORCH.on=d.torch; torchUI();
+          (CC.conns||[]).forEach(c=>{ try{ c.send({torchCap:torchCap(camTrack()), torch:TORCH.on}); }catch(e){} }); }
+      });
+    });
   }
   // Este móvil PUNTÚA: se conecta al código y recibe el vídeo remoto
   function startAsViewer(code){
     if(!peerAvailable()){ $('#suStatus').textContent='No se pudo cargar el módulo remoto. Revisa tu conexión.'; return; }
     if(!/^\d{4}$/.test(code)){ $('#suStatus').textContent='Introduce el código de 4 dígitos.'; return; }
     $('#suStatus').textContent='Conectando con '+code+'…';
-    peer=new Peer();
-    peer.on('open', ()=>{
-      const conn=peer.connect('tirofijo-'+code);
-      conn.on('open', ()=>{ $('#suStatus').textContent='Enlazado, esperando vídeo…'; });
-      conn.on('error', ()=>{ $('#suStatus').textContent='No se pudo enlazar. Revisa el código.'; });
-    });
+    peer=new Peer(); LINK.code=code;
+    peer.on('open', ()=>linkConnect());
+    peer.on('disconnected', ()=>{ try{ peer.reconnect(); }catch(e){} });   // se cayó el servidor de enlace: se vuelve a pedir
     peer.on('call', call=>{
-      call.answer();
+      call.answer(); LINK.call=call;
       call.on('stream', remote=>{
-        video.srcObject=remote; video.play();
+        video.srcObject=remote; video.play().catch(()=>{});
+        VQ.lastFrame=performance.now();
+        if(S.running){ linkOk(); return; }                     // reconexión: sigue la misma sesión, sin borrar nada
         $('#startup').style.display='none';
-        beginSession();
+        beginSession(); LINK.active=true;
       });
+      call.on('close', ()=>linkLost('Se ha cerrado la conexión de vídeo.'));
+      const pc=call.peerConnection;
+      if(pc) pc.addEventListener('iceconnectionstatechange',()=>{ const st=pc.iceConnectionState;
+        if(st==='failed'||st==='closed') linkLost('Conexión perdida.'); });
     });
     peer.on('error', err=>{
       $('#suStatus').textContent = err.type==='peer-unavailable'
         ? 'No hay ninguna cámara con ese código ahora mismo.' : 'Error de conexión: '+err.type;
     });
   }
+  /* ---------- vigilancia del enlace con el móvil-cámara ---------- */
+  const LINK={code:'', conn:null, call:null, active:false, lost:false, lostAt:0, retryAt:0};
+  function linkConnect(){
+    if(!peer || peer.destroyed) return;
+    if(peer.disconnected){ try{ peer.reconnect(); }catch(e){} return; }
+    try{ if(LINK.conn) LINK.conn.close(); }catch(e){}
+    const conn=peer.connect('tirofijo-'+LINK.code, {reliable:true}); LINK.conn=conn; TORCH.remote=conn;
+    conn.on('open', ()=>{ if(!S.running) $('#suStatus').textContent='Enlazado, esperando vídeo…'; });
+    conn.on('data', d=>{ if(d && 'torchCap' in d){ TORCH.remoteCap=!!d.torchCap; TORCH.on=!!d.torch; torchUI(); } });
+    conn.on('close', ()=>{ if(LINK.active) linkLost('El móvil-cámara se ha desconectado.'); });
+    conn.on('error', ()=>{ if(!S.running) $('#suStatus').textContent='No se pudo enlazar. Revisa el código.'; });
+  }
+  function linkLost(why){
+    if(!LINK.active) return;
+    if(!LINK.lost){ LINK.lost=true; LINK.lostAt=performance.now(); LINK.retryAt=LINK.lostAt+2500;
+      beep(440,0.25,0.6); setTimeout(()=>beep(330,0.4,0.6),300); if(navigator.vibrate) navigator.vibrate([200,100,200]);
+      HD.cands=[]; }
+    $('#llTxt').textContent=(why||'La imagen está congelada.')+' Reconectando…';
+    $('#linkLost').style.display='block';
+  }
+  function linkOk(){
+    if(!LINK.lost) return; LINK.lost=false; $('#linkLost').style.display='none';
+    HD.stableSince=0; HD.prevHalf=null; HD.cands=[];                     // espera a que la imagen se asiente
+    beep(880,0.15,0.5); setTimeout(()=>beep(1175,0.2,0.5),180);
+  }
+  $('#llRetry').onclick=()=>{ LINK.retryAt=0; linkConnect(); $('#llTxt').textContent='Reconectando…'; };
+  setInterval(()=>{
+    if(!LINK.active || !S.running) return;
+    const now=performance.now(), frozen = VQ.lastFrame && now-VQ.lastFrame>3000;
+    if(frozen) linkLost('La imagen está congelada.');
+    else if(LINK.lost && VQ.lastFrame && now-VQ.lastFrame<600) linkOk();
+    if(LINK.lost && now>=LINK.retryAt){ LINK.retryAt=now+5000; linkConnect(); }   // reintenta cada 5 s
+  },500);
+
   function resize(){ const r=video.getBoundingClientRect(); S.W=overlay.width=r.width; S.H=overlay.height=r.height; buildPersp(); }
   window.addEventListener('resize', resize);
 
@@ -1309,7 +1386,8 @@
     const live = S.phase==='running' && S.fireMode==='auto';
     const adjLaser = $('#adjustBar').classList.contains('open') && $('#adjustBar').dataset.kind==='laser';
     if(S.detectType!=='holes' || S.phase==='camera') $('#holeStatus').style.display='none';
-    if(S.phase!=='camera' && S.detectType==='laser'){   // siempre activo: aprende el rojo del fondo y muestra el punto
+    if(LINK.lost){ /* sin imagen nueva: no se analiza nada */ }
+    else if(S.phase!=='camera' && S.detectType==='laser'){   // siempre activo: aprende el rojo del fondo y muestra el punto
       const p=detectRed();
       if(p && p.live){ octx.beginPath(); octx.arc(p.live.x,p.live.y,12,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=3; octx.stroke(); }
       if(p && p.shot && live){ const now=performance.now()/1000;
@@ -1662,7 +1740,7 @@
   /* ---------- indicador de calidad del vídeo: resolución, imágenes por segundo y tamaño de la diana ---------- */
   const VQ={n:0, last:0, fps:0};
   (function countFrames(){
-    if(video.requestVideoFrameCallback){ const cb=()=>{ VQ.n++; video.requestVideoFrameCallback(cb); }; video.requestVideoFrameCallback(cb); }
+    if(video.requestVideoFrameCallback){ const cb=()=>{ VQ.n++; VQ.lastFrame=performance.now(); video.requestVideoFrameCallback(cb); }; video.requestVideoFrameCallback(cb); }
   })();
   setInterval(()=>{
     const el=$('#rxInfo');
@@ -2031,6 +2109,8 @@
     await setFocus(CC.af?'continuous':'manual');
   };
   $('#ccFocusNow').onclick=focusNow;
+  $('#ccTorch').onclick=async()=>{ await toggleTorch(); (CC.conns||[]).forEach(c=>{ try{ c.send({torchCap:true, torch:TORCH.on}); }catch(e){} }); };
+  $('#btnTorch').onclick=toggleTorch;
 
   // botón MENÚ de la cabecera: es lo único que muestra u oculta el menú
   $('#btnMenu').onclick=()=>{ $('#stage').classList.toggle('controls-hidden'); syncMenuBtn(); };
