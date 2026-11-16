@@ -117,6 +117,10 @@
   #startup .su-box{width:100%; max-width:380px; display:flex; flex-direction:column; gap:12px;}
   .su-logo{font-size:28px; font-weight:800; letter-spacing:3px; text-align:center;}
   .su-sub{color:var(--muted); text-align:center; margin:0 0 4px; font-size:14px;}
+  .galItem{display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:12px;
+    background:var(--panel); color:var(--txt); font-size:15px; font-weight:700; text-align:left; width:100%;}
+  .galItem span{flex:1; min-width:0;} .galItem small{font-weight:600; font-size:12px; color:var(--muted);}
+  .galItem.busy small{color:var(--gold);} .galItem.free small{color:var(--ok);}
   .su-status{color:var(--gold); font-size:13px; text-align:center; min-height:18px; line-height:1.4;}
   #startup input[type=text]{text-align:center; font-size:26px; letter-spacing:6px; font-weight:800;}
   /* banner del móvil-cámara */
@@ -352,6 +356,15 @@
           <label class="fld">Código del móvil-cámara:</label>
           <input type="text" id="suCode" inputmode="numeric" maxlength="4" placeholder="----">
           <button class="btn primary" id="suConnect" style="margin-top:10px">Conectar</button>
+        </div>
+        <button class="btn" id="suGal">🏟 Cámara de la galería</button>
+        <div id="suGalBox" style="display:none; margin-top:6px">
+          <div id="galCodeRow">
+            <label class="fld">Código de la galería:</label>
+            <div class="row"><input type="text" id="galCode" inputmode="numeric" maxlength="6" placeholder="----" style="flex:1">
+              <button class="btn sm" id="galFind">Buscar</button></div>
+          </div>
+          <div id="galList" style="display:flex; flex-direction:column; gap:8px; margin-top:10px"></div>
         </div>
         <div id="suComp" class="warn" style="display:none; text-align:center; font-size:13px"></div>
         <button class="btn" id="suComps" style="border-color:var(--gold); color:var(--gold)">🏆 Competiciones</button>
@@ -662,7 +675,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.0';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.1';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -872,6 +885,8 @@
   /* ---------- cámara remota (WebRTC / PeerJS) ---------- */
   let peer=null, camStream=null;
   function peerAvailable(){ return typeof Peer!=='undefined'; }
+  // servidor de enlace PeerJS: el público por defecto, o uno propio guardado en 'tirofijo_peer' ({host,port,path,secure})
+  function peerOpts(){ try{ const o=JSON.parse(localStorage.getItem('tirofijo_peer')||'null'); return o&&o.host?o:undefined; }catch(e){ return undefined; } }
   // Este móvil ES la cámara: transmite su vídeo al que se conecte con el código
   async function startAsCamera(){
     if(!peerAvailable()){ $('#suStatus').textContent='No se pudo cargar el módulo remoto. Revisa tu conexión.'; return; }
@@ -885,7 +900,7 @@
     $('#hud').style.display='none'; $('#camBanner').style.display='block';
     $('#cbCode').textContent=code; $('#cbStatus').textContent='Esperando al móvil que puntúa…';
     resize(); loop(); setupCamControls();
-    peer=new Peer('tirofijo-'+code);
+    peer=new Peer('tirofijo-'+code, peerOpts());
     peer.on('disconnected', ()=>{ try{ peer.reconnect(); }catch(e){} });
     peer.on('error', err=>{ $('#cbStatus').textContent='Error: '+err.type; });
     peer.on('connection', conn=>{ conn.on('open', ()=>{
@@ -905,9 +920,10 @@
   // Este móvil PUNTÚA: se conecta al código y recibe el vídeo remoto
   function startAsViewer(code){
     if(!peerAvailable()){ $('#suStatus').textContent='No se pudo cargar el módulo remoto. Revisa tu conexión.'; return; }
-    if(!/^\d{4}$/.test(code)){ $('#suStatus').textContent='Introduce el código de 4 dígitos.'; return; }
+    if(!/^\d{4}$/.test(code) && !/^[A-Za-z0-9]{3,8}-\d{1,3}$/.test(code)){ $('#suStatus').textContent='Introduce el código de 4 dígitos.'; return; }
     $('#suStatus').textContent='Conectando con '+code+'…';
-    peer=new Peer(); LINK.code=code;
+    if(peer && !peer.destroyed){ try{ peer.destroy(); }catch(e){} }
+    peer=new Peer(undefined, peerOpts()); LINK.code=code; LINK.mode='peer';
     peer.on('open', ()=>linkConnect());
     peer.on('disconnected', ()=>{ try{ peer.reconnect(); }catch(e){} });   // se cayó el servidor de enlace: se vuelve a pedir
     peer.on('call', call=>{
@@ -917,7 +933,7 @@
         VQ.lastFrame=performance.now();
         if(S.running){ linkOk(); return; }                     // reconexión: sigue la misma sesión, sin borrar nada
         $('#startup').style.display='none';
-        beginSession(); LINK.active=true;
+        beginSession(); LINK.active=true; puestoApply();
       });
       call.on('close', ()=>linkLost('Se ha cerrado la conexión de vídeo.'));
       const pc=call.peerConnection;
@@ -930,8 +946,9 @@
     });
   }
   /* ---------- vigilancia del enlace con el móvil-cámara ---------- */
-  const LINK={code:'', conn:null, call:null, active:false, lost:false, lostAt:0, retryAt:0};
+  const LINK={code:'', conn:null, call:null, active:false, lost:false, lostAt:0, retryAt:0, mode:'peer'};
   function linkConnect(){
+    if(LINK.mode==='direct'){ galDirectReconnect(); return; }
     if(!peer || peer.destroyed) return;
     if(peer.disconnected){ try{ peer.reconnect(); }catch(e){} return; }
     try{ if(LINK.conn) LINK.conn.close(); }catch(e){}
@@ -962,6 +979,92 @@
     else if(LINK.lost && VQ.lastFrame && now-VQ.lastFrame<600) linkOk();
     if(LINK.lost && now>=LINK.retryAt){ LINK.retryAt=now+5000; linkConnect(); }   // reintenta cada 5 s
   },500);
+
+  /* =====================================================================
+     GALERÍA: cámaras IP por cable (go2rtc en el PC de la galería)
+     · directo: la app se abre desde el PC (http://IP-del-PC:1984) y pide el vídeo a go2rtc
+     · relé: la app de Play/web pide la lista al PC por el código de galería (PeerJS)
+     ===================================================================== */
+  const GAL={pc:null, src:'', dirPeer:null, dirConn:null};
+  // pide un flujo a go2rtc por WebRTC (oferta SDP → respuesta SDP)
+  async function pullGo2rtc(base, src){
+    const pc=new RTCPeerConnection({iceServers:[]});
+    pc.addTransceiver('video',{direction:'recvonly'});
+    const ms=new MediaStream(); pc.ontrack=e=>ms.addTrack(e.track);
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise(r=>{ if(pc.iceGatheringState==='complete') return r();
+      const t=setTimeout(r,1500); pc.addEventListener('icegatheringstatechange',()=>{ if(pc.iceGatheringState==='complete'){ clearTimeout(t); r(); } }); });
+    const res=await fetch(base+'/api/webrtc?src='+encodeURIComponent(src),{method:'POST', headers:{'Content-Type':'application/sdp'}, body:pc.localDescription.sdp});
+    if(!res.ok){ pc.close(); throw new Error('go2rtc respondió '+res.status); }
+    await pc.setRemoteDescription({type:'answer', sdp:await res.text()});
+    await new Promise((ok,ko)=>{ const t=setTimeout(()=>ko(new Error('La cámara no envía imagen')),8000);
+      const chk=()=>{ if(ms.getVideoTracks().length){ clearTimeout(t); ok(); } }; pc.addEventListener('track',chk); chk(); });
+    return {pc, stream:ms};
+  }
+  const galDirectAvail=()=>location.protocol==='http:' || /^(localhost|127\.|192\.168\.|10\.)/.test(location.hostname);
+  async function galOpen(){
+    $('#suGalBox').style.display='block'; $('#galList').innerHTML='';
+    if(galDirectAvail()){
+      $('#suStatus').textContent='Buscando cámaras de la galería…';
+      try{
+        const ac=new AbortController(), t=setTimeout(()=>ac.abort(),2000);
+        const r=await fetch('/api/streams',{signal:ac.signal}); clearTimeout(t);
+        if(r.ok){ const names=Object.keys(await r.json()); $('#galCodeRow').style.display='none';
+          $('#suStatus').textContent=names.length?'Elige tu puesto:':'El PC de la galería no tiene cámaras configuradas.';
+          $('#galList').innerHTML=names.map(n=>'<button class="galItem free" data-src="'+esc(n)+'"><span>'+esc(n)+'</span><small>cable</small></button>').join('');
+          return; }
+      }catch(e){}
+    }
+    $('#galCodeRow').style.display=''; $('#suStatus').textContent='';
+    try{ $('#galCode').value=localStorage.getItem('tirofijo_galcode')||''; }catch(e){}
+    if($('#galCode').value) galFind();
+  }
+  function galFind(){
+    const code=($('#galCode').value||'').trim().toUpperCase();
+    if(!/^[A-Z0-9]{3,6}$/.test(code)){ $('#suStatus').textContent='Escribe el código que muestra la pantalla de la galería.'; return; }
+    if(!peerAvailable()){ $('#suStatus').textContent='No se pudo cargar el módulo remoto. Revisa tu conexión.'; return; }
+    try{ localStorage.setItem('tirofijo_galcode',code); }catch(e){}
+    $('#suStatus').textContent='Conectando con la galería '+code+'…'; $('#galList').innerHTML='';
+    try{ if(GAL.dirPeer) GAL.dirPeer.destroy(); }catch(e){}
+    const p=new Peer(undefined, peerOpts()); GAL.dirPeer=p; GAL.code=code;
+    p.on('open',()=>{ const c=p.connect('tirofijo-gal-'+code,{reliable:true}); GAL.dirConn=c;
+      c.on('data',d=>{ if(d&&Array.isArray(d.list)) galRender(d.list); }); });
+    p.on('error',e=>{ $('#suStatus').textContent = e.type==='peer-unavailable' ? 'No hay ninguna galería activa con el código '+code+'.' : 'Error de conexión: '+e.type; });
+  }
+  function galRender(list){
+    $('#suStatus').textContent=list.length?'Elige tu puesto:':'La galería no tiene cámaras activas.';
+    $('#galList').innerHTML=list.map(x=>'<button class="galItem '+(x.busy?'busy':'free')+'" data-code="'+esc(x.code)+'" data-name="'+esc(x.name)+'"><span>'+esc(x.name)+'</span><small>'+
+      (x.error?'sin imagen':x.busy?'ocupado'+(x.busy>1?' ('+x.busy+')':''):'libre')+'</small></button>').join('');
+  }
+  async function galDirect(src){
+    $('#suStatus').textContent='Abriendo '+src+'…';
+    try{
+      const g=await pullGo2rtc('',src); GAL.pc=g.pc; GAL.src=src; watchGalPc(g.pc);
+      video.srcObject=g.stream; await video.play().catch(()=>{});
+      S.puesto='d:'+src; LINK.mode='direct'; VQ.lastFrame=performance.now();
+      $('#startup').style.display='none'; beginSession(); LINK.active=true; puestoApply();
+    }catch(e){ $('#suStatus').textContent='No se pudo abrir '+src+': '+e.message; }
+  }
+  function watchGalPc(pc){ pc.addEventListener('iceconnectionstatechange',()=>{ const st=pc.iceConnectionState;
+    if((st==='failed'||st==='disconnected') && GAL.pc===pc) linkLost('Se ha cortado el vídeo de la cámara.'); }); }
+  async function galDirectReconnect(){
+    try{ if(GAL.pc) GAL.pc.close(); }catch(e){}
+    try{ const g=await pullGo2rtc('',GAL.src); GAL.pc=g.pc; watchGalPc(g.pc); video.srcObject=g.stream; video.play().catch(()=>{}); }catch(e){}
+  }
+  $('#suGal').onclick=galOpen;
+  $('#galFind').onclick=galFind;
+  $('#galList').addEventListener('click',e=>{ const b=e.target.closest('.galItem'); if(!b) return;
+    if(b.dataset.src) return galDirect(b.dataset.src);
+    if(b.classList.contains('busy') && !confirm('Ese puesto ya lo está usando otro tirador. ¿Entrar igualmente?')) return;
+    S.puesto='r:'+GAL.code+':'+b.dataset.name; startAsViewer(b.dataset.code); });
+
+  // perfil por puesto: la corrección de perspectiva y los ajustes se recuerdan para cada cámara de la galería
+  function puestoApply(){
+    if(!S.puesto) return; let o=null; try{ o=JSON.parse(localStorage.getItem('tirofijo_puesto_'+S.puesto)||'null'); }catch(e){}
+    if(!o) return; const dt=S.detectType; applySnapshot(o); S.detectType=dt; setDetectType(dt); buildPersp(); resetHoles();
+    $('#pill').style.display='block'; $('#pill').textContent='Ajustes de este puesto cargados.';
+  }
+  function puestoSave(){ if(!S.puesto) return; try{ localStorage.setItem('tirofijo_puesto_'+S.puesto, JSON.stringify(snapshot())); }catch(e){} }
 
   function resize(){ const r=video.getBoundingClientRect(); S.W=overlay.width=r.width; S.H=overlay.height=r.height; buildPersp(); }
   window.addEventListener('resize', resize);
@@ -1865,6 +1968,7 @@
     updHud();
   }
   function finalizarSesion(){
+    puestoSave();
     clearTick(); S.phase='review';                       // revisión antes del informe: añadir o borrar impactos
     beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380);
     $('#rowRun').style.display='none'; $('#timerHud').style.display='none';
@@ -2132,7 +2236,7 @@
     bar.classList.add('open'); abInfo(); refreshAbSel();
   }
   function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#stage').classList.remove('adjusting');
-    $('#hud').style.display=''; calMode=null; showControls(); }
+    $('#hud').style.display=''; calMode=null; showControls(); puestoSave(); }
 
   // color y grosor de los anillos
   document.querySelectorAll('#ringColors .rc').forEach(b=>b.onclick=()=>{

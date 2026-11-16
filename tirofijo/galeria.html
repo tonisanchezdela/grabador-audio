@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tirofijo Galería</title>
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root{ --bg:#0d1117; --panel:#161b22; --line:#30363d; --txt:#e6edf3; --muted:#8b949e; --accent:#f85149; --ok:#3fb950; --gold:#d29922; --blue:#58a6ff; }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--txt); font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:18px max(16px,env(safe-area-inset-left,0px));}
+  header{display:flex; flex-wrap:wrap; align-items:center; gap:14px 24px; border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:16px;}
+  h1{margin:0; font-size:24px; letter-spacing:.5px;} h1 b{color:var(--accent);}
+  .code{display:flex; flex-direction:column; align-items:center; background:var(--panel); border:1px solid var(--gold); border-radius:14px; padding:6px 18px;}
+  .code small{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:1px;}
+  .code b{font-size:34px; letter-spacing:6px; color:var(--gold); line-height:1.1;}
+  .help{color:var(--muted); font-size:14px; max-width:520px;}
+  .cfg{display:flex; flex-wrap:wrap; gap:10px; align-items:end; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:16px;}
+  .cfg label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted);}
+  input{background:#0d1117; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:8px 10px; font-size:15px;}
+  button{background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:9px; padding:9px 14px; font-size:14px; font-weight:700; cursor:pointer;}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px;}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:8px; min-width:0;}
+  .card h3{margin:0; font-size:18px; display:flex; justify-content:space-between; gap:8px;}
+  .chip{font-size:11px; font-weight:800; padding:3px 9px; border-radius:20px; background:var(--line); white-space:nowrap;}
+  .chip.free{background:var(--ok); color:#06220f;} .chip.busy{background:var(--gold); color:#1a1200;} .chip.err{background:var(--accent); color:#fff;}
+  .sub{color:var(--muted); font-size:13px;}
+  video{width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; object-fit:contain;}
+  .log{margin-top:18px; color:var(--muted); font:12px ui-monospace,monospace; max-height:140px; overflow:auto; white-space:pre-wrap;}
+</style>
+</head>
+<body>
+<header>
+  <h1><b>◎</b> Tirofijo Galería</h1>
+  <div class="code"><small>Código de la galería</small><b id="galCodeShow">----</b></div>
+  <div class="help">En el móvil: <b>Tirofijo → 🏟 Cámara de la galería</b>, escribe este código y elige tu puesto.
+    Si el móvil abre Tirofijo desde este PC (<span id="lanUrl">http://IP-de-este-PC:1984</span>) no hace falta código.
+    Deja esta página abierta mientras se tira.</div>
+</header>
+
+<div class="cfg">
+  <label>Dirección de go2rtc<input id="g2r" size="28"></label>
+  <label>Código de galería<input id="code" size="8" maxlength="6" style="text-transform:uppercase"></label>
+  <button class="primary" id="startBtn">▶ Iniciar galería</button>
+  <button id="reloadBtn">↻ Volver a leer las cámaras</button>
+  <span class="sub" id="state">Parada</span>
+</div>
+
+<div class="grid" id="grid"></div>
+<div class="log" id="log"></div>
+
+<script src="vendor/peerjs.min.js"></script>
+<script>
+(() => {
+  const $=s=>document.querySelector(s);
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const LS=(k,v)=>{ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v); }catch(e){ return null; } };
+  const log=t=>{ const el=$('#log'); el.textContent=(new Date().toLocaleTimeString()+'  '+t+'\n'+el.textContent).slice(0,6000); };
+  function peerOpts(){ try{ const o=JSON.parse(LS('tirofijo_peer')||'null'); return o&&o.host?o:undefined; }catch(e){ return undefined; } }
+  const CH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const servedByG2r = location.port==='1984' || /^(localhost|127\.)/.test(location.hostname) && location.protocol==='http:';
+  $('#g2r').value = LS('galeria_g2r') || (servedByG2r ? location.origin : 'http://localhost:1984');
+  $('#code').value = LS('galeria_code') || Array.from({length:4},()=>CH[Math.floor(Math.random()*CH.length)]).join('');
+  $('#galCodeShow').textContent=$('#code').value;
+  if(location.protocol==='http:' && !/^(localhost|127\.)/.test(location.hostname)) $('#lanUrl').textContent=location.origin;
+
+  const P=[];                 // puestos: {i, name, code, peer, conns:[], pc, stream, idleT, error}
+  let dir=null, dirConns=[], running=false, dirTries=0, starting=false;
+
+  // vídeo de go2rtc por WebRTC (se pide solo cuando alguien lo mira)
+  async function pull(src){
+    const base=$('#g2r').value.replace(/\/$/,'');
+    const pc=new RTCPeerConnection({iceServers:[]});
+    pc.addTransceiver('video',{direction:'recvonly'});
+    const ms=new MediaStream(); pc.ontrack=e=>ms.addTrack(e.track);
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise(r=>{ if(pc.iceGatheringState==='complete') return r();
+      const t=setTimeout(r,1500); pc.addEventListener('icegatheringstatechange',()=>{ if(pc.iceGatheringState==='complete'){ clearTimeout(t); r(); } }); });
+    const res=await fetch(base+'/api/webrtc?src='+encodeURIComponent(src),{method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription.sdp});
+    if(!res.ok){ pc.close(); throw new Error('go2rtc '+res.status); }
+    await pc.setRemoteDescription({type:'answer',sdp:await res.text()});
+    await new Promise((ok,ko)=>{ const t=setTimeout(()=>ko(new Error('sin imagen')),8000);
+      const chk=()=>{ if(ms.getVideoTracks().length){ clearTimeout(t); ok(); } }; pc.addEventListener('track',chk); chk(); });
+    return {pc, stream:ms};
+  }
+  async function ensureStream(p){
+    clearTimeout(p.idleT);
+    if(p.stream && p.pc && ['connected','completed','new','checking'].includes(p.pc.iceConnectionState)) return p.stream;
+    try{ p.pc&&p.pc.close(); }catch(e){}
+    const g=await pull(p.name); p.pc=g.pc; p.stream=g.stream; p.error='';
+    p.pc.addEventListener('iceconnectionstatechange',()=>{ if(['failed','closed'].includes(p.pc.iceConnectionState)){ p.stream=null; } });
+    return p.stream;
+  }
+  function releaseIfIdle(p){
+    clearTimeout(p.idleT);
+    if(p.conns.length || p.preview) return;
+    p.idleT=setTimeout(()=>{ if(!p.conns.length && !p.preview){ try{ p.pc&&p.pc.close(); }catch(e){} p.pc=null; p.stream=null; render(); } },60000);
+  }
+
+  function listForPhones(){ return P.map(p=>({name:p.name, code:p.code, busy:p.conns.length, error:p.error?1:0})); }
+  function broadcast(){ dirConns.forEach(c=>{ try{ c.send({list:listForPhones()}); }catch(e){} }); }
+
+  function makePuestoPeer(p){
+    const peer=new Peer('tirofijo-'+p.code, peerOpts()); p.peer=peer;
+    peer.on('open',()=>{ p.online=true; p.tries=0; p.error=''; render(); });
+    peer.on('disconnected',()=>{ try{ peer.reconnect(); }catch(e){} });
+    peer.on('error',e=>{ log(p.name+': '+e.type);
+      if(e.type==='unavailable-id'){                       // el código aún no se ha liberado: se reintenta
+        p.tries=(p.tries||0)+1; p.error=p.tries>5?'código ocupado':''; render();
+        if(p.tries<=5 && running) setTimeout(()=>{ try{ peer.destroy(); }catch(err){} if(P.includes(p)) makePuestoPeer(p); },3000); } });
+    peer.on('connection',conn=>{
+      conn.on('open',async()=>{
+        p.conns.push(conn); render(); broadcast(); log(p.name+': entra un móvil');
+        try{ conn.send({torchCap:false, torch:false}); }catch(e){}
+        try{ const st=await ensureStream(p); const call=peer.call(conn.peer, st); tune(call); conn._call=call; }
+        catch(e){ p.error=e.message; log(p.name+': '+e.message); render(); broadcast(); }
+      });
+      conn.on('close',()=>{ p.conns=p.conns.filter(c=>c!==conn); try{ conn._call&&conn._call.close(); }catch(e){} log(p.name+': sale un móvil'); render(); broadcast(); releaseIfIdle(p); });
+    });
+  }
+  // calidad del envío al móvil: nitidez antes que fluidez
+  function tune(call){ let n=0; const t=setInterval(async()=>{ const pc=call&&call.peerConnection; if(++n>40){ clearInterval(t); return; }
+    if(!pc) return; const s=pc.getSenders().find(x=>x.track&&x.track.kind==='video'); if(!s) return;
+    try{ const q=s.getParameters(); if(!q.encodings||!q.encodings.length) return; q.encodings[0].maxBitrate=6000000; q.encodings[0].maxFramerate=20;
+      q.degradationPreference='maintain-resolution'; await s.setParameters(q); clearInterval(t); }catch(e){} },500); }
+
+  function startDirectory(code){
+    dir=new Peer('tirofijo-gal-'+code, peerOpts());
+    dir.on('open',()=>{ dirTries=0; $('#state').textContent='Galería activa · '+P.length+' puestos'; log('galería '+code+' activa'); });
+    dir.on('disconnected',()=>{ try{ dir.reconnect(); }catch(e){} });
+    dir.on('error',e=>{ log('galería: '+e.type);
+      if(e.type==='unavailable-id'){ dirTries++; if(dirTries>5){ $('#state').textContent='Ese código de galería ya está en uso: cambia el código.'; return; }
+        $('#state').textContent='Esperando a liberar el código…'; const d=dir; setTimeout(()=>{ try{ d.destroy(); }catch(err){} if(running) startDirectory(code); },3000); } });
+    dir.on('connection',c=>{ c.on('open',()=>{ dirConns.push(c); try{ c.send({list:listForPhones()}); }catch(e){} });
+      c.on('close',()=>{ dirConns=dirConns.filter(x=>x!==c); }); });
+  }
+
+  async function readCameras(){
+    const base=$('#g2r').value.replace(/\/$/,'');
+    const r=await fetch(base+'/api/streams'); if(!r.ok) throw new Error('go2rtc respondió '+r.status);
+    return Object.keys(await r.json());
+  }
+  function stopAll(){
+    P.forEach(p=>{ try{ p.peer&&p.peer.destroy(); }catch(e){} try{ p.pc&&p.pc.close(); }catch(e){} });
+    P.length=0; try{ dir&&dir.destroy(); }catch(e){} dir=null; dirConns=[];
+  }
+  async function start(){
+    if(starting) return; starting=true; try{ await start2(); } finally{ starting=false; }
+  }
+  async function start2(){
+    if(typeof Peer==='undefined'){ $('#state').textContent='No se pudo cargar PeerJS (vendor/peerjs.min.js).'; return; }
+    const code=($('#code').value||'').trim().toUpperCase();
+    if(!/^[A-Z0-9]{3,6}$/.test(code)){ $('#state').textContent='El código tiene que ser de 3 a 6 letras o números.'; return; }
+    LS('galeria_code',code); LS('galeria_g2r',$('#g2r').value); $('#galCodeShow').textContent=code;
+    const was=P.length>0; running=false; stopAll(); $('#state').textContent='Leyendo cámaras…';
+    if(was) await new Promise(r=>setTimeout(r,1500));      // deja que el servidor libere los códigos anteriores
+    let names=[]; try{ names=await readCameras(); }catch(e){ $('#state').textContent='No se puede leer go2rtc en '+$('#g2r').value+' ('+e.message+')'; return; }
+    names.forEach((n,i)=>P.push({i:i+1, name:n, code:code+'-'+(i+1), conns:[], pc:null, stream:null, error:'', online:false}));
+    P.forEach(makePuestoPeer); startDirectory(code); running=true; render();
+  }
+  function render(){
+    $('#grid').innerHTML=P.map(p=>{
+      const st=p.error?'<span class="chip err">'+esc(p.error)+'</span>':p.conns.length?'<span class="chip busy">'+(p.conns.length===1?'1 móvil':p.conns.length+' móviles')+'</span>':'<span class="chip free">Libre</span>';
+      return '<div class="card" data-i="'+p.i+'"><h3><span>'+esc(p.name)+'</span>'+st+'</h3>'+
+        '<div class="sub">Código directo: <b>'+esc(p.code)+'</b>'+(p.online?'':' · conectando…')+'</div>'+
+        (p.preview?'<video autoplay muted playsinline></video>':'')+
+        '<button data-prev="'+p.i+'">'+(p.preview?'Ocultar imagen':'Ver imagen')+'</button></div>';
+    }).join('') || '<p class="sub">Pulsa <b>Iniciar galería</b>. Las cámaras se leen de go2rtc.</p>';
+    P.forEach(p=>{ if(!p.preview||!p.stream) return; const v=document.querySelector('.card[data-i="'+p.i+'"] video'); if(v){ v.srcObject=p.stream; v.play().catch(()=>{}); } });
+  }
+  $('#grid').addEventListener('click',async e=>{ const b=e.target.closest('[data-prev]'); if(!b) return;
+    const p=P.find(x=>x.i===+b.dataset.prev); p.preview=!p.preview;
+    if(p.preview){ try{ await ensureStream(p); }catch(err){ p.error=err.message; } } else releaseIfIdle(p);
+    render(); });
+  $('#startBtn').onclick=start;
+  $('#reloadBtn').onclick=()=>{ if(running) start(); };
+  $('#code').oninput=e=>{ $('#galCodeShow').textContent=e.target.value.toUpperCase(); };
+  // la pantalla del PC no se apaga mientras la galería está abierta
+  (async()=>{ try{ if(navigator.wakeLock) await navigator.wakeLock.request('screen'); }catch(e){} })();
+  if(LS('galeria_auto')!=='0' && LS('galeria_code')) setTimeout(start,500);   // arranca solo si ya se usó
+})();
+</script>
+</body>
+</html>
