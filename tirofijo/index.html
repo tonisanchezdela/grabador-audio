@@ -234,6 +234,8 @@
   #report table{width:100%; border-collapse:collapse; margin-top:8px; font-variant-numeric:tabular-nums;}
   #report th,#report td{border:1px solid #ccc; padding:4px 5px; text-align:center;}
   #report th{background:#f2f2f2; font-size:11px;}
+  #report table.wide{table-layout:fixed; font-size:10.5px;} #report table.wide td,#report table.wide th{padding:3px 1px; letter-spacing:-.3px;}
+  #report table.wide tr td:first-child{width:52px;}
   #report .sumline{background:#eee; padding:8px 10px; border-radius:8px; margin-top:12px; font-weight:700; font-size:13px;}
   #report .lbl td:first-child{background:#f7f7f7; font-weight:700; text-align:left;}
   #report .pv{display:none; font-weight:700; font-size:13px; border-bottom:1px solid #ccc; min-height:17px;}
@@ -436,7 +438,7 @@
       <h3>Impactos en cartón</h3>
       <p>Compara la imagen con la de hace un segundo y medio y busca manchas del tamaño de un impacto: fibras claras en la zona negra, agujero oscuro en la blanca. Los parches que ya estaban no cuentan. Indica el calibre y el diámetro de la diana para que sepa qué tamaño buscar.</p>
       <div class="grid2" style="margin-top:6px">
-        <div><label class="fld">Calibre (mm)</label><input type="number" id="caliber" value="9" min="2" max="20" step="0.1" inputmode="decimal"></div>
+        <div><label class="fld">Calibre (mm o pulg.) <span class="val" id="calHint"></span></label><input type="number" id="caliber" value="9" min="0.1" max="20" step="0.01" inputmode="decimal"></div>
         <div class="customOnly"><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm2" placeholder="500" inputmode="numeric"></div>
       </div>
       <label class="fld">Sensibilidad: <span class="val" id="vSens">5</span> (más alto = detecta impactos más débiles)</label>
@@ -525,10 +527,24 @@
         <option value="custom">Personalizada (anillos iguales)</option>
       </select>
       <div class="grid2" style="margin-top:6px">
-        <div><label class="fld">Calibre (mm)</label><input type="number" id="caliber2" value="9" min="2" max="20" step="0.1" inputmode="decimal"></div>
+        <div><label class="fld">Calibre (mm o pulg.) <span class="val" id="calHint2"></span></label><input type="number" id="caliber2" value="9" min="0.1" max="20" step="0.01" inputmode="decimal"></div>
         <div class="customOnly"><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm" placeholder="500" inputmode="numeric"></div>
       </div>
-      <p style="margin-top:6px">Puntuación ISSF: un impacto vale el anillo que toca con su borde, con décimas de x,0 a x,9. Por eso el calibre importa.</p>
+      <label class="fld">Modalidad</label>
+      <select id="modal">
+        <option value="issf">Estándar ISSF</option>
+        <option value="avancarga">Avancarga (MLAIC): .45, 13 disparos, cuentan los 10 mejores</option>
+        <option value="custom">Personalizada</option>
+      </select>
+      <label class="fld">Impacto sobre una línea</label>
+      <div class="seg" id="scoreRule"><button data-v="edge" class="sel">Si la toca, anillo superior</button><button data-v="center">Si pasa la mitad</button></div>
+      <div class="grid2">
+        <div><label class="fld">Disparos por tirada</label><select id="shotLimit"><option value="0">Sin límite</option>
+          <option>5</option><option>10</option><option>13</option><option>15</option><option>20</option><option>30</option><option>40</option><option>60</option></select></div>
+        <div><label class="fld">Cuentan</label><select id="bestOf"><option value="0">Todos</option>
+          <option value="5">Los 5 mejores</option><option value="10">Los 10 mejores</option><option value="20">Los 20 mejores</option><option value="30">Los 30 mejores</option><option value="40">Los 40 mejores</option><option value="60">Los 60 mejores</option></select></div>
+      </div>
+      <p style="margin-top:6px" id="ruleTxt"></p>
       <div id="customRings" style="display:none">
         <label class="fld">Nº de zonas: <span class="val" id="vRings">10</span></label>
         <input type="range" id="rings" min="5" max="10" value="10">
@@ -646,7 +662,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v24.8';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.0';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -658,7 +674,7 @@
     detectType:'laser', // laser | holes
     thr:160, minpx:4, cooldown:0.5, rings:10, radiusPct:42, realmm:0,
     fit:'contain', // contain = imagen completa | cover = llenar pantalla
-    ringColor:'#ff2bd6', ringW:1.0, minRing:1, // anillos: color vivo y grosor
+    ringColor:'#ff2bd6', ringW:1.0, minRing:1, scoreRule:'edge', bestOf:0, shotLimit:0, modal:'issf', // anillos: color vivo y grosor
     holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9, target:'p25',
     insideOnly:true, lightComp:true, ref:null, cand:null,
     persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
@@ -992,7 +1008,8 @@
   function bulletR(){ return S.caliber>0 ? S.caliber/targetD() : 0; }        // radio del impacto (normalizado)
   // puntuación ISSF: vale el anillo que TOCA el borde del impacto; décimas dentro de ese anillo (x,0 a x,9)
   function scoreShot(dRel){
-    const rr=ringRadii(), n=rr.length-1, de=Math.max(0, dRel-bulletR());
+    // ISSF: vale el anillo que toca el borde del impacto · "mitad": vale el anillo donde cae el centro del impacto
+    const rr=ringRadii(), n=rr.length-1, de=S.scoreRule==='center' ? dRel : Math.max(0, dRel-bulletR());
     for(let v=n; v>=Math.min(n,S.minRing||1); v--){
       if(de<=rr[v]+1e-9){
         const inner = v===n ? 0 : rr[v+1], frac=(rr[v]-de)/Math.max(1e-9, rr[v]-inner);
@@ -1003,7 +1020,17 @@
   }
   function scoreFromDist(dRel){ return scoreShot(dRel); }
   // recalcula todos los disparos con los ajustes actuales (calibre, modelo de diana…)
-  function rescoreAll(){ S.shots.forEach(s=>{ const r=scoreShot(s.dRel); s.ring=r.ring; s.dec=r.dec; }); }
+  function rescoreAll(){ S.shots.forEach(s=>{ const r=scoreShot(s.dRel); s.ring=r.ring; s.dec=r.dec; }); markBest(); }
+  // "cuentan los N mejores": los demás disparos se marcan como descartados (no suman)
+  function markBest(sh){
+    sh=sh||S.shots; sh.forEach(s=>s.drop=false);
+    const N=S.bestOf|0; if(!N || sh.length<=N) return sh;
+    sh.map((s,i)=>({s,i})).sort((a,b)=>(b.s.dec-a.s.dec)||(b.s.ring-a.s.ring)||(a.i-b.i)).slice(N).forEach(o=>o.s.drop=true);
+    return sh;
+  }
+  const counted=()=>S.shots.filter(s=>!s.drop);
+  // calibre en pulgadas (0,45) o en mm (11,4)
+  const parseCal=v=>{ v=+v; return v>0&&v<1.5 ? Math.round(v*25.4*100)/100 : v; };
 
   /* ---------- manchas conectadas (separa una mancha real del ruido suelto) ---------- */
   const LAB={buf:null};
@@ -1356,7 +1383,7 @@
     const rev=S.phase==='review';
     S.shots.forEach((s,i)=>{ const p=normToScreen(s.rx,s.ry), last=i===S.shots.length-1;
       octx.beginPath(); octx.arc(p.x,p.y,dot,0,7);
-      octx.fillStyle=(last&&!rev)?'rgba(255,214,10,.95)':'rgba(248,81,73,.9)'; octx.fill();
+      octx.fillStyle=(last&&!rev)?'rgba(255,214,10,.95)':(s.drop?'rgba(140,140,140,.7)':'rgba(248,81,73,.9)'); octx.fill();
       octx.strokeStyle='rgba(0,0,0,.85)'; octx.lineWidth=1.2; octx.stroke();
       if(rev){ // en la revisión cada impacto lleva su número para elegirlo fácilmente
         const fs=Math.max(9, 13/Z.s); octx.font='800 '+fs+'px sans-serif'; octx.textAlign='left'; octx.textBaseline='bottom';
@@ -1427,9 +1454,9 @@
 
   /* ---------- stats ---------- */
   function renderStats(){
-    const n=S.shots.length, tot=S.shots.reduce((a,s)=>a+s.ring,0), dec=S.shots.reduce((a,s)=>a+s.dec,0);
-    // cabecera: total con décimas y nº de tiros
-    $('#hdrTotal').textContent = n ? dec.toFixed(1).replace('.',',')+' · '+n+(n===1?' tiro':' tiros') : '0';
+    markBest(); const n=S.shots.length, cs=counted(), dec=cs.reduce((a,s)=>a+s.dec,0);
+    // cabecera: total con décimas y nº de tiros (si se descartan, cuántos cuentan)
+    $('#hdrTotal').textContent = n ? dec.toFixed(1).replace('.',',')+' · '+(cs.length<n?cs.length+'/':'')+n+(n===1?' tiro':' tiros') : '0';
   }
 
   /* ---------- REPORT ---------- */
@@ -1442,15 +1469,15 @@
   function shotStats(){
     const sh=S.shots, n=sh.length;
     if(!n) return {n:0};
-    const dec=sh.map(s=>s.dec), rg=sh.map(s=>s.ring);
+    markBest(); const dec=sh.map(s=>s.dec), cs=sh.filter(s=>!s.drop), cdec=cs.map(s=>s.dec);
     const mx=mean(sh.map(s=>s.rx)), my=mean(sh.map(s=>s.ry));
     const dist=sh.map(s=>Math.hypot(s.rx-mx,s.ry-my));
     let es=0; for(let i=0;i<n;i++)for(let j=i+1;j<n;j++) es=Math.max(es,Math.hypot(sh[i].rx-sh[j].rx, sh[i].ry-sh[j].ry));
     const meanR=mean(dist), half=Math.floor(n/2);
     const iv=[]; for(let i=1;i<n;i++){ const d=(sh[i].t-sh[i-1].t)/1000; if(d>0.3&&d<600) iv.push(d); }
     const fliers = n>=5&&meanR>0 ? dist.map((d,i)=>({i,d})).filter(o=>o.d>2.5*meanR && o.d>0.08).map(o=>o.i+1) : [];
-    return { n, total:rg.reduce((a,b)=>a+b,0), totalDec:dec.reduce((a,b)=>a+b,0),
-      avg:mean(dec), sdS:sdev(dec), best:Math.max(...dec), worst:Math.min(...dec),
+    return { n, nc:cs.length, total:cs.reduce((a,s)=>a+s.ring,0), totalDec:cdec.reduce((a,b)=>a+b,0),
+      avg:mean(cdec), sdS:sdev(dec), best:Math.max(...dec), worst:Math.min(...dec),
       mx, my, mpi:Math.hypot(mx,my), meanR, es,
       sdx:sdev(sh.map(s=>s.rx)), sdy:sdev(sh.map(s=>s.ry)),
       h1:n>=4?mean(dec.slice(0,half)):null, h2:n>=4?mean(dec.slice(n-half)):null,
@@ -1491,8 +1518,8 @@
     const real=bulletR()*R, dot=Math.max(4, real), clamp=v=>Math.max(dot,Math.min(W-dot,v));
     S.shots.forEach((s,i)=>{
       const x=clamp(cx+s.rx*R), y=clamp(cy+s.ry*R);
-      g.beginPath(); g.arc(x,y,dot,0,7); g.fillStyle='rgba(47,111,219,.85)'; g.fill();
-      g.lineWidth=2; g.strokeStyle='#fff'; g.stroke();
+      g.beginPath(); g.arc(x,y,dot,0,7); g.fillStyle=s.drop?'rgba(150,150,150,.55)':'rgba(47,111,219,.85)'; g.fill();
+      g.lineWidth=2; g.strokeStyle=s.drop?'#888':'#fff'; g.stroke();
       if(st.n<=40){ const fs=Math.max(15,Math.min(22,dot*1.2)); g.font='700 '+fs+'px sans-serif';
         const lx=x+dot*0.75+fs*0.45, ly=y-dot*0.75-fs*0.45;
         g.lineWidth=4; g.strokeStyle='rgba(255,255,255,.9)'; g.strokeText(i+1,lx,ly);
@@ -1647,7 +1674,7 @@
     if(st.n){
       const hc=clockOf(st.mx,st.my);
       $('#kpis').innerHTML =
-        k('Total', f1(st.totalDec), 'sin décimas: '+st.total) +
+        k('Total', f1(st.totalDec), 'sin décimas: '+st.total+(st.nc<st.n?' · cuentan los '+st.nc+' mejores de '+st.n:'')) +
         k('Media por disparo', f1(st.avg), '± '+f1(st.sdS)+' (regularidad)') +
         k('Mejor / peor', f1(st.best)+' / '+f1(st.worst)) +
         k('Radio de grupo', len(st.meanR), 'distancia media al centro del grupo') +
@@ -1660,25 +1687,28 @@
 
     // conteo por anillo
     const counts={}; for(let v=0; v<=S.rings; v++) counts[v]=0;
-    S.shots.forEach(s=>counts[s.ring]++);
+    counted().forEach(s=>counts[s.ring]++);
     let ct='<tr><th>Anillo</th>'; for(let v=S.rings; v>=1; v--) ct+='<th>'+v+'</th>'; ct+='<th>0</th></tr>';
     ct+='<tr><td style="background:#f7f7f7;font-weight:700">Nº</td>';
     for(let v=S.rings; v>=1; v--) ct+='<td>'+counts[v]+'</td>'; ct+='<td>'+counts[0]+'</td></tr>';
     $('#countTable').innerHTML=ct;
 
     $('#sumLine').textContent = st.n
-      ? 'Total: '+f1(st.totalDec)+' (sin décimas: '+st.total+') · Tiros: '+st.n+' · Media: '+f1(st.avg)
+      ? 'Total: '+f1(st.totalDec)+' (sin décimas: '+st.total+') · Tiros: '+(st.nc<st.n?st.nc+' de '+st.n+' (se descartan los peores)':st.n)+' · Media: '+f1(st.avg)
       : 'Sin disparos';
 
     // series de 10 disparos
     let sh='';
-    for(let s0=0; s0<S.shots.length; s0+=10){
-      const part=S.shots.slice(s0,s0+10);
-      const sr=part.reduce((a,s)=>a+s.ring,0), sd=part.reduce((a,s)=>a+s.dec,0);
-      sh+='<div class="serie">Serie '+(s0/10+1)+'</div><table>';
+    const SER=S.shotLimit>0?S.shotLimit:10;              // avancarga: series de 13
+    if(st.nc<st.n) sh+='<p style="margin:4px 0 8px;color:#777;font-size:12px">Tachados: disparos descartados (cuentan los '+st.nc+' mejores).</p>';
+    for(let s0=0; s0<S.shots.length; s0+=SER){
+      const part=S.shots.slice(s0,s0+SER);
+      const pc=part.filter(s=>!s.drop), sr=pc.reduce((a,s)=>a+s.ring,0), sd=pc.reduce((a,s)=>a+s.dec,0);
+      const dc=s=>s.drop?' style="color:#aaa;text-decoration:line-through"':'';
+      sh+='<div class="serie">Serie '+(s0/SER+1)+'</div><table'+(part.length>10?' class="wide"':'')+'>';
       sh+='<tr class="lbl"><td>Tiro</td>'+part.map((_,i)=>'<th>'+(s0+i+1)+'</th>').join('')+'<th>Σ</th></tr>';
-      sh+='<tr class="lbl"><td>Anillos</td>'+part.map(s=>'<td>'+s.ring+'</td>').join('')+'<td><b>'+sr+'</b></td></tr>';
-      sh+='<tr class="lbl"><td>Décimas</td>'+part.map(s=>'<td>'+f1(s.dec)+'</td>').join('')+'<td><b>'+f1(sd)+'</b></td></tr></table>';
+      sh+='<tr class="lbl"><td>Anillos</td>'+part.map(s=>'<td'+dc(s)+'>'+s.ring+'</td>').join('')+'<td><b>'+sr+'</b></td></tr>';
+      sh+='<tr class="lbl"><td>Décimas</td>'+part.map(s=>'<td'+dc(s)+'>'+f1(s.dec)+'</td>').join('')+'<td><b>'+f1(sd)+'</b></td></tr></table>';
     }
     $('#seriesTable').innerHTML=sh;
 
@@ -1904,10 +1934,33 @@
   }
   $('#targetModel').onchange=e=>setTarget(e.target.value);
   document.querySelectorAll('.customOnly').forEach(e=>e.style.display=TARGETS[S.target]?'none':'');   // estado inicial
-  $('#caliber2').oninput=e=>{S.caliber=+e.target.value||9;$('#caliber').value=e.target.value;rescoreAll();renderStats();};
+  function calHints(){ const t=S.caliber>0?'= '+f1(S.caliber)+' mm':''; const raw=+$('#caliber2').value;
+    $('#calHint2').textContent=raw>0&&raw<1.5?t:''; $('#calHint').textContent=(+$('#caliber').value>0&&+$('#caliber').value<1.5)?t:''; }
+  $('#caliber2').oninput=e=>{S.caliber=parseCal(e.target.value)||9;$('#caliber').value=e.target.value;calHints();rescoreAll();renderStats();};
   $('#realmm').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm2').value=e.target.value;rescoreAll();renderStats();};
   $('#holeSens').oninput=e=>{S.holeSens=+e.target.value;$('#vSens').textContent=S.holeSens;};
-  $('#caliber').oninput=e=>{S.caliber=+e.target.value||9;$('#caliber2').value=e.target.value;rescoreAll();renderStats();};
+  $('#caliber').oninput=e=>{S.caliber=parseCal(e.target.value)||9;$('#caliber2').value=e.target.value;calHints();rescoreAll();renderStats();};
+  // modalidad y reglas de puntuación
+  const MODALS={issf:{scoreRule:'edge',bestOf:0,shotLimit:0}, avancarga:{scoreRule:'center',bestOf:10,shotLimit:13,caliber:11.43}};
+  function ruleUI(){
+    document.querySelectorAll('#scoreRule button').forEach(b=>b.classList.toggle('sel',b.dataset.v===S.scoreRule));
+    $('#bestOf').value=String(S.bestOf|0); $('#shotLimit').value=String(S.shotLimit|0); $('#modal').value=S.modal||'issf';
+    $('#ruleTxt').textContent=(S.scoreRule==='center'
+      ? 'Un impacto sobre una línea vale el anillo superior solo si más de la mitad del impacto está dentro (cuenta su centro).'
+      : 'Puntuación ISSF: un impacto vale el anillo que toca con su borde. Por eso el calibre importa.')
+      +(S.bestOf>0?' Solo suman los '+S.bestOf+' mejores disparos.':'')+(S.shotLimit>0?' La tirada termina sola al '+S.shotLimit+'º disparo.':'');
+  }
+  function setModal(m){
+    S.modal=m; const M=MODALS[m];
+    if(M){ S.scoreRule=M.scoreRule; S.bestOf=M.bestOf; S.shotLimit=M.shotLimit;
+      if(M.caliber){ S.caliber=M.caliber; $('#caliber').value=$('#caliber2').value=M.caliber; calHints(); } }
+    ruleUI(); rescoreAll(); renderStats();
+  }
+  $('#modal').onchange=e=>setModal(e.target.value);
+  document.querySelectorAll('#scoreRule button').forEach(b=>b.onclick=()=>{ S.scoreRule=b.dataset.v; S.modal='custom'; ruleUI(); rescoreAll(); renderStats(); });
+  $('#bestOf').onchange=e=>{ S.bestOf=+e.target.value||0; S.modal='custom'; ruleUI(); rescoreAll(); renderStats(); };
+  $('#shotLimit').onchange=e=>{ S.shotLimit=+e.target.value||0; S.modal='custom'; ruleUI(); };
+  ruleUI();
   $('#realmm2').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm').value=e.target.value;rescoreAll();renderStats();};
   const confTxt=()=>(S.confirm*0.2).toFixed(1).replace('.',',');
   $('#confirm').oninput=e=>{S.confirm=+e.target.value;$('#vConfirm').textContent=confTxt();};
@@ -2216,7 +2269,7 @@
   function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PKEY)||'{}')||{}; }catch(e){ return {}; } }
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
   const SKEYS=['fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
-    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target'];
+    'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target','scoreRule','bestOf','shotLimit','modal'];
   const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
   function snapshot(){
     const o={S:{},T:{},REP:{...REP},fields:{},saved:Date.now()};
@@ -2241,7 +2294,7 @@
     setR('#thr',S.thr,'#vThr'); setR('#minpx',S.minpx,'#vMin');
     setR('#cd',Math.round(S.cooldown*10),'#vCd',(+S.cooldown).toFixed(1));
     setR('#rings',S.rings,'#vRings'); $('#realmm').value=S.realmm||'';
-    setR('#holeSens',S.holeSens,'#vSens'); $('#caliber').value=S.caliber; $('#caliber2').value=S.caliber; $('#realmm2').value=S.realmm||'';
+    setR('#holeSens',S.holeSens,'#vSens'); $('#caliber').value=S.caliber; $('#caliber2').value=S.caliber; $('#realmm2').value=S.realmm||''; ruleUI(); calHints();
     $('#targetModel').value=S.target||'custom'; $('#customRings').style.display=TARGETS[S.target]?'none':'block';
     document.querySelectorAll('.customOnly').forEach(e=>e.style.display=TARGETS[S.target]?'none':'');
     setR('#confirm',S.confirm,'#vConfirm',confTxt()); setR('#roundv',Math.round(S.roundMax*10),'#vRound',(+S.roundMax).toFixed(1));
@@ -2371,7 +2424,7 @@
       p.ses[r.sess]=r; });
     const list=Object.values(by);
     list.forEach(p=>{ Object.values(p.ses).forEach(r=>{ p.tot+=r.total||0; p.dec+=r.totalDec||0; p.n+=r.n||0;
-      (r.shots||[]).forEach(s=>p.cnt[Math.max(0,Math.min(11,s.ring|0))]++); });
+      (r.shots||[]).forEach(s=>{ if(!s.x) p.cnt[Math.max(0,Math.min(11,s.ring|0))]++; }); });
       p.dec=r1(p.dec); p.score=c.decimals?p.dec:p.tot; });
     // desempate: más dieces, luego más nueves…
     list.sort((a,b)=>{ if(b.score!==a.score) return b.score-a.score; for(let v=10; v>=1; v--) if(b.cnt[v]!==a.cnt[v]) return b.cnt[v]-a.cnt[v]; return 0; });
@@ -2396,7 +2449,7 @@
     for(let v=1; v<rr.length; v++){ g.beginPath(); g.arc(cx,cx,R*rr[v],0,7); g.strokeStyle=rr[v]<=bl+1e-6?'#bbb':'#333'; g.lineWidth=1; g.stroke(); }
     const dot=Math.max(2.5, (+c.caliber||9)/D*R);
     (shots||[]).forEach(s=>{ g.beginPath(); g.arc(cx+s.rx*R, cx+s.ry*R, dot, 0, 7);
-      g.fillStyle=s.m?'rgba(230,140,20,.9)':'rgba(47,111,219,.9)'; g.fill(); g.lineWidth=1; g.strokeStyle='#fff'; g.stroke(); });
+      g.fillStyle=s.x?'rgba(150,150,150,.6)':s.m?'rgba(230,140,20,.9)':'rgba(47,111,219,.9)'; g.fill(); g.lineWidth=1; g.strokeStyle='#fff'; g.stroke(); });
   }
 
   /* ---------- pantallas ---------- */
@@ -2450,11 +2503,14 @@
       '<div class="card"><h3>Arma y diana</h3>'+
       '<label class="fld">Disciplina</label><input type="text" id="cpDisc" value="'+esc(e.disc)+'" placeholder="p. ej. Pistola estándar">'+
       '<div class="grid2"><div><label class="fld">Arma</label><input type="text" id="cpWeapon" value="'+esc(e.weapon)+'" placeholder="Pistola"></div>'+
-      '<div><label class="fld">Calibre (mm)</label><input type="number" id="cpCal" value="'+e.caliber+'" step="0.1" min="2" max="20" inputmode="decimal"></div></div>'+
+      '<div><label class="fld">Calibre (mm o pulg.)</label><input type="number" id="cpCal" value="'+e.caliber+'" step="0.01" min="0.1" max="20" inputmode="decimal"></div></div>'+
+      '<label class="fld">Modalidad</label><select id="cpModal">'+opt({issf:'Estándar ISSF',avancarga:'Avancarga (MLAIC): .45, 13 disparos, cuentan 10',custom:'Personalizada'},e.modal||'issf')+'</select>'+
       '<label class="fld">Diana</label><select id="cpTarget">'+opt(TNAME,e.target)+'</select>'+
       '<div id="cpDiamBox"'+(e.target==='custom'?'':' style="display:none"')+'><label class="fld">Diámetro diana (mm), 10 anillos iguales</label><input type="number" id="cpDiam" value="'+(e.diam||500)+'" inputmode="numeric"></div>'+
       '<label class="fld">Detección</label><select id="cpDetect">'+opt(DNAME,e.detect)+'</select>'+
-      '<label class="fld">Clasificación</label>'+seg('cpDec',{true:'Con décimas',false:'Sin décimas (enteros)'},e.decimals)+'</div>'+
+      '<label class="fld">Clasificación</label>'+seg('cpDec',{true:'Con décimas',false:'Sin décimas (enteros)'},e.decimals)+
+      '<label class="fld">Impacto sobre una línea</label>'+seg('cpRule',{edge:'Si la toca, anillo superior',center:'Si pasa la mitad'},e.rule||'edge')+
+      '<label class="fld">Cuentan por sesión</label><select id="cpBest">'+opt({0:'Todos los disparos',5:'Los 5 mejores',10:'Los 10 mejores',20:'Los 20 mejores',30:'Los 30 mejores'},String(e.bestOf||0))+'</select></div>'+
       '<div class="card"><h3>Sesiones de tiro</h3><p>Cada sesión es una tirada con sus disparos, tiempo y condiciones. El total suma todas las sesiones.</p>'+
       e.sessions.map(sessForm).join('')+
       '<button class="btn" data-act="addsess" style="width:100%; margin-top:10px">＋ Añadir sesión</button></div>'+
@@ -2464,7 +2520,8 @@
   function harvestEdit(){
     const e=CP.edit, v=id=>{ const el=$('#'+id); return el?el.value:''; };
     e.name=v('cpName').trim(); e.club=v('cpClub').trim(); e.disc=v('cpDisc').trim(); e.weapon=v('cpWeapon').trim();
-    e.caliber=+v('cpCal')||9; e.target=v('cpTarget')||'p25'; e.diam=+v('cpDiam')||500; e.detect=v('cpDetect')||'any';
+    e.caliber=parseCal(v('cpCal'))||9; e.modal=v('cpModal')||'issf'; e.bestOf=+v('cpBest')||0;
+    const rs=document.querySelector('#cpRule .sel'); if(rs) e.rule=rs.dataset.v; e.target=v('cpTarget')||'p25'; e.diam=+v('cpDiam')||500; e.detect=v('cpDetect')||'any';
     e.team=Math.max(1,+v('cpTeam')||3); e.notes=v('cpNotes');
     const ks=document.querySelector('#cpKind .sel'); if(ks) e.kind=ks.dataset.v;
     const ds=document.querySelector('#cpDec .sel'); if(ds) e.decimals=ds.dataset.v==='true';
@@ -2495,6 +2552,8 @@
     h+='<div class="card"><h3>Configuración</h3><p>'+
       (c.disc?'<b>Disciplina:</b> '+esc(c.disc)+'<br>':'')+'<b>Arma:</b> '+esc(c.weapon||'—')+' · <b>Calibre:</b> '+f1(+c.caliber||0)+' mm<br>'+
       '<b>Diana:</b> '+esc(TNAME[c.target]||c.target)+(c.target==='custom'?' Ø'+(+c.diam||500)+' mm':'')+'<br><b>Detección:</b> '+DNAME[c.detect||'any']+'<br>'+
+      (c.modal==='avancarga'?'<b>Modalidad:</b> Avancarga<br>':'')+
+      '<b>Impacto en la línea:</b> '+(c.rule==='center'?'vale el anillo superior si pasa la mitad':'si la toca, anillo superior (ISSF)')+(+c.bestOf>0?' · <b>cuentan los '+c.bestOf+' mejores</b> de cada sesión':'')+'<br>'+
       '<b>Clasificación:</b> '+(c.decimals?'con décimas':'sin décimas')+(c.kind==='inter'?' · por clubes '+teamTxt(c):'')+'<br><b>Total:</b> '+sess.length+' sesión'+(sess.length===1?'':'es')+', '+N+' disparos</p>'+
       (c.notes?'<p style="margin-top:8px; white-space:pre-wrap">'+esc(c.notes)+'</p>':'')+'</div>';
     // inscripción del tirador
@@ -2561,7 +2620,7 @@
         (r.status!=='valid'?'<button class="btn sm" data-act="valid" data-id="'+esc(r.id)+'" style="background:var(--ok);border-color:var(--ok);color:#06220f">✓ Validar</button>':'')+
         (r.status!=='rejected'?'<button class="btn sm" data-act="rejres" data-id="'+esc(r.id)+'">✕ Rechazar</button>':'')+
         (r.status!=='pending'?'<button class="btn sm" data-act="unres" data-id="'+esc(r.id)+'">↺ Pendiente</button>':'')+
-        '</div></div></div>'; }).join('')+'<p class="sub" style="margin-top:8px">Azul: detectado · naranja: añadido a mano en la revisión.</p></div>';
+        '</div></div></div>'; }).join('')+'<p class="sub" style="margin-top:8px">Azul: detectado · naranja: añadido a mano en la revisión · gris: descartado (no suma).</p></div>';
   }
 
   /* ---------- acciones ---------- */
@@ -2581,9 +2640,10 @@
       else if(a==='join'){ const code=($('#cpJoinCode').value||'').trim().toUpperCase(); if(!/^[A-Z0-9]{6}$/.test(code)){ CP.msg='El código tiene 6 letras o números.'; }
         else { const d=await cps().doc(code).get(); if(!d.exists) CP.msg='No existe ninguna competición con el código '+code+'.'; else return openComp(code); } }
       else if(a==='new'){ CP.edit={id:null, name:'', club:'', kind:'club', team:3, disc:'', weapon:'Pistola', caliber:S.caliber||9, target:S.target||'p25', diam:500,
-          detect:'any', decimals:true, notes:'', sessions:[]}; CP.edit.sessions.push(SESS_DEF()); CP.view='edit'; }
+          detect:'any', decimals:true, rule:S.scoreRule||'edge', bestOf:S.bestOf||0, modal:S.modal||'issf', notes:'', sessions:[]}; CP.edit.sessions.push(SESS_DEF()); CP.view='edit'; }
       else if(a==='edit'){ const c=CP.comp; CP.edit=JSON.parse(JSON.stringify({id:c.id, name:c.name, club:c.club, kind:c.kind, team:c.team, disc:c.disc, weapon:c.weapon,
-          caliber:c.caliber, target:c.target, diam:c.diam, detect:c.detect, decimals:c.decimals, notes:c.notes||'', sessions:c.sessions||[]})); CP.view='edit'; }
+          caliber:c.caliber, target:c.target, diam:c.diam, detect:c.detect, decimals:c.decimals, rule:c.rule||'edge', bestOf:c.bestOf||0, modal:c.modal||'issf',
+          notes:c.notes||'', sessions:c.sessions||[]})); CP.view='edit'; }
       else if(a==='addsess'){ harvestEdit(); CP.edit.sessions.push(SESS_DEF()); }
       else if(a==='delsess'){ harvestEdit(); CP.edit.sessions.splice(+el.dataset.i,1); }
       else if(a==='cancel'){ CP.view=CP.edit&&CP.edit.id?'comp':'home'; CP.edit=null; }
@@ -2620,7 +2680,7 @@
     if(!e.name){ CP.msg='Pon un nombre a la competición.'; return renderComp(); }
     if(!e.sessions.length){ CP.msg='Añade al menos una sesión.'; return renderComp(); }
     const cfg={name:e.name, club:e.club, kind:e.kind, team:e.team, disc:e.disc, weapon:e.weapon, caliber:e.caliber, target:e.target, diam:e.diam,
-      detect:e.detect, decimals:!!e.decimals, notes:e.notes, sessions:e.sessions};
+      detect:e.detect, decimals:!!e.decimals, rule:e.rule||'edge', bestOf:+e.bestOf||0, modal:e.modal||'issf', notes:e.notes, sessions:e.sessions};
     try{
       if(e.id){ await cps().doc(e.id).update(cfg); CP.edit=null; CP.view='comp'; CP.msg='Cambios guardados.'; }
       else {
@@ -2654,6 +2714,7 @@
     setTarget(TARGETS[c.target]?c.target:'custom');
     if(!TARGETS[c.target]){ S.rings=10; S.realmm=+c.diam||500; }
     S.caliber=+c.caliber||S.caliber;
+    S.scoreRule=c.rule==='center'?'center':'edge'; S.bestOf=+c.bestOf||0; S.shotLimit=0; S.modal=c.modal||'custom';
     if(c.detect==='laser'||c.detect==='holes') S.detectType=c.detect;
     T.mode = s.timer==='down'?'down' : s.timer==='alt'?'alt' : 'up';
     T.downSecs=Math.max(1,Math.round((+s.min||0)*60)); if(T.mode==='down'&&!(+s.min>0)) T.mode='up';
@@ -2672,7 +2733,10 @@
     if(S.phase==='ready'&&!a.started) $('#pill').innerHTML='🏆 <b>'+esc(a.sess.name)+'</b>: '+a.sess.shots+' disparos'+(a.sess.cond?' · '+esc(a.sess.cond):'')+'. Pulsa <b>Nueva sesión</b>';
   }
   function compAfterShot(){
-    const a=CP.active; if(!a||!a.started) return;
+    const a=CP.active;
+    if(!a && S.shotLimit>0 && S.phase==='running' && S.shots.length>=S.shotLimit){   // tirada completa
+      flashScore('✓'); setTimeout(()=>{ if(S.phase==='running') finalizarSesion(); },1300); return; }
+    if(!a||!a.started) return;
     updCompBanner();
     if(S.phase==='running' && S.shots.length>=a.sess.shots){
       flashScore('✓'); setTimeout(()=>{ if(S.phase==='running') finalizarSesion(); },1300);
@@ -2683,9 +2747,10 @@
     const show=h=>{ box.innerHTML=h; box.style.display='block'; };
     if(!CP.user||!fbDb){ show('⚠ Inicia sesión en 🏆 Competiciones para enviar el resultado.<br><button class="btn sm" data-csend style="margin-top:8px">Reintentar envío</button>'); return; }
     rescoreAll();
-    const shots=S.shots.map(s=>({rx:Math.round(s.rx*1e4)/1e4, ry:Math.round(s.ry*1e4)/1e4, ring:s.ring, dec:s.dec, m:s.manual?1:0}));
+    const shots=S.shots.map(s=>({rx:Math.round(s.rx*1e4)/1e4, ry:Math.round(s.ry*1e4)/1e4, ring:s.ring, dec:s.dec, m:s.manual?1:0, x:s.drop?1:0}));
+    const cnt=shots.filter(s=>!s.x);
     const doc={uid:CP.user.uid, name:a.pname, club:a.pclub, sess:a.i, sessName:a.sess.name, shots, n:shots.length,
-      total:shots.reduce((x,s)=>x+s.ring,0), totalDec:r1(shots.reduce((x,s)=>x+s.dec,0)), manual:shots.filter(s=>s.m).length, removed:a.removed||0,
+      total:cnt.reduce((x,s)=>x+s.ring,0), totalDec:r1(cnt.reduce((x,s)=>x+s.dec,0)), manual:shots.filter(s=>s.m).length, removed:a.removed||0,
       status:'pending', note:'', at:Date.now(), app:APPVER};
     show('Enviando resultado a <b>'+esc(a.comp.name)+'</b>…');
     const ref=fbDb.collection('comps').doc(a.cid).collection('results').doc(CP.user.uid+'_'+a.i);
@@ -2710,12 +2775,17 @@
     if(S.phase==='ready' && confirm('¿Salir del modo competición ('+a.comp.name+')?')){ CP.active=null; updCompBanner(); } };
   $('#compBody').addEventListener('click',e=>{
     const b=e.target.closest('[data-act]'); if(b){ e.preventDefault(); act(b.dataset.act,b); return; }
-    const sb=e.target.closest('#cpKind button, #cpDec button');   // selectores del formulario
+    const sb=e.target.closest('#cpKind button, #cpDec button, #cpRule button');   // selectores del formulario
     if(sb){ sb.parentNode.querySelectorAll('button').forEach(x=>x.classList.toggle('sel',x===sb));
       if(sb.parentNode.id==='cpKind') $('#cpTeamBox').style.display=sb.dataset.v==='inter'?'':'none'; }
   });
   $('#compBody').addEventListener('change',e=>{
     if(e.target.id==='cpTarget') $('#cpDiamBox').style.display=e.target.value==='custom'?'':'none';
+    if(e.target.id==='cpModal' && e.target.value!=='custom'){                     // modalidad: rellena sus reglas
+      harvestEdit(); const E=CP.edit;
+      if(E.modal==='avancarga'){ E.caliber=11.43; E.rule='center'; E.bestOf=10; E.sessions.forEach(x=>x.shots=13); if(!E.disc) E.disc='Avancarga'; }
+      else { E.rule='edge'; E.bestOf=0; }
+      renderComp(); }
     if(e.target.dataset.f==='timer'){ const box=e.target.closest('.cpSess');
       box.querySelectorAll('[data-show]').forEach(x=>x.style.display=x.dataset.show===e.target.value?'':'none'); }
   });
