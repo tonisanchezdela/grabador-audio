@@ -395,6 +395,9 @@
         <button class="qb" id="qSensM">Sens −</button>
         <div class="qb qSens" id="qSens">5</div>
         <button class="qb" id="qSensP">Sens +</button>
+        <button class="qb" id="qExpM">Expo −</button>
+        <div class="qb qSens wide" id="qExp">Exposición</div>
+        <button class="qb" id="qExpP">Expo +</button>
         <button class="qb wide" id="qTorch">🔦 Linterna</button>
         <button class="qb wide" id="qClose" style="background:var(--ok);border-color:var(--ok);color:#06220f">✓ Hecho</button>
       </div>
@@ -477,10 +480,10 @@
     </div>
     <div class="card">
       <h3>Impactos en cartón</h3>
-      <p>Compara la imagen con la de hace un segundo y medio y busca manchas del tamaño de un impacto: fibras claras en la zona negra, agujero oscuro en la blanca. Los parches que ya estaban no cuentan. Indica el calibre y el diámetro de la diana para que sepa qué tamaño buscar.</p>
+      <p>Compara la imagen con la de hace un segundo y medio y busca manchas del tamaño de un impacto: fibras claras en la zona negra, agujero oscuro en la blanca. Los parches que ya estaban no cuentan. Indica el calibre y el <b>diámetro real del aro exterior (aro 1)</b> medido con una regla: si usas tarjetas reducidas (p. ej. 14×14 cm) y no lo cambias, la app busca impactos de un tamaño equivocado, falla los claros y da falsos.</p>
       <div class="grid2" style="margin-top:6px">
         <div><label class="fld">Calibre (mm o pulg.) <span class="val" id="calHint"></span></label><input type="number" id="caliber" value="9" min="0.1" max="20" step="0.01" inputmode="decimal"></div>
-        <div class="customOnly"><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm2" placeholder="500" inputmode="numeric"></div>
+        <div><label class="fld">Diámetro real aro 1 (mm)</label><input type="number" id="realmm2" placeholder="500" inputmode="numeric"></div>
       </div>
       <label class="fld">Sensibilidad: <span class="val" id="vSens">5</span> (más alto = detecta impactos más débiles)</label>
       <input type="range" id="holeSens" min="1" max="8" value="5">
@@ -571,7 +574,7 @@
       </select>
       <div class="grid2" style="margin-top:6px">
         <div><label class="fld">Calibre (mm o pulg.) <span class="val" id="calHint2"></span></label><input type="number" id="caliber2" value="9" min="0.1" max="20" step="0.01" inputmode="decimal"></div>
-        <div class="customOnly"><label class="fld">Diámetro diana (mm)</label><input type="number" id="realmm" placeholder="500" inputmode="numeric"></div>
+        <div><label class="fld">Diámetro real aro 1 (mm)</label><input type="number" id="realmm" placeholder="500" inputmode="numeric"></div>
       </div>
       <label class="fld">Modalidad</label>
       <select id="modal">
@@ -705,7 +708,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.4', APPDATE='24-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.5', APPDATE='24-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -719,7 +722,7 @@
     fit:'contain', // contain = imagen completa | cover = llenar pantalla
     ringColor:'#ff2bd6', ringW:1.0, minRing:1, scoreRule:'edge', bestOf:0, shotLimit:0, modal:'issf', // anillos: color vivo y grosor
     holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9, target:'p25',
-    insideOnly:true, lightComp:true, ref:null, cand:null,
+    insideOnly:true, lightComp:true, backlit:false, ref:null, cand:null,
     persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
     phase:'idle', // idle | ready | leadin | running | paused | camera
@@ -914,6 +917,27 @@
     else if(prev==='continuous' && modes.includes('continuous')) setTimeout(()=>ap(Object.assign({focusMode:'continuous'},P)),1500);
     return {ok:true, poi:poiOk, af:prev!=='manual'};
   }
+  // exposición (brillo de la cámara): dir −1 / +1, en pasos de ~1/6 del rango
+  async function expoTrack(t, dir){
+    if(!t) return {ok:false, why:'sin cámara'};
+    let caps={}, st={}; try{ caps=t.getCapabilities?t.getCapabilities():{}; st=t.getSettings?t.getSettings():{}; }catch(e){}
+    const ec=caps.exposureCompensation;
+    if(!ec || !(ec.max>ec.min)) return {ok:false, why:'esta cámara no permite cambiar la exposición'};
+    const stp=Math.max(ec.step||0.1,(ec.max-ec.min)/12), cur=typeof st.exposureCompensation==='number'?st.exposureCompensation:0;
+    const v=Math.max(ec.min,Math.min(ec.max,Math.round((cur+dir*stp)/(ec.step||0.1))*(ec.step||0.1)));
+    try{ await t.applyConstraints({advanced:[{exposureMode:'continuous', exposureCompensation:v}]}); }catch(e){ return {ok:false, why:'no aceptó el cambio'}; }
+    return {ok:true, val:v, min:ec.min, max:ec.max};
+  }
+  function expoTxt(r){ return r&&r.ok ? 'Expo '+(r.val>0?'+':'')+(+r.val).toFixed(1) : 'Expo —'; }
+  async function camExpo(dir){
+    if(TORCH.remote && S.phase!=='camera'){ try{ TORCH.remote.send({expo:dir}); qMsg('Enviando al móvil-cámara…'); }catch(e){ qMsg('⚠ Sin enlace con el móvil-cámara'); } return; }
+    const r=await expoTrack(S.phase==='camera'?camTrack():localTrack(), dir); expoDone(r);
+  }
+  function expoDone(r){
+    $('#qExp').textContent=expoTxt(r);
+    qMsg(r.ok ? 'Exposición '+expoTxt(r).slice(5)+' · referencia rehecha. Con luz trasera: que el papel no se vea quemado' : '⚠ '+r.why);
+    if(r.ok) resetHoles();
+  }
   function unmapCover(x,y){       // punto de pantalla → fracción del fotograma de vídeo
     const vAR=video.videoWidth/video.videoHeight, sAR=S.W/S.H; let dw,dh,ox,oy;
     if((vAR>sAR)===(S.fit==='cover')){dh=S.H;dw=S.H*vAR;ox=(S.W-dw)/2;oy=0;} else {dw=S.W;dh=S.W/vAR;ox=0;oy=(S.H-dh)/2;}
@@ -1022,6 +1046,7 @@
       try{ conn.send({torchCap:torchCap(camTrack()), torch:TORCH.on}); }catch(e){}
     });
       conn.on('data', async d=>{                                 // el móvil que puntúa enciende o apaga la linterna
+        if(d && d.expo){ const r=await expoTrack(camTrack(), d.expo); try{ conn.send({expoAck:r}); }catch(e){} }
         if(d && d.focus){ const r=await focusTrack(camTrack(), d.focus, d.poi||null);
           if(r.ok && r.af!==undefined && d.focus!=='once'){ CC.af=r.af; $('#ccAF').classList.toggle('on',CC.af); $('#ccAF').textContent='Autoenfoque: '+(CC.af?'ON':'OFF'); }
           try{ conn.send({focusAck:r, af:CC.af}); }catch(e){} }
@@ -1068,6 +1093,7 @@
     const conn=peer.connect('tirofijo-'+LINK.code, {reliable:true}); LINK.conn=conn; TORCH.remote=conn;
     conn.on('open', ()=>{ if(!S.running) $('#suStatus').textContent='Enlazado, esperando vídeo…'; });
     conn.on('data', d=>{ if(d && 'torchCap' in d){ TORCH.remoteCap=!!d.torchCap; TORCH.on=!!d.torch; torchUI(); quickUI(); }
+      if(d && d.expoAck){ expoDone(d.expoAck); }
       if(d && d.focusAck){ if(typeof d.af==='boolean') QF.af=d.af; qMsg(focusResultTxt(d.focusAck, QF.pend&&QF.pend.center)); QF.pend=null; quickUI(); } });
     conn.on('close', ()=>{ if(LINK.active) linkLost('El móvil-cámara se ha desconectado.'); });
     conn.on('error', ()=>{ if(!S.running) $('#suStatus').textContent='No se pudo enlazar. Revisa el código.'; });
@@ -1496,13 +1522,13 @@
     // ruido de la cámara (desviación robusta del residuo en zonas lisas): sube los umbrales si la imagen es ruidosa
     const rs=[]; for(let i=0;i<n;i+=7){ if(ins[i] && grad[i]<HOLE_G0*0.25){ const q=qi[i]; rs.push(Math.abs(cur[i]-(QG[q]*ref[i]+QO[q]))); } }
     rs.sort((a,b)=>a-b); const sig=rs.length>50?1.4826*rs[rs.length>>1]:2; HD.sig=sig;
-    const thrD=Math.max(HOLE_THR_D,3.5*sig), thrL=Math.max(HOLE_THR_L,4.5*sig);
+    const BL=!!S.backlit, thrD=Math.max(HOLE_THR_D,3.5*sig), thrL=Math.max(HOLE_THR_L,4.5*sig);
     const vr=HD.vr, VK=3.2-0.2*S.holeSens, VC=2.6-0.1*S.holeSens;
-    const E=new Float32Array(n); let big=0,cnt=0;
+    const E=new Float32Array(n), DF=new Float32Array(n); let big=0,cnt=0;
     for(let i=0;i<n;i++){ if(!ins[i]) continue; cnt++;
-      const q=qi[i], c=cur[i], pr=QG[q]*ref[i]+QO[q], raw=Math.abs(c-pr), d=Math.max(0,raw-0.5*sig);   // se descuenta parte del ruido típico
+      const q=qi[i], c=cur[i], pr=QG[q]*ref[i]+QO[q], raw=BL?Math.max(0,c-pr):Math.abs(c-pr), d=Math.max(0,raw-0.5*sig);   // se descuenta parte del ruido típico
       const tb=ref[i]<sn.mid?thrD:thrL, thr=Math.max(tb, Math.min(VC*tb, VK*Math.sqrt(vr[i])));
-      if(raw>thr) big++;
+      DF[i]=raw; if(raw>thr) big++;
       let e=d/thr; if(e>2) e=2; const gq=grad[i]/HOLE_G0; E[i]=e/(1+gq*gq); }
     if(big>cnt*0.15){   // la cámara se ha movido o la luz ha cambiado mucho: nueva referencia
       HD.base=prepSnap(cur,R,ins,now); HD.cands=[]; HD.view=null; HD.quietSince=now;
@@ -1528,9 +1554,15 @@
       say('Algo tapa la diana: esperando…','mov'); return null;
     }
     HD.occSince=0;
-    const ok=all.filter(c=>c.n>=0.12*hs.A && c.n<=3.5*hs.A && c.ar<=S.roundMax && c.fill>=0.3)
+    const bigOk=c=>c.n>3.5*hs.A && c.n<=10*hs.A && c.ar<=1.8 && c.fill>=0.5;   // redondo pero más grande de lo esperado
+    if(all.some(bigOk)) HD.bigSeen=(HD.bigSeen||0)+1;
+    const ok=all.filter(c=>c.n>=Math.max(5,0.12*hs.A) && (c.n<=3.5*hs.A||bigOk(c)) && c.ar<=S.roundMax && c.fill>=0.3)
+      .filter(c=>{ const rb=Math.max(2,Math.sqrt(c.n/Math.PI)), at=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x>=0&&y>=0&&x<w&&y<h&&ins[y*w+x]?DF[y*w+x]:-1; };
+        let cen=0,cn=0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ const v=at(c.cx+dx,c.cy+dy); if(v>=0){cen+=v;cn++;} }
+        let an=0,anN=0; for(let k=0;k<20;k++){ const a=k/20*6.2832, rr=(k%2?2.0:2.7)*rb, v=at(c.cx+rr*Math.cos(a),c.cy+rr*Math.sin(a)); if(v>=0){an+=v;anN++;} }
+        if(!cn||anN<8) return true; cen/=cn; an/=anN; c.sharp=cen>0?an/cen:1; return an<0.6*cen; })
       .map(c=>{ const p=roiToScreen(R,c.cx+0.5,c.cy+0.5), q=normFromScreen(p.x,p.y); return {...c,p,q}; })
-      .filter(c=>!known.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<near))
+      .filter(c=>{ const nr=Math.max(near, 1.3*Math.sqrt(c.n/Math.PI)/HD.RR); return !known.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<nr); })
       .sort((a,b)=>b.n-a.n);
     HD.view={R,ok};
     say('Diana quieta · cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas nuevas: '+ok.length, ok.length?'cand':'ok');
@@ -1549,7 +1581,7 @@
       const m=prev.find(p=>Math.hypot(c.cx-p.x,c.cy-p.y)<=Math.max(4,hs.d)), t0=m?m.t0:now;
       if(m) used.add(m);
       // los primeros 6 s la app aún está aprendiendo cuánto varía la imagen: no dispara
-      if(now-t0>=S.confirm*200 && now-(HD.vrSince||0)>=6000) fired.push({pt:c.p, q:c.q}); else next.push({x:c.cx, y:c.cy, t0, seen:now});
+      if(now-t0>=S.confirm*200 && now-(HD.vrSince||0)>=6000) fired.push({pt:c.p, q:c.q, big:c.n>3.5*hs.A}); else next.push({x:c.cx, y:c.cy, t0, seen:now});
     }
     // si una mancha falla uno o dos análisis sueltos, no pierde lo que llevaba confirmado (hasta 0,35 s)
     prev.forEach(p=>{ if(!used.has(p) && now-p.seen<=Math.max(350,2.2*every)) next.push(p); });
@@ -1643,6 +1675,8 @@
       stEl.style.display='block'; stEl.className=st;
       stEl.textContent = st==='mov'?'✋ Movimiento': st==='cand'?'◎ Impacto…': st==='ok'?'● Diana lista':'… Estabilizando';
       // en cartón no hay espera entre disparos: cada agujero es único por su posición
+      if(hs && hs.some(h=>h.big) && !HD.bigWarned){ HD.bigWarned=true; $('#pill').style.display='block';
+        $('#pill').innerHTML='⚠ Los impactos se ven <b>más grandes</b> que el calibre: revisa <b>calibre</b> y <b>diámetro real del aro 1</b> en ◎ Diana (tarjetas reducidas).'; }
       if(hs) hs.forEach(h=>{
         HD.recent.push({rx:h.q.rx, ry:h.q.ry, t:performance.now()});
         if(live){ S.lastShot=performance.now()/1000; registerShot(h.pt.x,h.pt.y); diagLog('auto'); }
@@ -2142,8 +2176,8 @@
   $('#rings').oninput=e=>{S.rings=+e.target.value;$('#vRings').textContent=S.rings;fillMinRing();rescoreAll();renderStats();};
   // modelo de diana: fija medidas oficiales, diámetro y (si la diana lo define) calibre habitual
   function setTarget(t){
-    S.target=t; const T0=TARGETS[t];
-    if(T0){ S.rings=10; S.realmm=T0.D; if(T0.cal) S.caliber=T0.cal; }
+    const same=S.target===t; S.target=t; const T0=TARGETS[t];
+    if(T0){ S.rings=10; if(!same||!(S.realmm>0)) S.realmm=T0.D; if(T0.cal&&!same) S.caliber=T0.cal; }
     $('#targetModel').value=t; $('#customRings').style.display=T0?'none':'block';
     document.querySelectorAll('.customOnly').forEach(e=>e.style.display=T0?'none':'');
     $('#realmm').value=S.realmm||''; $('#realmm2').value=S.realmm||'';
@@ -2401,9 +2435,10 @@ function autoCalib(rgba, W, H, TARGETS){
     $('#cardStd').style.display='none'; $('#cardCal').style.display='none'; $('#cardPersp').style.display='block';
     buildPersp(); resetHoles(); puestoSave();
     const name=r.model==='custom'?'diana de '+r.n+' aros iguales':TARGETS[r.model].name;
-    if(quick){ say('🎯 '+name+(r.model!=='custom'?' · error '+f1(r.rmsMM)+' mm':'')+' · comprueba los aros. Enfocando al centro…'); setTimeout(()=>camFocus('center'),300); return; }
+    const dHint=(S.detectType==='holes'&&r.model!=='custom')?' · Aro 1 = '+Math.round(targetD())+' mm: si tu diana es reducida, mide el aro 1 y cámbialo en ◎ Diana':'';
+    if(quick){ say('🎯 '+name+(r.model!=='custom'?' · error '+f1(r.rmsMM)+' mm':'')+dHint+'. Enfocando al centro…'); setTimeout(()=>camFocus('center'),300); return; }
     openAdjust('persp');
-    say('🎯 Detectada: '+name+(r.model!=='custom'?' · error medio '+f1(r.rmsMM)+' mm':'')+'. Comprueba que los aros coinciden y pulsa Hecho.');
+    say('🎯 Detectada: '+name+(r.model!=='custom'?' · error medio '+f1(r.rmsMM)+' mm':'')+dHint+'. Comprueba que los aros coinciden y pulsa Hecho.');
   }
   $('#autoCal').onclick=()=>{ document.querySelectorAll('.sheet').forEach(x=>x.classList.remove('open')); setTimeout(runAutoCalib,150); };
 
@@ -2599,6 +2634,8 @@ function autoCalib(rgba, W, H, TARGETS){
   $('#qFocC').onclick=()=>{ qMsg('Enfocando al centro de la diana…'); camFocus('center'); };
   $('#qAF').onclick=()=>camFocus(QF.af?'manual':'af');
   $('#qSensM').onclick=()=>quickSens(-1);
+  $('#qExpM').onclick=()=>camExpo(-1);
+  $('#qExpP').onclick=()=>camExpo(1);
   $('#qSensP').onclick=()=>quickSens(1);
   $('#qTorch').onclick=async()=>{ await toggleTorch(); if(S.phase==='camera') (CC.conns||[]).forEach(c=>{ try{ c.send({torchCap:true, torch:TORCH.on}); }catch(e){} }); quickUI(); };
 
@@ -2705,7 +2742,7 @@ function autoCalib(rgba, W, H, TARGETS){
   const PKEY='tirofijo_perfiles';
   function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PKEY)||'{}')||{}; }catch(e){ return {}; } }
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
-  const SKEYS=['fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
+  const SKEYS=['backlit','fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
     'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target','scoreRule','bestOf','shotLimit','modal'];
   const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
   function snapshot(){
