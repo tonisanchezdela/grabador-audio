@@ -339,6 +339,7 @@
     <div id="startup">
       <div class="su-box">
         <div class="su-logo">◎ TIROFIJO</div>
+        <p class="appVer" style="font-size:12px; color:var(--muted); text-align:center; margin:-4px 0 10px"></p>
         <p class="su-sub">Tipo de diana</p>
         <div class="seg" id="targetType">
           <button data-tt="laser" class="sel">🔴 Punteros láser</button>
@@ -677,8 +678,8 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.2';   // versión visible para comprobar que se tiene la última
-  document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
+  const APPVER='v25.3', APPDATE='24-11-26';   // versión visible para comprobar que se tiene la última
+  document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
   const work = document.createElement('canvas');
