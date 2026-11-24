@@ -489,6 +489,8 @@
         <button data-fit="cover">Llenar pantalla</button>
       </div>
       <h3>Encuadre de la diana</h3>
+      <button class="btn primary" id="autoCal" style="width:100%;margin:2px 0 6px">🎯 Autocalibrar diana</button>
+      <p style="margin:0 0 10px">Detecta sola los aros, el modelo de diana y la perspectiva. Necesita la diana entera, quieta y con luz frontal.</p>
       <div class="seg" id="dianaMode">
         <button data-dm="standard" class="sel">Centrada</button>
         <button data-dm="calib">Centro+borde</button>
@@ -675,7 +677,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.1';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.2';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Tirofijo '+APPVER);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2085,6 +2087,213 @@
     $('#cardCal').style.display=S.dianaMode==='calib'?'block':'none';
     $('#cardPersp').style.display=S.dianaMode==='persp'?'block':'none'; });
 
+  /* ---------- autocalibrado: aros, modelo de diana y perspectiva a partir de la imagen ---------- */
+// Autocalibrado de la diana: encuentra la zona negra, los aros y la perspectiva a partir de una imagen.
+// autoCalib(rgba, W, H, TARGETS) -> {ok, model, k, H (px imagen -> coords normalizadas, radio exterior = 1),
+//                                    rings:[{r, n}], rmsMM, msg}
+function autoCalib(rgba, W, H, TARGETS){
+  const N=W*H, g=new Float32Array(N);
+  for(let i=0,j=0;i<N;i++,j+=4) g[i]=0.299*rgba[j]+0.587*rgba[j+1]+0.114*rgba[j+2];
+
+  // ---------- 1. zona negra: umbral de Otsu + cierre morfológico + mancha oscura más "redonda y llena" ----------
+  const hist=new Float64Array(256); for(let i=0;i<N;i++) hist[g[i]|0]++;
+  let sum=0; for(let i=0;i<256;i++) sum+=i*hist[i];
+  let wB=0, sB=0, best=0, thr=100;
+  for(let t=0;t<256;t++){ wB+=hist[t]; if(!wB) continue; const wF=N-wB; if(!wF) break; sB+=t*hist[t];
+    const mB=sB/wB, mF=(sum-sB)/wF, v=wB*wF*(mB-mF)*(mB-mF); if(v>best){ best=v; thr=t; } }
+  // segundo Otsu dentro de lo oscuro: separa el negro de la diana de fondos grises (pared, cartón)
+  let thr2=thr; { let n2=0,s2=0; for(let i=0;i<thr;i++){ n2+=hist[i]; s2+=i*hist[i]; }
+    let w=0,sb=0,bv=0; for(let t=0;t<thr;t++){ w+=hist[t]; if(!w) continue; const wf=n2-w; if(!wf) break; sb+=t*hist[t];
+      const a=sb/w, b=(s2-sb)/wf, v=w*wf*(a-b)*(a-b); if(v>bv){ bv=v; thr2=t; } } }
+  const rad=Math.max(1,Math.round(Math.min(W,H)/320));            // cierra las líneas blancas finas de la zona negra
+  const box=(src,val)=>{ // dilata (val=1) o erosiona (val=0) con una caja de (2·rad+1)
+    const a=new Uint8Array(N), b=new Uint8Array(N);
+    for(let y=0;y<H;y++){ let c=0; const o=y*W;
+      for(let x=-rad;x<W+rad;x++){ const xi=x+rad; if(xi<W) c+=(src[o+xi]===val)?1:0; const xo=x-rad-1; if(xo>=0) c-=(src[o+xo]===val)?1:0;
+        if(x>=0&&x<W) a[o+x]=c>0?val:1-val; } }
+    for(let x=0;x<W;x++){ let c=0;
+      for(let y=-rad;y<H+rad;y++){ const yi=y+rad; if(yi<H) c+=(a[yi*W+x]===val)?1:0; const yo=y-rad-1; if(yo>=0) c-=(a[yo*W+x]===val)?1:0;
+        if(y>=0&&y<H) b[y*W+x]=c>0?val:1-val; } }
+    return b; };
+  const lab=new Int32Array(N), stack=new Int32Array(N);
+  let bc=null, bs=0;
+  for(const th of (thr2<thr-15?[thr,thr2]:[thr])){
+    let m=new Uint8Array(N); for(let i=0;i<N;i++) m[i]=g[i]<th?1:0;
+    m=box(box(m,1),0);
+    lab.fill(-1); const comps=[];
+    for(let s=0;s<N;s++){ if(!m[s]||lab[s]>=0) continue;
+      let sp=0; stack[sp++]=s; const id=comps.length; lab[s]=id;
+      let n=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,touch=0,sg=0,x0=W,x1=0,y0=H,y1=0;
+      while(sp){ const i=stack[--sp], x=i%W, y=(i-x)/W; n++; sx+=x; sy+=y; sxx+=x*x; syy+=y*y; sxy+=x*y; sg+=g[i];
+        if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+        if(x===0||y===0||x===W-1||y===H-1) touch++;
+        if(x>0&&m[i-1]&&lab[i-1]<0){lab[i-1]=id;stack[sp++]=i-1;}
+        if(x<W-1&&m[i+1]&&lab[i+1]<0){lab[i+1]=id;stack[sp++]=i+1;}
+        if(y>0&&m[i-W]&&lab[i-W]<0){lab[i-W]=id;stack[sp++]=i-W;}
+        if(y<H-1&&m[i+W]&&lab[i+W]<0){lab[i+W]=id;stack[sp++]=i+W;} }
+      comps.push({id,n,sx,sy,sxx,syy,sxy,touch,mean:sg/n,x0,x1,y0,y1}); }
+    for(const c of comps){ if(c.n<0.003*N) continue;
+      const mx=c.sx/c.n, my=c.sy/c.n, cxx=c.sxx/c.n-mx*mx, cyy=c.syy/c.n-my*my, cxy=c.sxy/c.n-mx*my;
+      const tr=(cxx+cyy)/2, dd=Math.sqrt(((cxx-cyy)/2)**2+cxy*cxy), l1=tr+dd, l2=Math.max(1e-9,tr-dd);
+      const a=2*Math.sqrt(l1), b=2*Math.sqrt(l2), phi=0.5*Math.atan2(2*cxy,cxx-cyy);
+      if(b/a<0.35) continue;
+      // parecido a una elipse llena: intersección / unión con su elipse de momentos
+      const cp=Math.cos(phi), sp2=Math.sin(phi); let inE=0, inC=0, ae=0;
+      const X0=Math.max(0,Math.floor(mx-a-2)), X1=Math.min(W-1,Math.ceil(mx+a+2)), Y0=Math.max(0,Math.floor(my-a-2)), Y1=Math.min(H-1,Math.ceil(my+a+2));
+      for(let y=Y0;y<=Y1;y++) for(let x=X0;x<=X1;x++){ const dx=x-mx, dy=y-my, u=(dx*cp+dy*sp2)/a, v=(-dx*sp2+dy*cp)/b, ins=u*u+v*v<=1;
+        if(ins){ ae++; if(lab[y*W+x]===c.id) inE++; } }
+      const iou=inE/(c.n+ae-inE);
+      if(iou<0.75) continue;
+      const touchF=c.touch>0.02*Math.sqrt(c.n)?0.15:1;
+      const sc=Math.sqrt(c.n)*Math.pow(iou,4)*(1-c.mean/255)*touchF;
+      if(sc>bs){ bs=sc; bc={mx,my,a,b,phi,iou,mean:c.mean}; } }
+  }
+  if(!bc) return {ok:false, msg:'No encuentro la zona negra de la diana. Comprueba que se ve entera y bien iluminada.'};
+
+  // ---------- 2. perfiles radiales: líneas de los aros (oscuras fuera de la zona negra, claras dentro) ----------
+  const cph=Math.cos(bc.phi), sph=Math.sin(bc.phi);
+  const e1=[cph*bc.a, sph*bc.a], e2=[-sph*bc.b, cph*bc.b];
+  const samp=(x,y)=>{ if(x<0||y<0||x>W-1.001||y>H-1.001) return NaN; const x0=x|0, y0=y|0, fx=x-x0, fy=y-y0, i=y0*W+x0;
+    return (g[i]*(1-fx)+g[i+1]*fx)*(1-fy)+(g[i+W]*(1-fx)+g[i+W+1]*fx)*fy; };
+  const NR=240, S0=0.06, S1=3.3, DS=0.0035, NS=Math.round((S1-S0)/DS)+1;
+  const rays=[]; const valid=new Float32Array(NS);
+  for(let q=0;q<NR;q++){
+    const th=2*Math.PI*q/NR, ux=Math.cos(th), uy=Math.sin(th);
+    const dx=ux*e1[0]+uy*e2[0], dy=ux*e1[1]+uy*e2[1], pxPerS=Math.hypot(dx,dy);
+    const I=new Float32Array(NS); for(let k=0;k<NS;k++){ const s=S0+k*DS; I[k]=samp(bc.mx+s*dx, bc.my+s*dy); if(!isNaN(I[k])) valid[k]++; }
+    const w=Math.max(2,Math.round(2.5/(DS*pxPerS)));
+    const med=(lo,hi)=>{ const v=[]; for(let k=Math.round((lo-S0)/DS);k<=Math.round((hi-S0)/DS);k++) if(k>=0&&k<NS&&!isNaN(I[k])) v.push(I[k]); v.sort((a,b)=>a-b); return v.length?v[v.length>>1]:NaN; };
+    const wh=med(1.08,1.3), bl=med(0.45,0.9), con=Math.abs(wh-bl);
+    const thrR=Math.max(4,0.12*(isNaN(con)?40:con));
+    const L=new Float32Array(NS);
+    for(let k=w;k<NS-w;k++){ const s=S0+k*DS, a=I[k-w], b=I[k+w], c=I[k]; if(isNaN(a)||isNaN(b)||isNaN(c)) continue;
+      L[k]= s>1.03 ? (a+b)/2-c : (s<0.97 ? c-(a+b)/2 : 0); }
+    const peaks=[];
+    for(let k=w;k<NS-w;k++){ if(L[k]<thrR) continue; let mx=true; const h=Math.max(1,w>>1);
+      for(let j=1;j<=h;j++) if(L[k-j]>L[k]||L[k+j]>=L[k]){ mx=false; break; } if(!mx) continue;
+      const y0=L[k-1], y1=L[k], y2=L[k+1], den=y0-2*y1+y2, off=den<0?0.5*(y0-y2)/den:0;
+      peaks.push(S0+(k+off)*DS); }
+    // borde de la zona negra: mayor subida de brillo entre s=0.8 y 1.2
+    let eb=-1, ev=0; for(let k=Math.round((0.8-S0)/DS);k<=Math.round((1.2-S0)/DS);k++){ if(k-w<0||k+w>=NS) continue;
+      const d=I[k+w]-I[k-w]; if(!isNaN(d)&&d>ev){ ev=d; eb=S0+k*DS; } }
+    rays.push({dx,dy,peaks,edge: ev>Math.max(8,0.3*(isNaN(con)?40:con))?eb:null});
+  }
+  // ---------- 3. cadenas: cada aro es una curva continua de picos de rayo en rayo ----------
+  const chains=[]; let open=[];
+  for(let q=0;q<NR;q++){
+    const pk=rays[q].peaks, used=new Uint8Array(pk.length), nx=[];
+    open.sort((a,b)=>a.last-b.last);
+    for(const ch of open){ let bi=-1, bd=0.022+0.012*ch.last;
+      for(let i=0;i<pk.length;i++){ if(used[i]) continue; const d=Math.abs(pk[i]-ch.last); if(d<bd){ bd=d; bi=i; } }
+      if(bi>=0){ used[bi]=1; ch.pts.push({q,s:pk[bi]}); ch.last=pk[bi]; ch.gap=0; nx.push(ch); }
+      else if(ch.gap<4){ ch.gap++; nx.push(ch); } }
+    for(let i=0;i<pk.length;i++) if(!used[i]){ const ch={pts:[{q,s:pk[i]}], last:pk[i], gap:0}; chains.push(ch); nx.push(ch); }
+    open=nx; }
+  // une las cadenas que dan la vuelta completa (fin cerca del rayo NR-1 con principio cerca del 0)
+  for(const a of chains){ if(a.dead) continue; const qe=a.pts[a.pts.length-1].q; if(qe<NR-5) continue;
+    for(const b of chains){ if(b===a||b.dead) continue; if(b.pts[0].q>4) continue;
+      if(Math.abs(b.pts[0].s-a.pts[a.pts.length-1].s)<0.03+0.012*b.pts[0].s){ a.pts=a.pts.concat(b.pts); b.dead=true; break; } } }
+  const good=chains.filter(c=>!c.dead && new Set(c.pts.map(p=>p.q)).size>=0.25*NR)
+    .map(c=>({pts:c.pts, s:c.pts.map(p=>p.s).sort((a,b)=>a-b)[c.pts.length>>1]})).sort((a,b)=>a.s-b.s);
+  const edgePts=rays.map((r,q)=>r.edge!=null?{q,s:r.edge}:null).filter(Boolean);
+  if(good.length<2 || edgePts.length<0.25*NR)
+    return {ok:false, msg:'No distingo los aros de la diana. Acerca la cámara o mejora la luz frontal.', dbg:{bc, nch:good.length, ne:edgePts.length}};
+
+  // ---------- 4. homografía con radios libres por aro (corrige la perspectiva sin saber aún el modelo) ----------
+  const sc=bc.a, cx=bc.mx, cy=bc.my;
+  const toXY=(q,s)=>{ const r=rays[q]; return {x:(bc.mx+s*r.dx-cx)/sc, y:(bc.my+s*r.dy-cy)/sc}; };
+  const groups=[{fixed:1, pts:edgePts.map(p=>toXY(p.q,p.s))}].concat(good.map(c=>({fixed:null, s0:c.s, pts:c.pts.map(p=>toXY(p.q,p.s))})));
+  const gauss=(M,v)=>{ const n=v.length, A=M.map((r,i)=>r.concat([v[i]]));
+    for(let c=0;c<n;c++){ let pr=c; for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[pr][c])) pr=r;
+      if(Math.abs(A[pr][c])<1e-15) return null; [A[c],A[pr]]=[A[pr],A[c]];
+      for(let r=0;r<n;r++){ if(r===c) continue; const f=A[r][c]/A[c][c]; for(let k=c;k<=n;k++) A[r][k]-=f*A[c][k]; } }
+    return A.map((r,i)=>r[n]/r[i]); };
+  // params: 8 de la homografía + un radio por grupo libre. residuo = |H(p)| - R
+  function makeRes(G){ return pp=>{ const out=[]; let fi=8;
+    for(const gr of G){ const R=gr.fixed!=null?gr.fixed:pp[fi++];
+      for(const q of gr.pts){ const w=pp[6]*q.x+pp[7]*q.y+1; out.push(Math.hypot((pp[0]*q.x+pp[1]*q.y+pp[2])/w,(pp[3]*q.x+pp[4]*q.y+pp[5])/w)-R); } }
+    return out; }; }
+  function lm(pp,resf,iters){
+    let mu=1e-3, r=resf(pp), c=r.reduce((a,v)=>a+v*v,0); const n=pp.length;
+    for(let it=0;it<iters;it++){
+      const J=[]; for(let j=0;j<n;j++){ const q=pp.slice(), h=1e-6*Math.max(1e-3,Math.abs(pp[j])); q[j]+=h; const r2=resf(q); J.push(r2.map((v,i)=>(v-r[i])/h)); }
+      const A=[...Array(n)].map(()=>new Array(n).fill(0)), gv=new Array(n).fill(0);
+      for(let a=0;a<n;a++){ for(let b=a;b<n;b++){ let s=0; const Ja=J[a], Jb=J[b]; for(let i=0;i<r.length;i++) s+=Ja[i]*Jb[i]; A[a][b]=A[b][a]=s; }
+        let s=0; for(let i=0;i<r.length;i++) s+=J[a][i]*r[i]; gv[a]=s; }
+      let improved=false;
+      for(let tries=0;tries<8;tries++){
+        const M=A.map((row,i)=>{ const rr=row.slice(); rr[i]+=mu*(row[i]+1e-12); return rr; });
+        const d=gauss(M,gv.map(v=>-v)); if(!d){ mu*=10; continue; }
+        const q=pp.map((v,i)=>v+d[i]), r2=resf(q), c2=r2.reduce((a,v)=>a+v*v,0);
+        if(c2<c){ const rel=(c-c2)/c; pp=q; r=r2; c=c2; mu=Math.max(1e-9,mu/3); improved=true; if(rel<1e-10) it=iters; break; }
+        mu*=8; }
+      if(!improved) break; }
+    return {p:pp, r, c}; }
+  const trimG=(G,r)=>{ const a=r.map(Math.abs).sort((x,y)=>x-y), lim=Math.max(3*1.4826*a[a.length>>1], 0.003); let i=0;
+    return G.map(gr=>({...gr, pts:gr.pts.filter(()=>Math.abs(r[i++])<=lim)})).filter(gr=>gr.pts.length>=8); };
+  let p0=[cph/bc.a*sc, sph/bc.a*sc, 0, -sph/bc.b*sc, cph/bc.b*sc, 0, 0, 0].concat(good.map(c=>c.s));
+  let G=groups, fit=lm(p0,makeRes(G),60);
+  const keep=fit.p.slice(8); G=G.map((gr,i)=>i?{...gr, s0:keep[i-1]}:gr);
+  G=trimG(G,fit.r); fit=lm(fit.p.slice(0,8).concat(G.slice(1).map(gr=>gr.s0)),makeRes(G),60);
+  const rho=fit.p.slice(8);                         // radio de cada aro / radio de la zona negra (sin perspectiva)
+
+  // ---------- 5. modelo de diana que encaja con esos radios ----------
+  let bestM=null;
+  for(const [key,t] of Object.entries(TARGETS)){
+    const xs=t.r.slice(1).map(d=>d/t.black);
+    for(let k=0.93;k<=1.0701;k+=0.0025){      // escala libre: el borde de la zona negra puede salir algo desplazado
+      let mt=0, se=0; const asg=[];
+      for(const r of rho){ let bj=-1, bd=1; xs.forEach((x,j)=>{ if(x<0.1||Math.abs(x-1)<0.03) return; const d=Math.abs(Math.log(r/(k*x))); if(d<bd){ bd=d; bj=j; } });
+        if(bd<0.02){ mt++; se+=bd*bd; asg.push(bj+1); } else asg.push(0); }
+      const sc2=mt - Math.sqrt(se/Math.max(1,mt))*40 - Math.abs(Math.log(k))*5;
+      if(!bestM || sc2>bestM.sc) bestM={key,t,mt,sc:sc2,asg,k}; } }
+  let model, t, asg;
+  if(bestM && bestM.mt>=2 && bestM.mt>=0.6*rho.length){ model=bestM.key; t=bestM.t; asg=bestM.asg; }
+  else {   // desconocida: aros iguales, el más exterior es el borde
+    const all=[1].concat(rho).sort((a,b)=>a-b), ds=[]; for(let i=1;i<all.length;i++) ds.push(all[i]-all[i-1]); ds.sort((a,b)=>a-b);
+    const sp=ds[ds.length>>1], outer=all[all.length-1], n=Math.max(3,Math.min(12,Math.round(outer/sp)));
+    const r=[0]; for(let v=1;v<=n;v++) r.push((n-v+1)/n);
+    t={D:1, r, black:1/outer, n}; model='custom';
+    asg=rho.map(x=>{ const v=n+1-Math.round(x/outer*n); return v>=1&&v<=n?v:0; }); }
+  const D=t.D;
+  // ---------- 6. ajuste final con los radios reales del modelo ----------
+  let GF=[];
+  G.slice(1).forEach((gr,i)=>{ const v=asg[i]; if(v>0) GF.push({fixed:t.r[v]/D, pts:gr.pts}); });
+  if(GF.length<3) GF.unshift({fixed:t.black/D, pts:G[0].pts});   // el borde negro solo si hay pocos aros
+  const k0=t.black/D/(bestM&&bestM.k||1);   // de unidades de "zona negra" a radio exterior = 1
+  let pf=fit.p.slice(0,8); pf=[pf[0]*k0,pf[1]*k0,pf[2]*k0,pf[3]*k0,pf[4]*k0,pf[5]*k0,pf[6],pf[7]];
+  let ff=lm(pf,makeRes(GF),60); GF=trimG(GF,ff.r); ff=lm(ff.p,makeRes(GF),60);
+  const npts=GF.reduce((a,g)=>a+g.pts.length,0), rms=Math.sqrt(ff.c/npts);
+  const q=ff.p, Hs=[[q[0],q[1],q[2]],[q[3],q[4],q[5]],[q[6],q[7],1]], T=[[1/sc,0,-cx/sc],[0,1/sc,-cy/sc],[0,0,1]];
+  const Hpx=[]; for(let r=0;r<3;r++) for(let c=0;c<3;c++){ let s=0; for(let k=0;k<3;k++) s+=Hs[r][k]*T[k][c]; Hpx.push(s); }
+  return {ok:true, model, n:t.n||10, H:Hpx, rmsMM:model==='custom'?0:rms*D/2, rmsN:rms, rings:GF.length, pts:npts, black:bc, rho, asg, k:1, ng:G.map(g=>g.pts.length)};
+}
+
+  function runAutoCalib(){
+    const pill=$('#pill'); pill.style.display='block';
+    const say=t=>{ pill.textContent=t; if($('#adjustBar').classList.contains('open')) $('#abT').textContent=t; };
+    if(!video.videoWidth){ say('Abre primero la cámara.'); return; }
+    const vw=video.videoWidth, vh=video.videoHeight, k=Math.min(1,960/Math.max(vw,vh)), W=Math.round(vw*k), H=Math.round(vh*k);
+    const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const g=cv.getContext('2d'); g.drawImage(video,0,0,W,H);
+    let r; try{ r=autoCalib(g.getImageData(0,0,W,H).data,W,H,TARGETS); }catch(e){ r={ok:false,msg:'Error al analizar la imagen: '+e.message}; }
+    if(!r.ok){ say('🎯 '+r.msg); return; }
+    if(r.model==='custom'){ setTarget('custom'); S.rings=r.n; setR('#rings',S.rings,'#vRings'); } else setTarget(r.model);
+    // la homografía va de píxeles del fotograma a la diana normalizada; se gira para que "arriba" sea arriba en la imagen
+    const Hm=r.H, a=Hm, det=a[0]*(a[4]*a[8]-a[5]*a[7])-a[1]*(a[3]*a[8]-a[5]*a[6])+a[2]*(a[3]*a[7]-a[4]*a[6]);
+    const inv=[(a[4]*a[8]-a[5]*a[7])/det,(a[2]*a[7]-a[1]*a[8])/det,(a[1]*a[5]-a[2]*a[4])/det,(a[5]*a[6]-a[3]*a[8])/det,(a[0]*a[8]-a[2]*a[6])/det,(a[2]*a[3]-a[0]*a[5])/det,(a[3]*a[7]-a[4]*a[6])/det,(a[1]*a[6]-a[0]*a[7])/det,(a[0]*a[4]-a[1]*a[3])/det];
+    const ap=(M,x,y)=>{ const w=M[6]*x+M[7]*y+M[8]; return [(M[0]*x+M[1]*y+M[2])/w,(M[3]*x+M[4]*y+M[5])/w]; };
+    const c=ap(inv,0,0), up=ap(Hm,c[0],c[1]-10), phi=Math.atan2(up[1],up[0]), d=-Math.PI/2-phi, cd=Math.cos(-d), sd=Math.sin(-d);
+    const toScr=(X,Y)=>{ const xr=X*cd-Y*sd, yr=X*sd+Y*cd, q=ap(inv,xr,yr), sp=mapCover(q[0]/W,q[1]/H); return {x:sp.x/S.W, y:sp.y/S.H}; };
+    S.persp={top:toScr(0,-1), right:toScr(1,0), bottom:toScr(0,1), left:toScr(-1,0), center:toScr(0,0)}; S.selP='center';
+    S.dianaMode='persp'; document.querySelectorAll('#dianaMode button').forEach(x=>x.classList.toggle('sel',x.dataset.dm==='persp'));
+    $('#cardStd').style.display='none'; $('#cardCal').style.display='none'; $('#cardPersp').style.display='block';
+    buildPersp(); resetHoles(); puestoSave();
+    const name=r.model==='custom'?'diana de '+r.n+' aros iguales':TARGETS[r.model].name;
+    openAdjust('persp');
+    say('🎯 Detectada: '+name+(r.model!=='custom'?' · error medio '+f1(r.rmsMM)+' mm':'')+'. Comprueba que los aros coinciden y pulsa Hecho.');
+  }
+  $('#autoCal').onclick=()=>{ document.querySelectorAll('.sheet').forEach(x=>x.classList.remove('open')); setTimeout(runAutoCalib,150); };
+
   let calMode=null;
   function perspCount(){ const p=S.persp; return ['top','right','bottom','left'].filter(k=>p[k]).length; }
   const PNAME={top:'① arriba',right:'② derecha',bottom:'③ abajo',left:'④ izquierda',center:'⑤ centro'};
@@ -2196,6 +2405,9 @@
       mk('① Arr',()=>calMode='pTop','pTop'); mk('② Der',()=>calMode='pRight','pRight');
       mk('③ Abj',()=>calMode='pBottom','pBottom'); mk('④ Izq',()=>calMode='pLeft','pLeft');
       mk('⑤ Centro',()=>calMode='pCenter','pCenter');
+      mk('🎯 Auto',()=>runAutoCalib());
+      mk('↻ 90°',()=>{ const p=S.persp; if(!(p.top&&p.right&&p.bottom&&p.left)) return;   // la diana está girada en la imagen
+        S.persp={top:p.left, right:p.top, bottom:p.right, left:p.bottom, center:p.center}; buildPersp(); abInfo(); });
       br();
       // ajuste fino: mueve el punto seleccionado 1 píxel de pantalla (más fino con zoom)
       const nudge=(dx,dy)=>{ const k=S.selP, q=S.persp[k]; if(!q) return;
