@@ -38,6 +38,18 @@
   #overlay{position:absolute; inset:0; width:100%; height:100%; touch-action:none;}
 
   /* barra de ajuste flotante */
+  #quickBar{position:absolute; left:0; right:0; bottom:0; z-index:19; display:none; padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+    background:rgba(11,18,27,.78); border-top:1px solid var(--line); backdrop-filter:blur(4px);}
+  #quickBar.open{display:block;}
+  #quickBar .qT{font-size:12px; color:var(--gold); text-align:center; margin-bottom:6px; min-height:15px; line-height:1.3;}
+  #quickBar .qRow{display:grid; grid-template-columns:repeat(4,1fr); gap:6px;}
+  #quickBar .qb{border:1px solid var(--line); background:var(--panel); color:var(--txt); border-radius:10px; padding:8px 4px;
+    font-size:12.5px; font-weight:700; line-height:1.2; min-height:44px;}
+  #quickBar .qb:active{transform:scale(.95);}
+  #quickBar .qb.on{background:var(--gold); border-color:var(--gold); color:#1a1200;}
+  #quickBar .qb:disabled{opacity:.35;}
+  #quickBar .qb.wide{grid-column:span 2;}
+  #quickBar .qSens{display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800;}
   #adjustBar{position:absolute; left:0; right:0; bottom:0; z-index:18; display:none;
     background:rgba(13,17,23,.88); border-top:1px solid var(--line); padding:6px 8px 8px;
     backdrop-filter:blur(6px);}
@@ -374,6 +386,20 @@
       </div>
     </div>
 
+    <div id="quickBar">
+      <div class="qT" id="qT">Ajustes rápidos · la imagen sigue en directo</div>
+      <div class="qRow">
+        <button class="qb wide" id="qAuto">🎯 Autocalibrar diana</button>
+        <button class="qb wide" id="qFocC">⊕ Enfocar al centro de la diana</button>
+        <button class="qb" id="qAF">Autoenfoque ON</button>
+        <button class="qb" id="qSensM">Sens −</button>
+        <div class="qb qSens" id="qSens">5</div>
+        <button class="qb" id="qSensP">Sens +</button>
+        <button class="qb wide" id="qTorch">🔦 Linterna</button>
+        <button class="qb wide" id="qClose" style="background:var(--ok);border-color:var(--ok);color:#06220f">✓ Hecho</button>
+      </div>
+    </div>
+
     <div id="timerHud">
       <div class="ph" id="thPhase">SESIÓN</div>
       <div class="tc" id="thClock">00:00</div>
@@ -386,6 +412,7 @@
         <button class="btn" id="btnTimer">⏱</button>
         <button class="btn" id="btnReport">📄</button>
         <button class="btn" id="btnTorch" style="display:none">🔦</button>
+        <button class="btn" id="btnQuick" aria-label="Ajustes rápidos">⚡</button>
       </div>
       <div class="row" id="rowCam">
         <button class="btn primary" id="btnStart">▶ Iniciar cámara</button>
@@ -678,7 +705,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.3', APPDATE='24-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.4', APPDATE='24-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -865,6 +892,85 @@
       $('#ccFocusNow').textContent='Enfocar ahora'; },1200);
   }
 
+  /* ---------- enfoque sobre la cámara que da la imagen (local o remota) ----------
+     cmd: 'af' (continuo), 'manual' (fija), 'once' (enfocar ya), con poi = punto {x,y} 0..1 del fotograma */
+  async function focusTrack(t, cmd, poi){
+    if(!t) return {ok:false, why:'sin cámara'};
+    let caps={}; try{ caps=t.getCapabilities?t.getCapabilities():{}; }catch(e){}
+    const modes=caps.focusMode||[];
+    if(!modes.length) return {ok:false, why:'esta cámara no permite controlar el enfoque'};
+    const P = poi ? {pointsOfInterest:[{x:Math.min(1,Math.max(0,poi.x)), y:Math.min(1,Math.max(0,poi.y))}]} : {};
+    let poiOk=false;
+    const ap=async c=>{ try{ await t.applyConstraints({advanced:[c]}); return true; }catch(e){ return false; } };
+    if(poi){ poiOk=await ap(P);
+      try{ const st=t.getSettings(); poiOk = poiOk && !!(st.pointsOfInterest && st.pointsOfInterest.length); }catch(e){ poiOk=false; } }
+    if(cmd==='af'){ if(!modes.includes('continuous')) return {ok:false, why:'sin autoenfoque continuo'}; await ap(Object.assign({focusMode:'continuous'},P)); return {ok:true, af:true, poi:poiOk}; }
+    if(cmd==='manual'){ if(!modes.includes('manual')) return {ok:false, why:'no admite enfoque fijo'}; await ap({focusMode:'manual'}); return {ok:true, af:false}; }
+    // 'once': reenfoca ya (sobre el punto si lo admite) y vuelve al modo que tenía
+    const prev=(t.getSettings&&t.getSettings().focusMode)||'continuous';
+    if(modes.includes('single-shot')) await ap(Object.assign({focusMode:'single-shot'},P));
+    else if(modes.includes('continuous')){ if(modes.includes('manual')) await ap({focusMode:'manual'}); await ap(Object.assign({focusMode:'continuous'},P)); }
+    if(prev==='manual') setTimeout(()=>ap({focusMode:'manual'}),1500);       // la deja fija ya enfocada
+    else if(prev==='continuous' && modes.includes('continuous')) setTimeout(()=>ap(Object.assign({focusMode:'continuous'},P)),1500);
+    return {ok:true, poi:poiOk, af:prev!=='manual'};
+  }
+  function unmapCover(x,y){       // punto de pantalla → fracción del fotograma de vídeo
+    const vAR=video.videoWidth/video.videoHeight, sAR=S.W/S.H; let dw,dh,ox,oy;
+    if((vAR>sAR)===(S.fit==='cover')){dh=S.H;dw=S.H*vAR;ox=(S.W-dw)/2;oy=0;} else {dw=S.W;dh=S.W/vAR;ox=0;oy=(S.H-dh)/2;}
+    return {x:(x-ox)/dw, y:(y-oy)/dh};
+  }
+  function targetCenterVid(){
+    if(!video.videoWidth) return {x:.5,y:.5};
+    let x,y;
+    if(S.dianaMode==='persp' && S.persp.center){ x=S.persp.center.x*S.W; y=S.persp.center.y*S.H; }
+    else { const g=dianaGeom(); x=g.cx; y=g.cy; }
+    return unmapCover(x,y);
+  }
+  const QF={af:true, pend:null};
+  function qMsg(t){ const q=$('#qT'); if(q) q.textContent=t; }
+  function focusResultTxt(r,center){
+    if(!r||!r.ok) return '⚠ Enfoque: '+((r&&r.why)||'no disponible');
+    if(center) return r.poi ? '⊕ Enfocado al centro de la diana' : '⊕ Enfocado (esta cámara no deja elegir el punto: enfoca la zona central)';
+    return r.af===false ? 'Enfoque fijo (no cambiará al disparar)' : 'Autoenfoque continuo';
+  }
+  // acción sobre la cámara que muestra la imagen: la remota por el enlace, o la de este móvil
+  async function camFocus(what){
+    const center = what==='center', cmd = center ? 'once' : what;
+    const poi = center ? targetCenterVid() : null;
+    if(TORCH.remote && S.phase!=='camera'){
+      const tk={center}; QF.pend=tk; try{ TORCH.remote.send({focus:cmd, poi}); qMsg('Enviando al móvil-cámara…');
+        setTimeout(()=>{ if(QF.pend===tk){ QF.pend=null; qMsg('⚠ La cámara no responde al enfoque (actualiza la app en el móvil-cámara)'); } },3500); }catch(e){ qMsg('⚠ Sin enlace con el móvil-cámara'); }
+      return;
+    }
+    const t = S.phase==='camera' ? camTrack() : localTrack();
+    const r = await focusTrack(t, cmd, poi);
+    if(r.ok && r.af!==undefined && cmd!=='once') QF.af=r.af;
+    qMsg(focusResultTxt(r,center)); quickUI();
+  }
+  function quickUI(){
+    const holes=S.detectType==='holes';
+    $('#qSens').textContent = holes ? 'Sens '+S.holeSens : 'Umbral '+S.thr;
+    $('#qSensM').textContent = holes ? 'Sens −' : 'Sens − (umbral +)';
+    $('#qSensP').textContent = holes ? 'Sens +' : 'Sens + (umbral −)';
+    $('#qAF').textContent='Autoenfoque '+(QF.af?'ON':'OFF'); $('#qAF').classList.toggle('on',QF.af);
+    const canT = TORCH.remote ? TORCH.remoteCap : torchCap(S.phase==='camera'?camTrack():localTrack());
+    $('#qTorch').disabled=!canT; $('#qTorch').classList.toggle('on',!!TORCH.on);
+    $('#qTorch').textContent='🔦 Linterna '+(TORCH.on?'ON':'OFF');
+    $('#qAuto').disabled = S.phase==='camera';
+  }
+  function openQuick(){
+    document.querySelectorAll('.sheet').forEach(x=>x.classList.remove('open'));
+    $('#hud').style.display='none'; $('#quickBar').classList.add('open');
+    qMsg(TORCH.remote&&S.phase!=='camera' ? 'Ajustes rápidos · actúan sobre el móvil-cámara remoto' : 'Ajustes rápidos · la imagen sigue en directo');
+    quickUI();
+  }
+  function closeQuick(){ $('#quickBar').classList.remove('open'); $('#hud').style.display=''; if(typeof puestoSave==='function') puestoSave(); }
+  function quickSens(dir){
+    if(S.detectType==='holes'){ S.holeSens=Math.max(1,Math.min(8,S.holeSens+dir)); $('#holeSens').value=S.holeSens; $('#vSens').textContent=S.holeSens; }
+    else { S.thr=Math.max(90,Math.min(250,S.thr-10*dir)); $('#thr').value=S.thr; $('#vThr').textContent=S.thr; }
+    quickUI();
+  }
+
   /* ---------- linterna del móvil (luz uniforme sobre la diana) ---------- */
   const TORCH={on:false, remote:null, remoteCap:false};
   function localTrack(){ const st=video.srcObject; return st&&st.getVideoTracks ? st.getVideoTracks()[0] : null; }
@@ -876,6 +982,7 @@
     b.style.display = can ? '' : 'none';
     b.classList.toggle('on', !!TORCH.on); b.style.background=TORCH.on?'var(--gold)':''; b.style.color=TORCH.on?'#1a1200':'';
     if(cc){ cc.classList.toggle('on', !!TORCH.on); }
+    if($('#quickBar').classList.contains('open')) quickUI();
   }
   async function toggleTorch(){
     const want=!TORCH.on;
@@ -915,6 +1022,9 @@
       try{ conn.send({torchCap:torchCap(camTrack()), torch:TORCH.on}); }catch(e){}
     });
       conn.on('data', async d=>{                                 // el móvil que puntúa enciende o apaga la linterna
+        if(d && d.focus){ const r=await focusTrack(camTrack(), d.focus, d.poi||null);
+          if(r.ok && r.af!==undefined && d.focus!=='once'){ CC.af=r.af; $('#ccAF').classList.toggle('on',CC.af); $('#ccAF').textContent='Autoenfoque: '+(CC.af?'ON':'OFF'); }
+          try{ conn.send({focusAck:r, af:CC.af}); }catch(e){} }
         if(d && typeof d.torch==='boolean'){ if(await setTorchOn(camTrack(),d.torch)) TORCH.on=d.torch; torchUI();
           (CC.conns||[]).forEach(c=>{ try{ c.send({torchCap:torchCap(camTrack()), torch:TORCH.on}); }catch(e){} }); }
       });
@@ -957,7 +1067,8 @@
     try{ if(LINK.conn) LINK.conn.close(); }catch(e){}
     const conn=peer.connect('tirofijo-'+LINK.code, {reliable:true}); LINK.conn=conn; TORCH.remote=conn;
     conn.on('open', ()=>{ if(!S.running) $('#suStatus').textContent='Enlazado, esperando vídeo…'; });
-    conn.on('data', d=>{ if(d && 'torchCap' in d){ TORCH.remoteCap=!!d.torchCap; TORCH.on=!!d.torch; torchUI(); } });
+    conn.on('data', d=>{ if(d && 'torchCap' in d){ TORCH.remoteCap=!!d.torchCap; TORCH.on=!!d.torch; torchUI(); quickUI(); }
+      if(d && d.focusAck){ if(typeof d.af==='boolean') QF.af=d.af; qMsg(focusResultTxt(d.focusAck, QF.pend&&QF.pend.center)); QF.pend=null; quickUI(); } });
     conn.on('close', ()=>{ if(LINK.active) linkLost('El móvil-cámara se ha desconectado.'); });
     conn.on('error', ()=>{ if(!S.running) $('#suStatus').textContent='No se pudo enlazar. Revisa el código.'; });
   }
@@ -2270,9 +2381,9 @@ function autoCalib(rgba, W, H, TARGETS){
   return {ok:true, model, n:t.n||10, H:Hpx, rmsMM:model==='custom'?0:rms*D/2, rmsN:rms, rings:GF.length, pts:npts, black:bc, rho, asg, k:1, ng:G.map(g=>g.pts.length)};
 }
 
-  function runAutoCalib(){
-    const pill=$('#pill'); pill.style.display='block';
-    const say=t=>{ pill.textContent=t; if($('#adjustBar').classList.contains('open')) $('#abT').textContent=t; };
+  function runAutoCalib(quick){
+    const pill=$('#pill'); if(!quick) pill.style.display='block';
+    const say=t=>{ if(quick){ $('#qT').textContent=t; return; } pill.textContent=t; if($('#adjustBar').classList.contains('open')) $('#abT').textContent=t; };
     if(!video.videoWidth){ say('Abre primero la cámara.'); return; }
     const vw=video.videoWidth, vh=video.videoHeight, k=Math.min(1,960/Math.max(vw,vh)), W=Math.round(vw*k), H=Math.round(vh*k);
     const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const g=cv.getContext('2d'); g.drawImage(video,0,0,W,H);
@@ -2290,6 +2401,7 @@ function autoCalib(rgba, W, H, TARGETS){
     $('#cardStd').style.display='none'; $('#cardCal').style.display='none'; $('#cardPersp').style.display='block';
     buildPersp(); resetHoles(); puestoSave();
     const name=r.model==='custom'?'diana de '+r.n+' aros iguales':TARGETS[r.model].name;
+    if(quick){ say('🎯 '+name+(r.model!=='custom'?' · error '+f1(r.rmsMM)+' mm':'')+' · comprueba los aros. Enfocando al centro…'); setTimeout(()=>camFocus('center'),300); return; }
     openAdjust('persp');
     say('🎯 Detectada: '+name+(r.model!=='custom'?' · error medio '+f1(r.rmsMM)+' mm':'')+'. Comprueba que los aros coinciden y pulsa Hecho.');
   }
@@ -2481,6 +2593,14 @@ function autoCalib(rgba, W, H, TARGETS){
   $('#ccFocusNow').onclick=focusNow;
   $('#ccTorch').onclick=async()=>{ await toggleTorch(); (CC.conns||[]).forEach(c=>{ try{ c.send({torchCap:true, torch:TORCH.on}); }catch(e){} }); };
   $('#btnTorch').onclick=toggleTorch;
+  $('#btnQuick').onclick=openQuick;
+  $('#qClose').onclick=closeQuick;
+  $('#qAuto').onclick=()=>{ qMsg('Buscando la diana…'); setTimeout(()=>runAutoCalib(true),60); };
+  $('#qFocC').onclick=()=>{ qMsg('Enfocando al centro de la diana…'); camFocus('center'); };
+  $('#qAF').onclick=()=>camFocus(QF.af?'manual':'af');
+  $('#qSensM').onclick=()=>quickSens(-1);
+  $('#qSensP').onclick=()=>quickSens(1);
+  $('#qTorch').onclick=async()=>{ await toggleTorch(); if(S.phase==='camera') (CC.conns||[]).forEach(c=>{ try{ c.send({torchCap:true, torch:TORCH.on}); }catch(e){} }); quickUI(); };
 
   // botón MENÚ de la cabecera: es lo único que muestra u oculta el menú
   $('#btnMenu').onclick=()=>{ $('#stage').classList.toggle('controls-hidden'); syncMenuBtn(); };
