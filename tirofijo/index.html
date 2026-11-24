@@ -49,6 +49,10 @@
   #quickBar .qb.on{background:var(--gold); border-color:var(--gold); color:#1a1200;}
   #quickBar .qb:disabled{opacity:.35;}
   #quickBar .qb.wide{grid-column:span 2;}
+  #quickBar .qPre{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;}
+  #quickBar .qPre label{font-size:11px; color:var(--muted); display:block; margin:0 0 2px 2px;}
+  #quickBar .qPre select, #quickBar .qPre input{width:100%; font-size:13px; padding:7px 6px; border-radius:9px;}
+  #quickBar.pre .qPre{outline:2px solid var(--gold); outline-offset:3px; border-radius:10px;}
   #quickBar .qSens{display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800;}
   #adjustBar{position:absolute; left:0; right:0; bottom:0; z-index:18; display:none;
     background:rgba(13,17,23,.88); border-top:1px solid var(--line); padding:6px 8px 8px;
@@ -388,6 +392,19 @@
 
     <div id="quickBar">
       <div class="qT" id="qT">Ajustes rápidos · la imagen sigue en directo</div>
+      <div class="qPre">
+        <div><label>Diámetro aro 1</label>
+          <select id="qAro"><option value="155.5">Pistola aire 10 m · 155,5 mm</option><option value="45.5">Carabina aire 10 m · 45,5 mm</option>
+            <option value="154.4">Carabina 50 m · 154,4 mm</option><option value="500">Pistola 25/50 m · 500 mm</option>
+            <option value="132">Tarjeta 14×14 cm · ≈132 mm</option><option value="otro">Otra medida (mm)…</option></select>
+          <input type="number" id="qAroMm" inputmode="decimal" placeholder="mm del aro 1" style="display:none; margin-top:4px"></div>
+        <div><label>Calibre de la munición</label>
+          <select id="qCal"><option value="4.5">4,5 mm · .177 aire</option><option value="5.5">5,5 mm · .22 aire</option>
+            <option value="5.6">5,6 mm · .22 LR</option><option value="7.62">7,62 mm · .30 / .308</option><option value="9">9 mm</option>
+            <option value="9.65">9,65 mm · .38 / .357</option><option value="10.2">10,2 mm · .40</option>
+            <option value="11.43">11,43 mm · .45 / avancarga</option><option value="otro">Otro (mm o pulg.)…</option></select>
+          <input type="number" id="qCalMm" inputmode="decimal" placeholder="mm o pulgadas" style="display:none; margin-top:4px"></div>
+      </div>
       <div class="qRow">
         <button class="qb wide" id="qAuto">🎯 Autocalibrar diana</button>
         <button class="qb wide" id="qFocC">⊕ Enfocar al centro de la diana</button>
@@ -708,7 +725,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.5', APPDATE='24-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.6', APPDATE='24-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -982,13 +999,41 @@
     $('#qTorch').textContent='🔦 Linterna '+(TORCH.on?'ON':'OFF');
     $('#qAuto').disabled = S.phase==='camera';
   }
+  // diámetro del aro 1 y calibre: se piden antes de cada sesión (deciden tamaño del impacto y puntuación)
+  function qSelSet(sel, inp, v){ const o=[...$(sel).options].find(o=>o.value!=='otro'&&Math.abs(+o.value-v)<0.01);
+    $(sel).value=o?o.value:'otro'; $(inp).style.display=o?'none':''; $(inp).value=o?'':(v||''); }
+  function preFill(){ qSelSet('#qAro','#qAroMm',+S.realmm||targetD()); qSelSet('#qCal','#qCalMm',+S.caliber||0); }
+  function preApply(){
+    const aro = $('#qAro').value==='otro' ? +$('#qAroMm').value : +$('#qAro').value;
+    const cal = $('#qCal').value==='otro' ? parseCal($('#qCalMm').value) : +$('#qCal').value;
+    if(!(aro>5)) { qMsg('⚠ Indica el diámetro del aro 1 en mm'); return false; }
+    if(!(cal>0.5)){ qMsg('⚠ Indica el calibre'); return false; }
+    const ch = Math.abs((+S.realmm||0)-aro)>0.01 || Math.abs((+S.caliber||0)-cal)>0.001;
+    S.realmm=aro; S.caliber=cal;
+    $('#realmm').value=aro; $('#realmm2').value=aro; $('#caliber').value=cal; $('#caliber2').value=cal;
+    calHints(); if(ch){ rescoreAll(); renderStats(); resetHoles(); HD.bigWarned=false; }
+    if(typeof puestoSave==='function') puestoSave(); return true;
+  }
+  ['#qAro','#qCal'].forEach((id,k)=>$(id).onchange=()=>{ const inp=k?'#qCalMm':'#qAroMm';
+    $(inp).style.display=$(id).value==='otro'?'':'none'; if($(id).value==='otro') $(inp).focus(); else preApply(); });
+  ['#qAroMm','#qCalMm'].forEach(id=>$(id).onchange=()=>preApply());
+  let QPRE=false;
+  function preSession(){
+    if(S.phase!=='ready') return;
+    QPRE=true; openQuick(); $('#quickBar').classList.add('pre');
+    $('#qClose').textContent='▶ Empezar sesión';
+    qMsg('Antes de empezar: confirma el diámetro del aro 1 (mídelo con regla) y el calibre. La distancia no importa.');
+  }
   function openQuick(){
+    preFill();
     document.querySelectorAll('.sheet').forEach(x=>x.classList.remove('open'));
     $('#hud').style.display='none'; $('#quickBar').classList.add('open');
     qMsg(TORCH.remote&&S.phase!=='camera' ? 'Ajustes rápidos · actúan sobre el móvil-cámara remoto' : 'Ajustes rápidos · la imagen sigue en directo');
     quickUI();
   }
-  function closeQuick(){ $('#quickBar').classList.remove('open'); $('#hud').style.display=''; if(typeof puestoSave==='function') puestoSave(); }
+  function closeQuick(){ if(!preApply()) return; const go=QPRE; QPRE=false;
+    $('#quickBar').classList.remove('pre'); $('#qClose').textContent='✓ Hecho';
+    $('#quickBar').classList.remove('open'); $('#hud').style.display=''; if(typeof puestoSave==='function') puestoSave(); if(go) iniciarSesion(); }
   function quickSens(dir){
     if(S.detectType==='holes'){ S.holeSens=Math.max(1,Math.min(8,S.holeSens+dir)); $('#holeSens').value=S.holeSens; $('#vSens').textContent=S.holeSens; }
     else { S.thr=Math.max(90,Math.min(250,S.thr-10*dir)); $('#thr').value=S.thr; $('#vThr').textContent=S.thr; }
@@ -2165,7 +2210,7 @@
   $('#btnCfg').onclick=()=>$('#sheetCfg').classList.add('open');
   $('#btnDiana').onclick=()=>$('#sheetDiana').classList.add('open');
   $('#btnTimer').onclick=()=>{$('#sheetTimer').classList.add('open');};
-  $('#btnSession').onclick=iniciarSesion;
+  $('#btnSession').onclick=preSession;
   $('#btnPause').onclick=togglePausa;
   $('#btnFinish').onclick=finalizarSesion;
   $('#btnReport').onclick=()=>{ if(DIAG && S.phase!=='running' && S.phase!=='paused' && S.phase!=='leadin') diagStop(); buildReport();$('#sheetReport').classList.add('open');};
