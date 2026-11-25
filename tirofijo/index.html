@@ -725,7 +725,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.7', APPDATE='25-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.8', APPDATE='25-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2545,7 +2545,9 @@ function autoCalib(rgba, W, H, TARGETS){
     const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const g=cv.getContext('2d'); g.drawImage(video,0,0,W,H);
     let r; try{ r=autoCalib(g.getImageData(0,0,W,H).data,W,H,TARGETS); }catch(e){ r={ok:false,msg:'Error al analizar la imagen: '+e.message}; }
     if(!r.ok){ say('🎯 '+r.msg); return; }
-    if(r.model==='custom'){ setTarget('custom'); S.rings=r.n; setR('#rings',S.rings,'#vRings'); } else setTarget(r.model);
+    // solo se ajusta la POSICIÓN de la diana: modelo, aros, diámetro del aro 1, calibre y demás ajustes se conservan
+    const detName=r.model==='custom'?'diana de '+r.n+' aros':TARGETS[r.model].name;
+    const myName=TARGETS[S.target]?TARGETS[S.target].name:'personalizada de '+S.rings+' aros';
     // la homografía va de píxeles del fotograma a la diana normalizada; se gira para que "arriba" sea arriba en la imagen
     const Hm=r.H, a=Hm, det=a[0]*(a[4]*a[8]-a[5]*a[7])-a[1]*(a[3]*a[8]-a[5]*a[6])+a[2]*(a[3]*a[7]-a[4]*a[6]);
     const inv=[(a[4]*a[8]-a[5]*a[7])/det,(a[2]*a[7]-a[1]*a[8])/det,(a[1]*a[5]-a[2]*a[4])/det,(a[5]*a[6]-a[3]*a[8])/det,(a[0]*a[8]-a[2]*a[6])/det,(a[2]*a[3]-a[0]*a[5])/det,(a[3]*a[7]-a[4]*a[6])/det,(a[1]*a[6]-a[0]*a[7])/det,(a[0]*a[4]-a[1]*a[3])/det];
@@ -2556,11 +2558,11 @@ function autoCalib(rgba, W, H, TARGETS){
     S.dianaMode='persp'; document.querySelectorAll('#dianaMode button').forEach(x=>x.classList.toggle('sel',x.dataset.dm==='persp'));
     $('#cardStd').style.display='none'; $('#cardCal').style.display='none'; $('#cardPersp').style.display='block';
     buildPersp(); resetHoles(); puestoSave();
-    const name=r.model==='custom'?'diana de '+r.n+' aros iguales':TARGETS[r.model].name;
-    const dHint=(S.detectType==='holes'&&r.model!=='custom')?' · Aro 1 = '+Math.round(targetD())+' mm: si tu diana es reducida, mide el aro 1 y cámbialo en ◎ Diana':'';
-    if(quick){ say('🎯 '+name+(r.model!=='custom'?' · error '+f1(r.rmsMM)+' mm':'')+dHint+'. Enfocando al centro…'); setTimeout(()=>camFocus('center'),300); return; }
+    const name='Diana colocada ('+myName+' · aro 1 '+f1(targetD())+' mm · calibre '+f1(S.caliber)+' mm)';
+    const dHint=(r.model!==S.target && !(r.model==='custom'&&!TARGETS[S.target]))?' · parece '+detName+'; se mantiene tu configuración':'';
+    if(quick){ const m='🎯 '+name+dHint; say(m+'. Enfocando al centro…'); setTimeout(async()=>{ await camFocus('center'); if(!QF.pend) qMsg(m+' · '+$('#qT').textContent); },300); return; }
     openAdjust('persp');
-    say('🎯 Detectada: '+name+(r.model!=='custom'?' · error medio '+f1(r.rmsMM)+' mm':'')+dHint+'. Comprueba que los aros coinciden y pulsa Hecho.');
+    say('🎯 '+name+dHint+'. Comprueba que los aros coinciden y pulsa Hecho.');
   }
   $('#autoCal').onclick=()=>{ document.querySelectorAll('.sheet').forEach(x=>x.classList.remove('open')); setTimeout(runAutoCalib,150); };
 
