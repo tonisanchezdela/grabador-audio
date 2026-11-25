@@ -725,7 +725,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.6', APPDATE='24-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.7', APPDATE='25-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1322,22 +1322,23 @@
 
   /* ---------- manchas conectadas (separa una mancha real del ruido suelto) ---------- */
   const LAB={buf:null};
-  function blobs(mask,w,h){
+  const HOLE_PK=20;   // cambio mínimo en el centro de un impacto (niveles de gris): un brillo o reflejo cambia menos
+  function blobs(mask,w,h,edge,val){
     const N=w*h; if(!LAB.buf||LAB.buf.length!==N) LAB.buf=new Int32Array(N); const lab=LAB.buf; lab.fill(0);
     const out=[], st=[]; let id=0;
     for(let i=0;i<N;i++){
       if(!mask[i]||lab[i]) continue;
       id++; lab[i]=id; st.push(i);
-      let n=0,sx=0,sy=0,minx=w,miny=h,maxx=0,maxy=0;
+      let n=0,sx=0,sy=0,minx=w,miny=h,maxx=0,maxy=0,ne=0,pk=-1,pkv=-Infinity;
       while(st.length){
-        const j=st.pop(), x=j%w, y=(j/w)|0; n++; sx+=x; sy+=y;
+        const j=st.pop(), x=j%w, y=(j/w)|0; n++; sx+=x; sy+=y; if(edge&&edge[j]) ne++; if(val&&val[j]>pkv){ pkv=val[j]; pk=j; }
         if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
         for(let dy=-1;dy<=1;dy++){ const yy=y+dy; if(yy<0||yy>=h) continue;
           for(let dx=-1;dx<=1;dx++){ const xx=x+dx; if(xx<0||xx>=w) continue;
             const k=yy*w+xx; if(mask[k]&&!lab[k]){ lab[k]=id; st.push(k); } } }
       }
       const bw=maxx-minx+1, bh=maxy-miny+1;
-      out.push({n, cx:sx/n, cy:sy/n, bw, bh, ar:Math.max(bw/bh,bh/bw), fill:n/(bw*bh)});
+      out.push({n, ne, pk, pkv, cx:sx/n, cy:sy/n, bw, bh, ar:Math.max(bw/bh,bh/bw), fill:n/(bw*bh)});
     }
     return out;
   }
@@ -1460,22 +1461,72 @@
     for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; half[y*hw+x]=(g[i]+g[i+1]+g[i+w]+g[i+w+1])/4; }
     const sm=[]; for(let i=0;i<n;i+=5) if(ins[i]) sm.push(g[i]); sm.sort((a,b)=>a-b);
     const mid=sm.length?(sm[Math.floor(sm.length*0.15)]+sm[Math.floor(sm.length*0.85)])/2:128;  // entre negro y blanco
-    return {t,g,grad,half,hw,hh,mid};
+    const qw=w>>2, qh=h>>2, quart=new Float32Array(qw*qh), qm=new Uint8Array(qw*qh);
+    for(let y=0;y<qh;y++)for(let x=0;x<qw;x++){ let a=0; for(let dy=0;dy<4;dy++)for(let dx=0;dx<4;dx++) a+=g[(4*y+dy)*w+4*x+dx]; quart[y*qw+x]=a/16; qm[y*qw+x]=ins[(4*y+2)*w+4*x+2]; }
+    const hm=new Uint8Array(hw*hh); for(let y=0;y<hh;y++)for(let x=0;x<hw;x++) hm[y*hw+x]=ins[(2*y+1)*w+2*x+1];
+    const gxh=new Float32Array(hw*hh), gyh=new Float32Array(hw*hh);
+    for(let y=1;y<hh-1;y++)for(let x=1;x<hw-1;x++){ const i=y*hw+x; gxh[i]=(half[i+1]-half[i-1])/2; gyh[i]=(half[i+hw]-half[i-hw])/2; }
+    return {t,g,grad,half,hw,hh,mid,quart,qw,qh,qm,hm,gxh,gyh};
   }
-  // desplazamiento de la imagen (temblor): cur(p) ≈ ref(p+d). Búsqueda ±4 px + ajuste subpíxel
+  // desplazamiento de la TARJETA (temblor o la tarjeta que se mueve en su soporte con cada impacto): cur(p) ≈ ref(p+d).
+  // Grueso a 1/4 (±20 px) → fino a 1/2 → subpíxel. Solo cuenta la zona de la diana (no el fondo, que no se mueve)
   function estShift(sn,cur,R){
-    const w=R.w, hw=sn.hw, hh=sn.hh, b=new Float32Array(hw*hh), a=sn.half, m=4, Sv={};
-    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; b[y*hw+x]=(cur[i]+cur[i+1]+cur[i+w]+cur[i+w+1])/4; }
-    let best=Infinity, bx=0, by=0;
-    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
-      let s=0,q=0,n=0;
-      for(let y=m;y<hh-m;y++){ const r1=y*hw, r2=(y+dy)*hw+dx;
-        for(let x=m;x<hw-m;x++){ const d=b[r1+x]-a[r2+x]; s+=d; q+=d*d; n++; } }
-      const v=q/n-(s/n)*(s/n); Sv[dx+','+dy]=v; if(v<best){ best=v; bx=dx; by=dy; } }
-    const sub=(c,l,r)=>{ const den=l-2*c+r; return den<=0?0:0.5*(l-r)/den; };
-    const fx=Math.abs(bx)<2?sub(best,Sv[(bx-1)+','+by],Sv[(bx+1)+','+by]):0;
-    const fy=Math.abs(by)<2?sub(best,Sv[bx+','+(by-1)],Sv[bx+','+(by+1)]):0;
-    return {dx:2*(bx+fx), dy:2*(by+fy)};
+    const w=R.w;
+    const cost=(A,B,M,W,H,dx,dy)=>{ let s=0,q=0,n=0; const y0=Math.max(0,-dy), y1=Math.min(H,H-dy), x0=Math.max(0,-dx), x1=Math.min(W,W-dx);
+      for(let y=y0;y<y1;y++){ const r1=y*W, r2=(y+dy)*W+dx; for(let x=x0;x<x1;x++){ if(!M[r1+x]) continue; const d=B[r1+x]-A[r2+x]; s+=d; q+=d*d; n++; } }
+      return n<30?Infinity:q/n-(s/n)*(s/n); };
+    const qw=sn.qw, qh=sn.qh, cq=new Float32Array(qw*qh);
+    for(let y=0;y<qh;y++)for(let x=0;x<qw;x++){ let a=0; for(let dy=0;dy<4;dy++)for(let dx=0;dx<4;dx++) a+=cur[(4*y+dy)*w+4*x+dx]; cq[y*qw+x]=a/16; }
+    let best=Infinity,bx=0,by=0;
+    for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++){ const v=cost(sn.quart,cq,sn.qm,qw,qh,dx,dy); if(v<best){best=v;bx=dx;by=dy;} }
+    const hw=sn.hw, hh=sn.hh, ch=new Float32Array(hw*hh);
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; ch[y*hw+x]=(cur[i]+cur[i+1]+cur[i+w]+cur[i+w+1])/4; }
+    const Sv={}; best=Infinity; let hx=0,hy=0;
+    for(let dy=2*by-2;dy<=2*by+2;dy++)for(let dx=2*bx-2;dx<=2*bx+2;dx++){ const v=cost(sn.half,ch,sn.hm,hw,hh,dx,dy); Sv[dx+','+dy]=v; if(v<best){best=v;hx=dx;hy=dy;} }
+    const sub=(c,l,r)=>{ if(!isFinite(l)||!isFinite(r)) return 0; const den=l-2*c+r; return den<=0?0:Math.max(-0.5,Math.min(0.5,0.5*(l-r)/den)); };
+    const fx=sub(best,Sv[(hx-1)+','+hy],Sv[(hx+1)+','+hy]), fy=sub(best,Sv[hx+','+(hy-1)],Sv[hx+','+(hy+1)]);
+    return {dx:2*(hx+fx), dy:2*(hy+fy)};
+  }
+  // afín fino: cur(u) ≈ ref(M·u) (u en píxeles de análisis). Devuelve M = [a,b,c,d,e,f]: x'=a·x+b·y+c, y'=d·x+e·y+f
+  function lkAffine(sn,cur,R,d0){
+    const w=R.w, hw=sn.hw, hh=sn.hh, A=sn.half, GX=sn.gxh, GY=sn.gyh, MK=sn.hm, B=new Float32Array(hw*hh);
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; B[y*hw+x]=(cur[i]+cur[i+1]+cur[i+w]+cur[i+w+1])/4; }
+    const cx=hw/2, cy=hh/2, P=[0,0,0,0,d0.dx/2,d0.dy/2]; let ga=0, gb=0;
+    const smp=(I,x,y)=>{ const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0,i=y0*hw+x0; return (I[i]*(1-fx)+I[i+1]*fx)*(1-fy)+(I[i+hw]*(1-fx)+I[i+hw+1]*fx)*fy; };
+    for(let it=0;it<10;it++){
+      const H=new Float64Array(64), g=new Float64Array(8), J=new Float64Array(8);
+      for(let y=1;y<hh-1;y++)for(let x=1;x<hw-1;x++){ const i=y*hw+x; if(!MK[i]) continue;
+        const X=x-cx, Y=y-cy, xs=x+P[0]*X+P[2]*Y+P[4], ys=y+P[1]*X+P[3]*Y+P[5];
+        if(xs<1||ys<1||xs>=hw-2||ys>=hh-2) continue;
+        const I=smp(A,xs,ys), gx=(1+ga)*smp(GX,xs,ys), gy=(1+ga)*smp(GY,xs,ys), r=(1+ga)*I+gb-B[i];
+        if(Math.abs(r)>40) continue;                                       // impactos y sombras no cuentan para alinear
+        J[0]=gx*X; J[1]=gy*X; J[2]=gx*Y; J[3]=gy*Y; J[4]=gx; J[5]=gy; J[6]=I; J[7]=1;
+        for(let a=0;a<8;a++){ g[a]+=J[a]*r; for(let b=a;b<8;b++) H[a*8+b]+=J[a]*J[b]; } }
+      for(let a=0;a<8;a++){ H[a*8+a]*=1.0001; H[a*8+a]+=1e-6; for(let b=0;b<a;b++) H[a*8+b]=H[b*8+a]; }
+      // resolver H·dp = −g (Gauss con pivote)
+      const M=[]; for(let a=0;a<8;a++){ const row=[]; for(let b=0;b<8;b++) row.push(H[a*8+b]); row.push(-g[a]); M.push(row); }
+      for(let c=0;c<8;c++){ let pv=c; for(let r=c+1;r<8;r++) if(Math.abs(M[r][c])>Math.abs(M[pv][c])) pv=r; [M[c],M[pv]]=[M[pv],M[c]];
+        if(Math.abs(M[c][c])<1e-12) return null;
+        for(let r=0;r<8;r++){ if(r===c) continue; const f=M[r][c]/M[c][c]; for(let k=c;k<9;k++) M[r][k]-=f*M[c][k]; } }
+      const dp=M.map((r,i)=>r[8]/r[i]);
+      for(let k=0;k<6;k++) P[k]+=dp[k]; ga+=dp[6]; gb+=dp[7];
+      if(Math.abs(dp[4])<0.005&&Math.abs(dp[5])<0.005&&Math.abs(dp[0])<1e-5&&Math.abs(dp[3])<1e-5) break;
+    }
+    if(Math.abs(P[0])>0.05||Math.abs(P[1])>0.05||Math.abs(P[2])>0.05||Math.abs(P[3])>0.05) return null;   // no es un movimiento de tarjeta
+    // a coordenadas completas (u = 2x+0,5)
+    const ox=0.5+2*cx, oy=0.5+2*cy;
+    return [1+P[0], P[2], -P[0]*ox-P[2]*oy+2*P[4], P[1], 1+P[3], -P[1]*ox-P[3]*oy+2*P[5]];
+  }
+  const affMul=(A,B)=>[A[0]*B[0]+A[1]*B[3], A[0]*B[1]+A[1]*B[4], A[0]*B[2]+A[1]*B[5]+A[2], A[3]*B[0]+A[4]*B[3], A[3]*B[1]+A[4]*B[4], A[3]*B[2]+A[4]*B[5]+A[5]];
+  const affInv=A=>{ const det=A[0]*A[4]-A[1]*A[3]; return [A[4]/det,-A[1]/det,(A[1]*A[5]-A[4]*A[2])/det,-A[3]/det,A[0]/det,(A[3]*A[2]-A[0]*A[5])/det]; };
+  const affApply=(A,x,y)=>({x:A[0]*x+A[1]*y+A[2], y:A[3]*x+A[4]*y+A[5]});
+  const AFF_I=[1,0,0,0,1,0];
+  function warpAff(src,w,h,A){
+    const out=new Float32Array(w*h);
+    for(let y=0;y<h;y++){ let sx=A[1]*y+A[2], sy=A[4]*y+A[5];
+      for(let x=0;x<w;x++,sx+=A[0],sy+=A[3]){ const X=Math.min(w-1.001,Math.max(0,sx)), Y=Math.min(h-1.001,Math.max(0,sy)), x0=X|0,y0=Y|0,fx=X-x0,fy=Y-y0,i=y0*w+x0;
+        out[y*w+x]=(src[i]*(1-fx)+src[i+1]*fx)*(1-fy)+(src[i+w]*(1-fx)+src[i+w+1]*fx)*fy; } }
+    return out;
   }
   function shifted(src,w,h,dx,dy){
     const out=new Float32Array(w*h);
@@ -1517,11 +1568,14 @@
     const R=computeRoi(); if(!R) return null;
     const key=[R.x0,R.y0,R.bw,R.bh,R.w,R.h,S.insideOnly,S.dianaMode].join(',');
     if(key!==HD.key){                                                   // cambió la geometría: rehace la máscara de diana
-      HD.key=key; HD.R=R; HD.base=null; HD.avg=null; HD.prevHalf=null; HD.stableSince=0; HD.cands=[];
+      HD.key=key; HD.R=R; HD.lastOff={x:0,y:0}; HD.curA=AFF_I; HD.baseA=AFF_I; HD.base=null; HD.avg=null; HD.prevHalf=null; HD.stableSince=0; HD.cands=[];
       const lim=S.insideOnly?1.04:1.3, ins=new Uint8Array(R.w*R.h);
       for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const p=roiToScreen(R,x+0.5,y+0.5);
         if(normFromScreen(p.x,p.y).dRel<=lim) ins[y*R.w+x]=1; }
       HD.ins=ins;
+      const edge=new Uint8Array(R.w*R.h); for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const i=y*R.w+x; if(!ins[i]) continue;
+        for(let dy=-2;dy<=2&&!edge[i];dy++)for(let dx=-2;dx<=2;dx++){ const xx=x+dx,yy=y+dy; if(xx<0||yy<0||xx>=R.w||yy>=R.h||!ins[yy*R.w+xx]){ edge[i]=1; break; } } }
+      HD.edge=edge;
       // la diana se divide en cuatro cuartos: cada uno con su propia corrección de luz (sombras, foco lateral)
       const cx0=R.w/2, cy0=R.h/2; HD.qi=new Uint8Array(R.w*R.h); HD.qins=[0,1,2,3].map(()=>new Uint8Array(R.w*R.h));
       for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const i=y*R.w+x, q=(y>=cy0?2:0)+(x>=cx0?1:0); HD.qi[i]=q; if(ins[i]) HD.qins[q][i]=1; }
@@ -1554,12 +1608,19 @@
     if(now-HD.stableSince<500){ avgUpd(); say('Estabilizando…','wait'); return null; }
     // 2) referencia ESTABLE: foto de la diana quieta con los impactos ya conocidos. No se toca mientras hay movimiento,
     //    así un impacto que aparece mientras algo tapa la diana sigue siendo "nuevo" cuando todo vuelve a estar quieto
-    if(!HD.base){ avgUpd(); HD.base=prepSnap(Float32Array.from(HD.avg),R,ins,now); HD.quietSince=now; say('Referencia tomada: diana lista','ok'); return null; }
+    if(!HD.curA){ HD.curA=AFF_I; HD.lastOff={x:0,y:0}; }
+    const setBase=g=>{ HD.base=prepSnap(g,R,ins,now); HD.baseA=HD.curA.slice(); };
+    if(!HD.base){ avgUpd(); setBase(Float32Array.from(HD.avg)); HD.quietSince=now; say('Referencia tomada: diana lista','ok'); return null; }
     const sn=HD.base;
     // alinear y corregir luz
     const sh=estShift(sn,cur,R);
-    const still=Math.abs(sh.dx)<0.12&&Math.abs(sh.dy)<0.12;             // sin temblor: no hace falta realinear
-    const ref=still?sn.g:shifted(sn.g,w,h,sh.dx,sh.dy), grad=sn.grad;
+    // ajuste fino afín (la tarjeta se desplaza y gira un poco en su soporte con cada impacto)
+    const Wm=lkAffine(sn,cur,R,sh)||[1,0,sh.dx,0,1,sh.dy];               // cur(u) ≈ base(Wm·u)
+    HD.curA=affMul(HD.baseA||AFF_I,Wm);                                   // cur → calibración
+    { const c=affApply(HD.curA,R.w/2,R.h/2); HD.lastOff={x:R.w/2-c.x, y:R.h/2-c.y}; }
+    const dmax=Math.max(...[[0,0],[w,0],[0,h],[w,h]].map(([x,y])=>{ const q=affApply(Wm,x,y); return Math.hypot(q.x-x,q.y-y); }));
+    const still=dmax<0.15;                                               // sin movimiento: no hace falta realinear
+    const ref=still?sn.g:warpAff(sn.g,w,h,Wm), grad=still?sn.grad:warpAff(sn.grad,w,h,Wm);
     const L=S.lightComp?fitLight(ref,cur,ins):{g:1,o:0};
     const LQ=[0,1,2,3].map(q=>S.lightComp&&HD.qn[q]>=150?fitLight(ref,cur,HD.qins[q]):L), qi=HD.qi;
     const QG=new Float32Array(LQ.map(l=>l.g)), QO=new Float32Array(LQ.map(l=>l.o));
@@ -1576,7 +1637,7 @@
       DF[i]=raw; if(raw>thr) big++;
       let e=d/thr; if(e>2) e=2; const gq=grad[i]/HOLE_G0; E[i]=e/(1+gq*gq); }
     if(big>cnt*0.15){   // la cámara se ha movido o la luz ha cambiado mucho: nueva referencia
-      HD.base=prepSnap(cur,R,ins,now); HD.cands=[]; HD.view=null; HD.quietSince=now;
+      setBase(cur); HD.cands=[]; HD.view=null; HD.quietSince=now;
       say('Cámara movida o cambio fuerte de luz: referencia rehecha','ok'); return null; }
     // suavizado del tamaño de un impacto: une las fibras sueltas en una sola mancha y apaga el ruido
     const hs=holeSize(), r=hs.r, W1=w+1, I=new Float64Array(W1*(h+1));
@@ -1588,35 +1649,42 @@
         if(v>mx && ins[y*w+x]) mx=v; if(v>Tb) mask[y*w+x]=1; } }
     // manchas con tamaño y forma de impacto, que no estén donde ya se marcó uno
     // (los impactos ya registrados se ignoran: así un parche pegado encima o un agujero que se rasga no cuentan)
-    const near=hs.d*1.5/HD.RR, known=S.shots.map(s=>({rx:s.rx,ry:s.ry})).concat(HD.recent);
-    const all=blobs(mask,w,h);
+    const near=0.9*hs.d/HD.RR, known=S.shots.map(s=>({rx:s.rx,ry:s.ry})).concat(HD.recent);
+    const all=blobs(mask,w,h,HD.edge,DF);
     // algo grande tapa la diana (mano o persona quieta delante): no se cuenta nada ni se toca la referencia.
     // Si sigue así más de 6 s, es un cambio permanente (p. ej. han movido la diana): nueva referencia
     if(all.some(c=>c.n>12*hs.A)){
       HD.cands=[]; HD.view=null; HD.quietSince=0;
       if(!HD.occSince) HD.occSince=now;
-      else if(now-HD.occSince>6000){ HD.base=prepSnap(cur,R,ins,now); HD.occSince=0; say('Cambio permanente en la diana: referencia rehecha','ok'); return null; }
+      else if(now-HD.occSince>6000){ setBase(cur); HD.occSince=0; say('Cambio permanente en la diana: referencia rehecha','ok'); return null; }
       say('Algo tapa la diana: esperando…','mov'); return null;
     }
     HD.occSince=0;
     const bigOk=c=>c.n>3.5*hs.A && c.n<=10*hs.A && c.ar<=1.8 && c.fill>=0.5;   // redondo pero más grande de lo esperado
     if(all.some(bigOk)) HD.bigSeen=(HD.bigSeen||0)+1;
-    const ok=all.filter(c=>c.n>=Math.max(5,0.12*hs.A) && (c.n<=3.5*hs.A||bigOk(c)) && c.ar<=S.roundMax && c.fill>=0.3)
-      .filter(c=>{ const rb=Math.max(2,Math.sqrt(c.n/Math.PI)), at=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x>=0&&y>=0&&x<w&&y<h&&ins[y*w+x]?DF[y*w+x]:-1; };
+    const ok=all.filter(c=>c.n>=Math.max(5,0.12*hs.A) && (c.n<=3.5*hs.A||bigOk(c)) && c.ar<=S.roundMax && c.fill>=0.3 && c.ne<=Math.max(4,1.2*hs.d))
+      .filter(c=>{ const at=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x>=0&&y>=0&&x<w&&y<h&&ins[y*w+x]?DF[y*w+x]:-1; };
+        const px=c.pk%w, py=(c.pk/w)|0, rh=Math.max(1.5,hs.d/2,(c.fill>=0.7&&c.ar<=1.3)?0.5*Math.sqrt(c.n/Math.PI):0);
+        // centro = media ponderada del cambio en un círculo del tamaño del impacto alrededor del pico
+        let sw=0,sxx=0,syy=0; const R2=Math.ceil(rh); for(let dy=-R2;dy<=R2;dy++)for(let dx=-R2;dx<=R2;dx++){ if(dx*dx+dy*dy>rh*rh) continue; const v=at(px+dx,py+dy); if(v>0){ sw+=v; sxx+=v*(px+dx); syy+=v*(py+dy); } }
+        if(sw>0){ c.cx=sxx/sw; c.cy=syy/sw; }
         let cen=0,cn=0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ const v=at(c.cx+dx,c.cy+dy); if(v>=0){cen+=v;cn++;} }
-        let an=0,anN=0; for(let k=0;k<20;k++){ const a=k/20*6.2832, rr=(k%2?2.0:2.7)*rb, v=at(c.cx+rr*Math.cos(a),c.cy+rr*Math.sin(a)); if(v>=0){an+=v;anN++;} }
-        if(!cn||anN<8) return true; cen/=cn; an/=anN; c.sharp=cen>0?an/cen:1; return an<0.6*cen; })
-      .map(c=>{ const p=roiToScreen(R,c.cx+0.5,c.cy+0.5), q=normFromScreen(p.x,p.y); return {...c,p,q}; })
-      .filter(c=>{ const nr=Math.max(near, 1.3*Math.sqrt(c.n/Math.PI)/HD.RR); return !known.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<nr); })
+        let an=0,anN=0; for(let k=0;k<24;k++){ const a=k/24*6.2832, rr=(k%2?2.2:3.0)*rh, v=at(c.cx+rr*Math.cos(a),c.cy+rr*Math.sin(a)); if(v>=0){an+=v;anN++;} }
+        if(!cn) return false; cen/=cn; c.cenv=cen; if(anN<8) return cen>=HOLE_PK; an/=anN; c.sharp=cen>0?an/cen:1;
+        return cen>=HOLE_PK && an-sig<0.2*cen; })
+      .map(c=>{ const u=affApply(HD.curA,c.cx+0.5,c.cy+0.5), p=roiToScreen(R,u.x,u.y), q=normFromScreen(p.x,p.y); return {...c,p,q}; })
+      .filter(c=>c.q.dRel<=1.0)      // fuera del aro 1 (pinzas, labio del soporte): no puntúa
+      .filter(c=>!known.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<near))
       .sort((a,b)=>b.n-a.n);
     HD.view={R,ok};
-    say('Diana quieta · cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas nuevas: '+ok.length, ok.length?'cand':'ok');
+    const offT=Math.hypot(HD.lastOff.x,HD.lastOff.y)>=0.5?' · tarjeta movida '+(Math.hypot(HD.lastOff.x,HD.lastOff.y)/HD.RR*targetD()/2).toFixed(1).replace('.',',')+' mm':'';
+    say('Diana quieta · cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas nuevas: '+ok.length+offT, ok.length?'cand':'ok');
     // 3) sin nada nuevo durante 1 s: la referencia se actualiza (absorbe impactos ya contados y cambios lentos de luz)
-    if(!ok.length){ avgUpd(); if(!HD.quietSince) HD.quietSince=now; else if(now-HD.quietSince>=1000){ HD.base=prepSnap(Float32Array.from(HD.avg),R,ins,now); HD.quietSince=now; } }
+    if(!ok.length){ avgUpd(); if(!HD.quietSince) HD.quietSince=now; else if(now-HD.quietSince>=1000){ setBase(Float32Array.from(HD.avg)); HD.quietSince=now; } }
     else HD.quietSince=0;
     // muchas manchas a la vez no son disparos (luz, enfoque, compresión): no se cuenta nada y, si sigue, nueva referencia
     if(ok.length>=5){ HD.cands=[]; avgUpd(); if(!HD.burstSince) HD.burstSince=now;
-      else if(now-HD.burstSince>1500){ HD.avg=Float32Array.from(cur); HD.avgN=1; HD.base=prepSnap(cur,R,ins,now); HD.burstSince=0; }
+      else if(now-HD.burstSince>1500){ HD.avg=Float32Array.from(cur); HD.avgN=1; setBase(cur); HD.burstSince=0; }
       say('Muchos cambios a la vez: ignorados','mov'); return null; }
     HD.burstSince=0;
     // confirmación por tiempo de CADA mancha (varios impactos casi a la vez se siguen por separado):
@@ -1649,6 +1717,15 @@
       return;
     }
     const RAD=ringRadii(), NR=RAD.length-1;
+    // los aros siguen a la tarjeta si se ha movido en su soporte (modo cartón)
+    let offS=null; if(S.detectType==='holes' && HD.R && HD.curA && HD.curA!==AFF_I){
+      // pantalla(calibración) → pantalla(ahora): S∘curA⁻¹∘S⁻¹ (roiToScreen es lineal)
+      const R=HD.R, Ai=affInv(HD.curA), o=roiToScreen(R,0,0), ux=roiToScreen(R,1,0), uy=roiToScreen(R,0,1);
+      const sx=ux.x-o.x, sy=uy.y-o.y, T=[Ai[0], Ai[1]*sx/sy, (Ai[2]+Ai[0]*(-o.x/sx)+Ai[1]*(-o.y/sy))*sx+o.x, Ai[3]*sy/sx, Ai[4], (Ai[5]+Ai[3]*(-o.x/sx)+Ai[4]*(-o.y/sy))*sy+o.y];
+      offS=1; octx.save(); octx.transform(T[0],T[3],T[1],T[4],T[2],T[5]); }
+    drawRings(RAD,NR); if(offS) octx.restore();
+  }
+  function drawRings(RAD,NR){
     if(S.dianaMode==='persp' && S.Hinv){
       for(let v=Math.min(NR,S.minRing||1); v<=NR; v++){
         const rr=RAD[v]; octx.beginPath();
