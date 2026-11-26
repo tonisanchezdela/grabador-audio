@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tirofijo PC · Galería</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2244%22 fill=%22%23f85149%22/%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2224%22 fill=%22%23fff%22/%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%229%22 fill=%22%23f85149%22/%3E%3C/svg%3E">
+<style>
+  :root{ --bg:#0d1117; --panel:#161b22; --line:#30363d; --txt:#e6edf3; --muted:#8b949e; --accent:#f85149; --ok:#3fb950; --gold:#d29922; --blue:#58a6ff; --cols:2; --rows:1; }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--txt); font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; display:flex; flex-direction:column;}
+  header{display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel);}
+  h1{margin:0; font-size:20px; letter-spacing:.4px; white-space:nowrap;} h1 b{color:var(--accent);}
+  .ver{color:var(--muted); font-size:12px;}
+  .sp{flex:1}
+  input,select{background:#0d1117; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:7px 9px; font-size:14px;}
+  button{background:#21262d; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font-size:14px; font-weight:700; cursor:pointer; white-space:nowrap;}
+  button:hover{border-color:#8b949e;}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  button.go{background:#238636; border-color:#2ea043; color:#fff;}
+  .cfg{display:flex; flex-wrap:wrap; gap:8px 10px; align-items:end; padding:10px 16px; border-bottom:1px solid var(--line);}
+  .cfg label{display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;}
+  .cfg.hide{display:none;}
+  #state{color:var(--muted); font-size:13px; align-self:center;}
+  #state.err{color:var(--accent);}
+  main{flex:1; min-height:0; padding:12px; overflow:auto;}
+  .grid{display:grid; grid-template-columns:repeat(var(--cols),minmax(0,1fr)); grid-template-rows:repeat(var(--rows),minmax(230px,1fr)); gap:12px; height:100%;}
+  .grid:empty{display:none;}
+  .empty{color:var(--muted); text-align:center; padding:60px 20px; font-size:16px;}
+  .tile{background:var(--panel); border:1px solid var(--line); border-radius:12px; display:flex; flex-direction:column; min-width:0; overflow:hidden;}
+  .tile.armed{border-color:var(--ok); box-shadow:0 0 0 1px var(--ok) inset;}
+  .th{display:flex; align-items:center; gap:8px; padding:7px 10px;}
+  .pn{font-size:16px; white-space:nowrap;}
+  .src{color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;}
+  .shooter{flex:1; min-width:60px; padding:4px 8px; font-size:14px; font-weight:600;}
+  .chip{font-size:11px; font-weight:800; padding:3px 9px; border-radius:20px; background:var(--line); white-space:nowrap;}
+  .chip.ok{background:#1f6f35; color:#d7ffe0;} .chip.cand{background:var(--gold); color:#1a1200;} .chip.mov{background:#6e4b00; color:#ffe7a8;}
+  .chip.off{background:var(--accent); color:#fff;} .chip.wait{background:#30363d; color:#c9d1d9;}
+  .stage{position:relative; flex:1; min-height:120px; background:#000;}
+  .stage video,.stage canvas{position:absolute; inset:0; width:100%; height:100%; object-fit:contain;}
+  .stage canvas{pointer-events:none;}
+  .flash{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) scale(.6); font-size:min(16vh,120px); font-weight:900; color:#ffd60a;
+    text-shadow:0 0 12px #000,0 0 3px #000; opacity:0; pointer-events:none;}
+  .flash.show{animation:fl 1.4s ease-out;}
+  @keyframes fl{0%{opacity:1; transform:translate(-50%,-50%) scale(1.1);} 60%{opacity:1;} 100%{opacity:0; transform:translate(-50%,-50%) scale(.9);}}
+  .badge{position:absolute; left:8px; top:8px; font-size:11px; font-weight:800; padding:3px 8px; border-radius:6px; background:rgba(0,0,0,.6); color:var(--muted); pointer-events:none;}
+  .tile.armed .badge{color:#7ee787;}
+  .msg{position:absolute; left:8px; right:8px; bottom:8px; font-size:12px; padding:4px 8px; border-radius:6px; background:rgba(0,0,0,.7); display:none; pointer-events:none;}
+  .msg.show{display:block;}
+  .tf{display:flex; align-items:center; gap:14px; padding:7px 10px; flex-wrap:wrap;}
+  .sc{display:flex; flex-direction:column; line-height:1.1;}
+  .sc small{color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.6px;}
+  .sc b{font-size:24px; font-variant-numeric:tabular-nums;}
+  .sc .last{color:#ffd60a;}
+  .sc span{color:var(--muted); font-size:11px;}
+  .btns{display:flex; gap:5px; margin-left:auto; flex-wrap:wrap;}
+  .btns button{padding:6px 9px; font-size:15px;}
+  .btns button.on{background:#238636; border-color:#2ea043;}
+  .more{display:none;}
+  /* vista ampliada de un puesto */
+  .tile.big{position:fixed; inset:0; z-index:50; border-radius:0; display:grid; grid-template-columns:1fr 300px; grid-template-rows:auto 1fr auto;}
+  .tile.big .th{grid-column:1/3;}
+  .tile.big .stage{min-height:0;}
+  .tile.big .stage canvas{pointer-events:auto; cursor:crosshair;}
+  .tile.big .tf{grid-column:1/2;}
+  .tile.big .more{display:flex; flex-direction:column; gap:10px; grid-column:2; grid-row:2/4; padding:10px 12px; border-left:1px solid var(--line); overflow:auto;}
+  .tile.big .sc b{font-size:34px;}
+  .more label{display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;}
+  .shots{display:grid; grid-template-columns:repeat(5,1fr); gap:4px; font-variant-numeric:tabular-nums;}
+  .shots div{background:#0d1117; border:1px solid var(--line); border-radius:6px; text-align:center; padding:3px 0; font-weight:700;}
+  .shots div.drop{color:var(--muted); text-decoration:line-through;}
+  .shots div.lastS{border-color:#ffd60a; color:#ffd60a;}
+  .hint{color:var(--muted); font-size:12px;}
+  .pre{display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:8px; border:1px solid var(--line); border-radius:10px;}
+  .pre label{font-size:10px;} .pre select,.pre input{width:100%; font-size:13px; padding:6px;}
+  .pre .preGo{grid-column:1/3; display:none;}
+  .tile.needPre .pre{outline:2px solid var(--gold); outline-offset:2px;} .tile.needPre .pre .preGo{display:block;}
+  .qrow{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px;} .qrow button{padding:7px 4px; font-size:12px; white-space:normal;}
+  .hinfo{color:var(--muted); font:11px ui-monospace,monospace; min-height:2.6em;}
+  .aro{color:var(--muted); font-size:11px;}
+  .ask{position:absolute; left:8px; right:8px; top:34px; z-index:5; display:none; background:rgba(13,17,23,.92); border:1px solid var(--gold); border-radius:10px; padding:7px 9px; font-size:13px;}
+  .ask.open{display:block;} .ask .row{display:flex; gap:6px; margin-top:6px;} .ask button{flex:1; padding:6px 4px; font-size:13px;}
+  .ask button.y{background:var(--gold); border-color:var(--gold); color:#1a1200;}
+  .tile.adding .stage canvas{pointer-events:auto; cursor:crosshair;}
+  .tile.asking{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold) inset;}
+  .chk{display:flex; gap:8px; align-items:flex-start; font-size:12px; color:var(--txt); cursor:pointer;} .chk input{margin-top:2px;}
+  .cfg .chk{align-self:center;}
+  #dirName{color:var(--muted); font-size:12px; align-self:center; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .modal{position:fixed; inset:0; z-index:80; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; padding:20px;}
+  .modal.open{display:flex;}
+  .modal .box{background:var(--panel); border:1px solid var(--line); border-radius:14px; width:min(1100px,100%); max-height:100%; overflow:auto; padding:14px 16px; position:relative;}
+  .modal .x{position:absolute; right:10px; top:10px;}
+  .modal h3{margin:2px 0 10px;}
+  .repItem{display:flex; gap:10px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-top:8px;}
+  .repItem div{flex:1;} .repItem .hint{display:block;}
+  .vwrap{position:relative; background:#000; border-radius:12px; overflow:hidden; aspect-ratio:16/9; max-height:62vh; margin:0 auto;}
+  .vwrap video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; transform-origin:50% 50%; transition:transform .25s;}
+  .vwrap .mk{position:absolute; width:34px; height:34px; margin:-17px 0 0 -17px; border:2px solid var(--gold); border-radius:50%; pointer-events:none; display:none; box-shadow:0 0 0 2px rgba(0,0,0,.5);}
+  .vwrap .lbl{position:absolute; left:8px; top:8px; background:rgba(0,0,0,.6); color:#fff; font:700 13px system-ui; padding:4px 8px; border-radius:8px;}
+  .rchips{display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;}
+  .rchips button{min-width:58px; padding:6px 9px; font-size:13px;} .rchips button.on,.ctl button.on{background:var(--gold); border-color:var(--gold); color:#1a1200;}
+  .ctl{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:6px;} .ctl button{padding:8px 4px; font-size:13px;}
+  .log{color:var(--muted); font:11px ui-monospace,monospace; max-height:90px; overflow:auto; white-space:pre-wrap; padding:4px 16px; border-top:1px solid var(--line);}
+</style>
+</head>
+<body>
+<header>
+  <h1><b>◎</b> Tirofijo PC</h1>
+  <span class="ver" id="appVer"></span>
+  <span class="sp"></span>
+  <button class="go" id="allArm">▶ Detectar en todos</button>
+  <button id="allStop">⏸ Parar todos</button>
+  <button id="allNew">⟲ Nueva tirada en todos</button>
+  <button id="repBtn" title="Repeticiones de las tiradas grabadas">🎬</button>
+  <button id="cfgBtn" title="Cámaras, conexión y grabación">⚙</button>
+</header>
+
+<div class="cfg" id="cfg">
+  <label>Dirección de go2rtc<input id="g2r" size="26"></label>
+  <button class="primary" id="connBtn">▶ Leer cámaras de go2rtc</button>
+  <label>Cámara USB / webcam<select id="camSel"><option value="">— elegir —</option></select></label>
+  <button id="camAdd">＋ Añadir webcam</button>
+  <label>Columnas<select id="colsSel"><option value="0">Auto</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+  <label class="chk"><input type="checkbox" id="repOn"> 🎬 Grabar cada tirada</label>
+  <button id="dirBtn" title="Carpeta del PC donde se guardan los vídeos">📁 Carpeta de grabaciones</button><span id="dirName"></span>
+  <span id="state">Sin cámaras</span>
+</div>
+
+<main><div class="grid" id="grid"></div><div class="empty" id="empty">Pulsa <b>Leer cámaras de go2rtc</b> (una cámara IP por puesto) o añade una webcam para probar.</div></main>
+<div class="log" id="log"></div>
+
+<div class="modal" id="repModal"><div class="box"><button class="x" id="repClose">✕</button><div id="repBody"></div></div></div>
+
+<template id="tileTpl">
+  <div class="tile">
+    <div class="th"><b class="pn"></b><span class="src"></span><input class="shooter" placeholder="Tirador"><span class="chip st wait">…</span></div>
+    <div class="stage"><video muted playsinline autoplay></video><canvas></canvas><div class="badge">PARADO</div><div class="flash"></div>
+      <div class="ask"><span class="askTxt"></span><div class="row"><button class="y" data-a="askAdd">➕ Marcar dónde fue</button><button data-a="askZero">0 · fuera</button><button data-a="askNo">✕ No</button></div></div><div class="msg"></div></div>
+    <div class="tf">
+      <div class="sc"><small>Último</small><b class="last">—</b></div>
+      <div class="sc"><small>Total</small><b class="tot">0</b><span class="ntir">0 tiros</span></div>
+      <div class="sc"><span class="aro"></span></div>
+      <div class="btns">
+        <button data-a="arm" title="Empezar / parar la detección">▶</button>
+        <button data-a="cal" title="Autocalibrar la diana">🎯</button>
+        <button data-a="type" title="Láser o cartón">🔴</button>
+        <button data-a="undo" title="Quitar el último disparo">↩</button>
+        <button data-a="fin" title="Terminar la tirada (para y guarda la grabación)">⏹</button>
+        <button data-a="new" title="Nueva tirada (borra los disparos)">⟲</button>
+        <button data-a="big" title="Ampliar / volver a la cuadrícula">⛶</button>
+      </div>
+    </div>
+    <div class="more">
+      <div class="pre">
+        <label>Diámetro aro 1<select class="qAro"><option value="155.5">Pistola aire 10 m · 155,5</option><option value="45.5">Carabina aire 10 m · 45,5</option>
+          <option value="154.4">Carabina 50 m · 154,4</option><option value="500">Pistola 25/50 m · 500</option>
+          <option value="132">Tarjeta 14×14 cm · ≈132</option><option value="otro">Otra medida (mm)…</option></select>
+          <input type="number" class="qAroMm" placeholder="mm del aro 1" style="display:none; margin-top:4px"></label>
+        <label>Calibre<select class="qCal"><option value="4.5">4,5 · .177 aire</option><option value="5.5">5,5 · .22 aire</option>
+          <option value="5.6">5,6 · .22 LR</option><option value="7.62">7,62 · .30 / .308</option><option value="9">9 mm</option>
+          <option value="9.65">9,65 · .38 / .357</option><option value="10.2">10,2 · .40</option>
+          <option value="11.43">11,43 · .45 / avancarga</option><option value="otro">Otro (mm o pulg.)…</option></select>
+          <input type="number" class="qCalMm" placeholder="mm o pulgadas" style="display:none; margin-top:4px"></label>
+        <button class="go preGo" data-a="preGo">▶ Empezar sesión</button>
+      </div>
+      <label>Diana<select class="selTarget"></select></label>
+      <label>Modalidad<select class="selModal"></select></label>
+      <label>Sensibilidad (cartón): <b class="vSens"></b><input class="selSens" type="range" min="1" max="8" step="1"></label>
+      <div class="qcam"><small class="hint">Cámara</small>
+        <div class="qrow"><button data-a="focusC" title="Enfocar al centro de la diana">⊕ Centro</button><button data-a="af" title="Autoenfoque continuo">Autoenfoque</button><button data-a="mf" title="Enfoque fijo">Enf. fijo</button>
+          <button data-a="expM">Expo −</button><button data-a="expP">Expo +</button><button data-a="ref" title="Rehacer la referencia">↻ Referencia</button></div>
+        <div class="hint qcamT"></div></div>
+      <label class="chk"><input type="checkbox" class="cOut"> Disparos fuera del aro 1 cuentan como 0</label>
+      <label class="chk"><input type="checkbox" class="cAsk"> Preguntar «¿disparo?» si la tarjeta se mueve sin agujero nuevo</label>
+      <div class="hinfo"></div>
+      <button data-a="repLast">🎬 Ver la última tirada de este puesto</button>
+      <div><small class="hint">Disparos</small><div class="shots"></div></div>
+      <div class="hint">Mayús + clic en la imagen: añadir un impacto a mano · clic derecho: quitar el impacto más cercano · Esc: volver.</div>
+      <button data-a="remove">✕ Quitar este puesto</button>
+    </div>
+  </div>
+</template>
+
+<script>
+/* Tirofijo · motor común de detección y puntuación (versión PC, varios puestos a la vez)
+   Sale del motor de index.html (v25.4): mismas funciones, pero cada puesto tiene su propio estado.
+   Uso: const m = TirofijoMotor.create(videoEl, canvasEl);  cada fotograma: m.step();
+   El lienzo tiene la misma proporción que el vídeo (ambos con object-fit:contain), así la calibración
+   se guarda en fracciones del fotograma y no depende del tamaño de la ventana. */
+(function(){
+const TARGETS={
+  p25 :{name:'Pistola 25/50 m (precisión)', D:500,   r:[0,500,450,400,350,300,250,200,150,100,50],          black:200,   x:25},
+  ap10:{name:'Pistola aire 10 m',           D:155.5, r:[0,155.5,139.5,123.5,107.5,91.5,75.5,59.5,43.5,27.5,11.5], black:59.5, x:5,   cal:4.5},
+  ar10:{name:'Carabina aire 10 m',          D:45.5,  r:[0,45.5,40.5,35.5,30.5,25.5,20.5,15.5,10.5,5.5,0.5],     black:30.5,  x:0,   cal:4.5},
+  r50 :{name:'Carabina 50 m',               D:154.4, r:[0,154.4,138.4,122.4,106.4,90.4,74.4,58.4,42.4,26.4,10.4], black:112.4, x:5,  cal:5.6},
+};
+const MODALS={issf:{name:'ISSF',scoreRule:'edge',bestOf:0,shotLimit:0}, avancarga:{name:'Avancarga (.45 · 13 disparos, cuentan 10)',scoreRule:'center',bestOf:10,shotLimit:13,caliber:11.43}};
+const SAVE_KEYS=['target','rings','realmm','caliber','detectType','dianaMode','persp','center','edge','radiusPct','modal','scoreRule','bestOf','shotLimit',
+  'thr','minpx','cooldown','holeSens','confirm','laserMax','roundMax','insideOnly','lightComp','backlit','countOut','askShot','ringColor','ringW','minRing','gun'];
+const BASE_W=960;    // ancho del lienzo de trabajo (la altura sigue la proporción del vídeo)
+
+function create(video, overlay){
+  const octx=overlay.getContext('2d');
+  const work=document.createElement('canvas');
+  const wctx=work.getContext('2d',{willReadFrequently:true});
+  const S={
+    running:true, fireMode:'auto', dianaMode:'standard', detectType:'laser',
+    thr:160, minpx:4, cooldown:0.5, rings:10, radiusPct:42, realmm:500,
+    fit:'contain', ringColor:'#ff2bd6', ringW:1.2, minRing:1, scoreRule:'edge', bestOf:0, shotLimit:0, modal:'issf',
+    holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9, target:'p25', gun:'pistol',
+    insideOnly:true, lightComp:true, backlit:false, countOut:true, askShot:true, persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
+    lastShot:0, shots:[], W:0, H:0, center:null, edge:null, phase:'idle',
+  };
+  const Z={s:1};
+  const E={S, TARGETS, MODALS, armed:false, liveRed:'', onShot:null, onEnd:null, lastLive:0};
+
+  function solveLin(A,b){ // elimina Gauss, A n×n
+    const n=b.length;
+    for(let c=0;c<n;c++){
+      let piv=c; for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[piv][c])) piv=r;
+      [A[c],A[piv]]=[A[piv],A[c]]; [b[c],b[piv]]=[b[piv],b[c]];
+      const d=A[c][c]||1e-9;
+      for(let r=0;r<n;r++){ if(r===c) continue; const f=A[r][c]/d;
+        for(let k=c;k<n;k++) A[r][k]-=f*A[c][k]; b[r]-=f*b[c]; }
+    }
+    return b.map((v,i)=>v/(A[i][i]||1e-9));
+  }
+  function homography(src,dst){ // 4 puntos {x,y} -> H (img a destino)
+    const A=[],bb=[];
+    for(let i=0;i<4;i++){ const {x,y}=src[i], X=dst[i].x, Y=dst[i].y;
+      A.push([x,y,1,0,0,0,-x*X,-y*X]); bb.push(X);
+      A.push([0,0,0,x,y,1,-x*Y,-y*Y]); bb.push(Y); }
+    const h=solveLin(A,bb);
+    return [[h[0],h[1],h[2]],[h[3],h[4],h[5]],[h[6],h[7],1]];
+  }
+  function applyH(H,x,y){ const d=H[2][0]*x+H[2][1]*y+H[2][2];
+    return {x:(H[0][0]*x+H[0][1]*y+H[0][2])/d, y:(H[1][0]*x+H[1][1]*y+H[1][2])/d}; }
+  function inv3(m){
+    const a=m[0][0],b=m[0][1],c=m[0][2],d=m[1][0],e=m[1][1],f=m[1][2],g=m[2][0],h=m[2][1],i=m[2][2];
+    const A=e*i-f*h,B=-(d*i-f*g),C=d*h-e*g,D=-(b*i-c*h),E=a*i-c*g,F=-(a*h-b*g),G=b*f-c*e,Hh=-(a*f-c*d),I=a*e-b*d;
+    const det=a*A+b*B+c*C||1e-9;
+    return [[A/det,D/det,G/det],[B/det,E/det,Hh/det],[C/det,F/det,I/det]];
+  }
+  // homografía por mínimos cuadrados ponderados (más de 4 puntos; el de más peso queda casi exacto)
+  function homographyLS(src,dst,w){
+    // normaliza los puntos de imagen (centroide en 0, distancia media √2) para que el cálculo sea estable
+    const mx=src.reduce((a,p)=>a+p.x,0)/src.length, my=src.reduce((a,p)=>a+p.y,0)/src.length;
+    const md=src.reduce((a,p)=>a+Math.hypot(p.x-mx,p.y-my),0)/src.length||1, k=Math.SQRT2/md;
+    const ns=src.map(p=>({x:(p.x-mx)*k, y:(p.y-my)*k}));
+    const M=Array.from({length:8},()=>new Array(8).fill(0)), v=new Array(8).fill(0);
+    const add=(row,val,wt)=>{ for(let a=0;a<8;a++){ v[a]+=wt*row[a]*val; for(let b=0;b<8;b++) M[a][b]+=wt*row[a]*row[b]; } };
+    for(let i=0;i<ns.length;i++){ const {x,y}=ns[i], X=dst[i].x, Y=dst[i].y;
+      add([x,y,1,0,0,0,-x*X,-y*X],X,w[i]); add([0,0,0,x,y,1,-x*Y,-y*Y],Y,w[i]); }
+    const h=solveLin(M,v);
+    const Hn=[[h[0],h[1],h[2]],[h[3],h[4],h[5]],[h[6],h[7],1]];
+    const Tn=[[k,0,-k*mx],[0,k,-k*my],[0,0,1]];   // H = Hn · T
+    const H=[[0,0,0],[0,0,0],[0,0,0]];
+    for(let r=0;r<3;r++)for(let c=0;c<3;c++) for(let q=0;q<3;q++) H[r][c]+=Hn[r][q]*Tn[q][c];
+    return H;
+  }
+  function buildPersp(){
+    const p=S.persp;
+    if(!(p.top&&p.right&&p.bottom&&p.left) || !S.W || !S.H){ S.Hf=null; S.Hinv=null; return; }
+    const src=[p.top,p.right,p.bottom,p.left].map(o=>({x:o.x*S.W,y:o.y*S.H}));
+    // destino: borde exterior (radio 1) arriba, derecha, abajo, izquierda
+    const dst=[{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+    if(p.center){
+      // con centro marcado: el centro manda (peso alto) y los bordes se ajustan lo mejor posible
+      src.push({x:p.center.x*S.W, y:p.center.y*S.H}); dst.push({x:0,y:0});
+      S.Hf=homographyLS(src,dst,[1,1,1,1,25]);
+    } else S.Hf=homography(src,dst);   // imagen -> normalizado
+    S.Hinv=inv3(S.Hf);                // normalizado -> imagen
+  }
+  function dianaGeom(){
+    if(S.dianaMode==='calib' && S.center && S.edge){
+      const cx=S.center.x*S.W, cy=S.center.y*S.H, ex=S.edge.x*S.W, ey=S.edge.y*S.H;
+      return {cx,cy,rOuter:Math.hypot(ex-cx,ey-cy)};
+    }
+    // diana centrada sobre la zona visible del vídeo
+    if(video.videoWidth){
+      const a=mapCover(0,0), b=mapCover(1,1);
+      const x0=Math.max(0,a.x), y0=Math.max(0,a.y), x1=Math.min(S.W,b.x), y1=Math.min(S.H,b.y);
+      return {cx:(x0+x1)/2, cy:(y0+y1)/2, rOuter:(S.radiusPct/100)*Math.min(x1-x0,y1-y0)};
+    }
+    return {cx:S.W/2, cy:S.H/2, rOuter:(S.radiusPct/100)*Math.min(S.W,S.H)};
+  }
+  // coords normalizadas (rx,ry) de un punto de pantalla; outer=1
+  function normFromScreen(x,y){
+    if(S.dianaMode==='persp' && S.Hf){
+      const u=applyH(S.Hf,x,y); return {rx:u.x, ry:u.y, dRel:Math.hypot(u.x,u.y)};
+    }
+    const {cx,cy,rOuter}=dianaGeom();
+    const rx=(x-cx)/rOuter, ry=(y-cy)/rOuter;
+    return {rx,ry,dRel:Math.hypot(rx,ry)};
+  }
+  // radio exterior de cada anillo (1..n), con el borde exterior de la diana = 1
+  function ringRadii(){
+    const t=TARGETS[S.target]; if(t) return t.r.map(d=>d/t.D);
+    const a=[0]; for(let v=1;v<=S.rings;v++) a.push((S.rings-v+1)/S.rings); return a;
+  }
+  function blackRadius(){ const t=TARGETS[S.target]; if(t) return t.black/t.D;
+    return Math.max(0,S.rings-(S.gun==='pistol'?7:4)+1)/S.rings; }
+  function xRadius(){ const t=TARGETS[S.target]; return t ? t.x/t.D : 0.5/S.rings; }
+  function targetD(){ return S.realmm>0 ? S.realmm : (TARGETS[S.target]?TARGETS[S.target].D:500); }
+  function bulletR(){ return S.caliber>0 ? S.caliber/targetD() : 0; }        // radio del impacto (normalizado)
+  // puntuación ISSF: vale el anillo que TOCA el borde del impacto; décimas dentro de ese anillo (x,0 a x,9)
+  function scoreShot(dRel){
+    // ISSF: vale el anillo que toca el borde del impacto · "mitad": vale el anillo donde cae el centro del impacto
+    const rr=ringRadii(), n=rr.length-1, de=S.scoreRule==='center' ? dRel : Math.max(0, dRel-bulletR());
+    for(let v=n; v>=Math.min(n,S.minRing||1); v--){
+      if(de<=rr[v]+1e-9){
+        const inner = v===n ? 0 : rr[v+1], frac=(rr[v]-de)/Math.max(1e-9, rr[v]-inner);
+        return {ring:v, dec:Math.round((v+Math.min(0.9, Math.floor(frac*10+1e-6)/10))*10)/10};
+      }
+    }
+    return {ring:0, dec:0};
+  }
+  function scoreFromDist(dRel){ return scoreShot(dRel); }
+  // recalcula todos los disparos con los ajustes actuales (calibre, modelo de diana…)
+  function rescoreAll(){ S.shots.forEach(s=>{ const r=scoreShot(s.dRel); s.ring=r.ring; s.dec=r.dec; }); markBest(); }
+  // "cuentan los N mejores": los demás disparos se marcan como descartados (no suman)
+  function markBest(sh){
+    sh=sh||S.shots; sh.forEach(s=>s.drop=false);
+    const N=S.bestOf|0; if(!N || sh.length<=N) return sh;
+    sh.map((s,i)=>({s,i})).sort((a,b)=>(b.s.dec-a.s.dec)||(b.s.ring-a.s.ring)||(a.i-b.i)).slice(N).forEach(o=>o.s.drop=true);
+    return sh;
+  }
+  const counted=()=>S.shots.filter(s=>!s.drop);
+  // calibre en pulgadas (0,45) o en mm (11,4)
+  const parseCal=v=>{ v=+v; return v>0&&v<1.5 ? Math.round(v*25.4*100)/100 : v; };
+  /* ---------- manchas conectadas (separa una mancha real del ruido suelto) ---------- */
+  const LAB={buf:null};
+  const HOLE_PK=28;   // cambio mínimo en el centro de un impacto (niveles de gris): un brillo o reflejo cambia menos
+  function blobs(mask,w,h,edge,val,inner){
+    const N=w*h; if(!LAB.buf||LAB.buf.length!==N) LAB.buf=new Int32Array(N); const lab=LAB.buf; lab.fill(0);
+    const out=[], st=[]; let id=0;
+    for(let i=0;i<N;i++){
+      if(!mask[i]||lab[i]) continue;
+      id++; lab[i]=id; st.push(i);
+      let n=0,sx=0,sy=0,minx=w,miny=h,maxx=0,maxy=0,ne=0,ni=0,pk=-1,pkv=-Infinity;
+      while(st.length){
+        const j=st.pop(), x=j%w, y=(j/w)|0; n++; sx+=x; sy+=y; if(edge&&edge[j]) ne++; if(inner&&inner[j]) ni++; if(val&&val[j]>pkv){ pkv=val[j]; pk=j; }
+        if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+        for(let dy=-1;dy<=1;dy++){ const yy=y+dy; if(yy<0||yy>=h) continue;
+          for(let dx=-1;dx<=1;dx++){ const xx=x+dx; if(xx<0||xx>=w) continue;
+            const k=yy*w+xx; if(mask[k]&&!lab[k]){ lab[k]=id; st.push(k); } } }
+      }
+      const bw=maxx-minx+1, bh=maxy-miny+1;
+      out.push({n, ne, ni:inner?ni:n, pk, pkv, cx:sx/n, cy:sy/n, bw, bh, ar:Math.max(bw/bh,bh/bw), fill:n/(bw*bh)});
+    }
+    return out;
+  }
+
+  /* ---------- detección del punto láser ----------
+     Solo cuenta una mancha roja NUEVA (no lo que ya era rojo en la escena), compacta, dentro de la diana,
+     y que aparece y se apaga como un destello. Se registra al apagarse; para el siguiente debe volver a apagarse. */
+  const LRES=200;
+  const LZ={base:null, raw:null, active:false, t0:0, last:0, x:0, y:0, f:0, bad:false, lastT:0};
+  const LASER_MIN_MS=45;   // un destello real dura más que el ruido de un solo fotograma
+  function detectRed(){
+    if(video.videoWidth===0) return null;
+    const sw=LRES, sh=Math.round(sw*video.videoHeight/video.videoWidth), N=sw*sh;
+    work.width=sw; work.height=sh; wctx.drawImage(video,0,0,sw,sh);
+    const d=wctx.getImageData(0,0,sw,sh).data;
+    if(!LZ.base||LZ.base.length!==N){ LZ.base=new Float32Array(N); LZ.raw=new Uint8Array(N); LZ.active=false; }
+    const now=performance.now();
+    // el fondo rojo se aprende por tiempo real (independiente de los fps), más lento que la duración máxima del destello
+    const dt=LZ.lastT ? Math.min(0.25,(now-LZ.lastT)/1000) : 0.033; LZ.lastT=now;
+    const a=1-Math.exp(-dt/Math.max(3, S.laserMax*4));
+    const mask=new Uint8Array(N), raw=LZ.raw; let nAll=0, mx=0;
+    for(let i=0;i<N;i++){
+      const p=i*4, r=d[p], g=d[p+1], b=d[p+2];
+      const red = r>S.thr && r-g>60 && r-b>60;
+      const was = LZ.base[i];
+      LZ.base[i] = was + ((red?1:0)-was)*a;           // memoria del rojo que ya estaba (fondo)
+      raw[i]=red?1:0;
+      if(red){ nAll++; if(r>mx) mx=r;
+        if(was<0.3 && (!S.insideOnly || insideDiana((i%sw)/sw, ((i/sw)|0)/sh))) mask[i]=1; }
+    }
+    const cands=blobs(mask,sw,sh).filter(c=>c.n>=S.minpx && c.n<=600 && c.ar<=3 && c.fill>=0.3).sort((a,b)=>b.n-a.n);
+    // si ya se sigue un punto, solo vale una mancha cercana a él; si no, la mayor
+    const ok = LZ.active ? (cands.find(c=>Math.hypot(c.cx-LZ.x,c.cy-LZ.y)<10)||null) : (cands[0]||null);
+    E.liveRed='Rojo ahora: '+nAll+' px · punto nuevo: '+(ok?ok.n+' px':'—')+' (máx '+mx+')';
+    let live=null;
+    if(ok){
+      if(!LZ.active){ LZ.active=true; LZ.bad=false; LZ.t0=now; LZ.x=ok.cx; LZ.y=ok.cy; LZ.f=0; }
+      LZ.f++; LZ.x+=(ok.cx-LZ.x)/LZ.f; LZ.y+=(ok.cy-LZ.y)/LZ.f; LZ.last=now;
+      live=mapCover(ok.cx/sw, ok.cy/sh);
+    } else if(LZ.active){
+      // ¿sigue encendido en el mismo sitio aunque ya no sea "nuevo"? entonces no se ha apagado
+      let near=0; const R=6, x0=Math.round(LZ.x), y0=Math.round(LZ.y);
+      for(let y=Math.max(0,y0-R); y<=Math.min(sh-1,y0+R); y++)
+        for(let x=Math.max(0,x0-R); x<=Math.min(sw-1,x0+R); x++) near+=raw[y*sw+x];
+      if(near>=Math.max(2,S.minpx/2)) LZ.last=now;
+    }
+    if(LZ.active && now-LZ.t0 > S.laserMax*1000){
+      // dura demasiado: es un objeto rojo o un puntero fijo, no un destello → pasa a ser fondo y se libera
+      const R=10, x0=Math.round(LZ.x), y0=Math.round(LZ.y);
+      for(let y=Math.max(0,y0-R); y<=Math.min(sh-1,y0+R); y++)
+        for(let x=Math.max(0,x0-R); x<=Math.min(sw-1,x0+R); x++){ const i=y*sw+x; if(raw[i]) LZ.base[i]=1; }
+      LZ.active=false;
+      return live ? {live} : null;
+    }
+    if(LZ.active && now-LZ.last>70){                            // el destello se ha apagado
+      LZ.active=false;
+      if(!LZ.bad && (LZ.last-LZ.t0)>=LASER_MIN_MS) return {live, shot:mapCover(LZ.x/sw, LZ.y/sh)};
+    }
+    return live ? {live} : null;
+  }
+  // coords normalizadas del vídeo (0..1) -> pantalla, según el ajuste de imagen
+  function mapCover(nx,ny){
+    const vAR=video.videoWidth/video.videoHeight, sAR=S.W/S.H; let dw,dh,ox,oy;
+    const cover=S.fit==='cover';
+    if((vAR>sAR)===cover){dh=S.H;dw=S.H*vAR;ox=(S.W-dw)/2;oy=0;} else {dw=S.W;dh=S.W/vAR;ox=0;oy=(S.H-dh)/2;}
+    return {x:ox+nx*dw, y:oy+ny*dh};
+  }
+
+  /* ---------- detección de impactos en cartón ----------
+     Analiza solo la zona de la diana a resolución fija (radio de la diana = 170 px) y compara con la imagen
+     de hace ~1,5 s (renovada continuamente), alineada por si la cámara tiembla y corregida por cambios de luz
+     (ganancia + desplazamiento). En la zona negra un impacto se ve como fibras claras; en la blanca, como un
+     agujero o anillo oscuro: se usa la diferencia en ambos sentidos con un umbral distinto para cada zona.
+     Los cambios cercanos se agrupan y la mancha debe tener el tamaño de un impacto (según calibre y diana). */
+  function insideDiana(nx,ny){ // nx,ny en 0..1 del vídeo -> pantalla -> normalizado (lo usa también el láser)
+    if(!S.insideOnly) return true;
+    const scr=mapCover(nx,ny); const {dRel}=normFromScreen(scr.x,scr.y);
+    return dRel<=1.05;
+  }
+  const HD={RR:170, key:'', R:null, ins:null, base:null, prevHalf:null, stableSince:0, quietSince:0, lastRun:0, recent:[], view:null, info:'', state:''};
+  const HOLE_THR_L=40, HOLE_THR_D=22, HOLE_G0=40;
+  function holeTb(){ return 0.50-0.04*S.holeSens; }          // sensibilidad 1..8 → umbral 0,46..0,18
+  function holeSize(){                                        // tamaño esperado del impacto en px del análisis
+    const dmm=targetD(), cal=S.caliber>0?S.caliber:9;
+    const d=cal/dmm*2*HD.RR, r=Math.max(1,Math.round(0.45*d));
+    return {d, r, A:Math.PI*Math.pow(d/2+r,2)};
+  }
+  const ROI_EXT=1.3;          // se analiza hasta 1,3× el aro 1: los disparos fuera cuentan como 0
+  function computeRoi(){
+    const vw=video.videoWidth, vh=video.videoHeight; if(!vw||!S.W) return null;
+    let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+    for(let a=0;a<32;a++){ const t=a/32*2*Math.PI, p=normToScreen(ROI_EXT*Math.cos(t),ROI_EXT*Math.sin(t));
+      mnx=Math.min(mnx,p.x); mny=Math.min(mny,p.y); mxx=Math.max(mxx,p.x); mxy=Math.max(mxy,p.y); }
+    const a0=mapCover(0,0), a1=mapCover(1,1), dw=a1.x-a0.x, dh=a1.y-a0.y;
+    const vx0=(mnx-a0.x)/dw*vw, vy0=(mny-a0.y)/dh*vh, vx1=(mxx-a0.x)/dw*vw, vy1=(mxy-a0.y)/dh*vh;
+    const x0=Math.max(0,Math.floor(vx0)), y0=Math.max(0,Math.floor(vy0));
+    const x1=Math.min(vw,Math.ceil(vx1)), y1=Math.min(vh,Math.ceil(vy1)), bw=x1-x0, bh=y1-y0;
+    if(bw<20||bh<20) return null;
+    const rv=Math.sqrt((vx1-vx0)*(vy1-vy0))/2/ROI_EXT;                  // radio de la diana en px de vídeo
+    HD.rv=rv;
+    // se analiza con todo el detalle que da la cámara (hasta 300 px de radio): los impactos pequeños se ven mejor
+    HD.RR=170; const sc=HD.RR/rv;
+    const w=Math.max(16,Math.min(720,Math.round(bw*sc))), h=Math.max(16,Math.min(720,Math.round(bh*sc)));
+    return {x0,y0,bw,bh,w,h,vw,vh};
+  }
+  function roiToScreen(R,x,y){ return mapCover((R.x0+x*R.bw/R.w)/R.vw, (R.y0+y*R.bh/R.h)/R.vh); }
+  function grabRoi(R){
+    work.width=R.w; work.height=R.h; wctx.imageSmoothingEnabled=true; wctx.imageSmoothingQuality='high';
+    wctx.drawImage(video,R.x0,R.y0,R.bw,R.bh,0,0,R.w,R.h);
+    const d=wctx.getImageData(0,0,R.w,R.h).data, n=R.w*R.h, g=new Float32Array(n);
+    for(let i=0,p=0;i<n;i++,p+=4) g[i]=d[p]*0.299+d[p+1]*0.587+d[p+2]*0.114;
+    return g;
+  }
+  function prepSnap(g,R,ins,t){
+    const w=R.w,h=R.h,n=w*h, grad=new Float32Array(n);
+    for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){ const i=y*w+x;
+      const gx=(g[i-w+1]+2*g[i+1]+g[i+w+1]-g[i-w-1]-2*g[i-1]-g[i+w-1])/4;
+      const gy=(g[i+w-1]+2*g[i+w]+g[i+w+1]-g[i-w-1]-2*g[i-w]-g[i-w+1])/4;
+      grad[i]=Math.sqrt(gx*gx+gy*gy); }
+    const hw=w>>1, hh=h>>1, half=new Float32Array(hw*hh);
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; half[y*hw+x]=(g[i]+g[i+1]+g[i+w]+g[i+w+1])/4; }
+    const sm=[]; for(let i=0;i<n;i+=5) if(ins[i]) sm.push(g[i]); sm.sort((a,b)=>a-b);
+    const mid=sm.length?(sm[Math.floor(sm.length*0.15)]+sm[Math.floor(sm.length*0.85)])/2:128;  // entre negro y blanco
+    const qw=w>>2, qh=h>>2, quart=new Float32Array(qw*qh), qm=new Uint8Array(qw*qh);
+    for(let y=0;y<qh;y++)for(let x=0;x<qw;x++){ let a=0; for(let dy=0;dy<4;dy++)for(let dx=0;dx<4;dx++) a+=g[(4*y+dy)*w+4*x+dx]; quart[y*qw+x]=a/16; qm[y*qw+x]=ins[(4*y+2)*w+4*x+2]; }
+    const hm=new Uint8Array(hw*hh); for(let y=0;y<hh;y++)for(let x=0;x<hw;x++) hm[y*hw+x]=ins[(2*y+1)*w+2*x+1];
+    const gxh=new Float32Array(hw*hh), gyh=new Float32Array(hw*hh);
+    for(let y=1;y<hh-1;y++)for(let x=1;x<hw-1;x++){ const i=y*hw+x; gxh[i]=(half[i+1]-half[i-1])/2; gyh[i]=(half[i+hw]-half[i-hw])/2; }
+    return {t,g,grad,half,hw,hh,mid,quart,qw,qh,qm,hm,gxh,gyh};
+  }
+  // desplazamiento de la TARJETA (temblor o la tarjeta que se mueve en su soporte con cada impacto): cur(p) ≈ ref(p+d).
+  // Grueso a 1/4 (±20 px) → fino a 1/2 → subpíxel. Solo cuenta la zona de la diana (no el fondo, que no se mueve)
+  function estShift(sn,cur,R){
+    const w=R.w;
+    const cost=(A,B,M,W,H,dx,dy)=>{ let s=0,q=0,n=0; const y0=Math.max(0,-dy), y1=Math.min(H,H-dy), x0=Math.max(0,-dx), x1=Math.min(W,W-dx);
+      for(let y=y0;y<y1;y++){ const r1=y*W, r2=(y+dy)*W+dx; for(let x=x0;x<x1;x++){ if(!M[r1+x]) continue; const d=B[r1+x]-A[r2+x]; s+=d; q+=d*d; n++; } }
+      return n<30?Infinity:q/n-(s/n)*(s/n); };
+    const qw=sn.qw, qh=sn.qh, cq=new Float32Array(qw*qh);
+    for(let y=0;y<qh;y++)for(let x=0;x<qw;x++){ let a=0; for(let dy=0;dy<4;dy++)for(let dx=0;dx<4;dx++) a+=cur[(4*y+dy)*w+4*x+dx]; cq[y*qw+x]=a/16; }
+    let best=Infinity,bx=0,by=0;
+    for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++){ const v=cost(sn.quart,cq,sn.qm,qw,qh,dx,dy); if(v<best){best=v;bx=dx;by=dy;} }
+    const hw=sn.hw, hh=sn.hh, ch=new Float32Array(hw*hh);
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; ch[y*hw+x]=(cur[i]+cur[i+1]+cur[i+w]+cur[i+w+1])/4; }
+    const Sv={}; best=Infinity; let hx=0,hy=0;
+    for(let dy=2*by-2;dy<=2*by+2;dy++)for(let dx=2*bx-2;dx<=2*bx+2;dx++){ const v=cost(sn.half,ch,sn.hm,hw,hh,dx,dy); Sv[dx+','+dy]=v; if(v<best){best=v;hx=dx;hy=dy;} }
+    const sub=(c,l,r)=>{ if(!isFinite(l)||!isFinite(r)) return 0; const den=l-2*c+r; return den<=0?0:Math.max(-0.5,Math.min(0.5,0.5*(l-r)/den)); };
+    const fx=sub(best,Sv[(hx-1)+','+hy],Sv[(hx+1)+','+hy]), fy=sub(best,Sv[hx+','+(hy-1)],Sv[hx+','+(hy+1)]);
+    return {dx:2*(hx+fx), dy:2*(hy+fy)};
+  }
+  // afín fino: cur(u) ≈ ref(M·u) (u en píxeles de análisis). Devuelve M = [a,b,c,d,e,f]: x'=a·x+b·y+c, y'=d·x+e·y+f
+  function lkAffine(sn,cur,R,d0){
+    const w=R.w, hw=sn.hw, hh=sn.hh, A=sn.half, GX=sn.gxh, GY=sn.gyh, MK=sn.hm, B=new Float32Array(hw*hh);
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; B[y*hw+x]=(cur[i]+cur[i+1]+cur[i+w]+cur[i+w+1])/4; }
+    const cx=hw/2, cy=hh/2, P=[0,0,0,0,d0.dx/2,d0.dy/2]; let ga=0, gb=0;
+    const smp=(I,x,y)=>{ const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0,i=y0*hw+x0; return (I[i]*(1-fx)+I[i+1]*fx)*(1-fy)+(I[i+hw]*(1-fx)+I[i+hw+1]*fx)*fy; };
+    for(let it=0;it<10;it++){
+      const H=new Float64Array(64), g=new Float64Array(8), J=new Float64Array(8);
+      for(let y=1;y<hh-1;y++)for(let x=1;x<hw-1;x++){ const i=y*hw+x; if(!MK[i]) continue;
+        const X=x-cx, Y=y-cy, xs=x+P[0]*X+P[2]*Y+P[4], ys=y+P[1]*X+P[3]*Y+P[5];
+        if(xs<1||ys<1||xs>=hw-2||ys>=hh-2) continue;
+        const I=smp(A,xs,ys), gx=(1+ga)*smp(GX,xs,ys), gy=(1+ga)*smp(GY,xs,ys), r=(1+ga)*I+gb-B[i];
+        if(Math.abs(r)>40) continue;                                       // impactos y sombras no cuentan para alinear
+        J[0]=gx*X; J[1]=gy*X; J[2]=gx*Y; J[3]=gy*Y; J[4]=gx; J[5]=gy; J[6]=I; J[7]=1;
+        for(let a=0;a<8;a++){ g[a]+=J[a]*r; for(let b=a;b<8;b++) H[a*8+b]+=J[a]*J[b]; } }
+      for(let a=0;a<8;a++){ H[a*8+a]*=1.0001; H[a*8+a]+=1e-6; for(let b=0;b<a;b++) H[a*8+b]=H[b*8+a]; }
+      // resolver H·dp = −g (Gauss con pivote)
+      const M=[]; for(let a=0;a<8;a++){ const row=[]; for(let b=0;b<8;b++) row.push(H[a*8+b]); row.push(-g[a]); M.push(row); }
+      for(let c=0;c<8;c++){ let pv=c; for(let r=c+1;r<8;r++) if(Math.abs(M[r][c])>Math.abs(M[pv][c])) pv=r; [M[c],M[pv]]=[M[pv],M[c]];
+        if(Math.abs(M[c][c])<1e-12) return null;
+        for(let r=0;r<8;r++){ if(r===c) continue; const f=M[r][c]/M[c][c]; for(let k=c;k<9;k++) M[r][k]-=f*M[c][k]; } }
+      const dp=M.map((r,i)=>r[8]/r[i]);
+      for(let k=0;k<6;k++) P[k]+=dp[k]; ga+=dp[6]; gb+=dp[7];
+      if(Math.abs(dp[4])<0.005&&Math.abs(dp[5])<0.005&&Math.abs(dp[0])<1e-5&&Math.abs(dp[3])<1e-5) break;
+    }
+    if(Math.abs(P[0])>0.05||Math.abs(P[1])>0.05||Math.abs(P[2])>0.05||Math.abs(P[3])>0.05) return null;   // no es un movimiento de tarjeta
+    // a coordenadas completas (u = 2x+0,5)
+    const ox=0.5+2*cx, oy=0.5+2*cy;
+    return [1+P[0], P[2], -P[0]*ox-P[2]*oy+2*P[4], P[1], 1+P[3], -P[1]*ox-P[3]*oy+2*P[5]];
+  }
+  const affMul=(A,B)=>[A[0]*B[0]+A[1]*B[3], A[0]*B[1]+A[1]*B[4], A[0]*B[2]+A[1]*B[5]+A[2], A[3]*B[0]+A[4]*B[3], A[3]*B[1]+A[4]*B[4], A[3]*B[2]+A[4]*B[5]+A[5]];
+  const affInv=A=>{ const det=A[0]*A[4]-A[1]*A[3]; return [A[4]/det,-A[1]/det,(A[1]*A[5]-A[4]*A[2])/det,-A[3]/det,A[0]/det,(A[3]*A[2]-A[0]*A[5])/det]; };
+  const affApply=(A,x,y)=>({x:A[0]*x+A[1]*y+A[2], y:A[3]*x+A[4]*y+A[5]});
+  const AFF_I=[1,0,0,0,1,0];
+  function warpAff(src,w,h,A){
+    const out=new Float32Array(w*h);
+    for(let y=0;y<h;y++){ let sx=A[1]*y+A[2], sy=A[4]*y+A[5];
+      for(let x=0;x<w;x++,sx+=A[0],sy+=A[3]){ const X=Math.min(w-1.001,Math.max(0,sx)), Y=Math.min(h-1.001,Math.max(0,sy)), x0=X|0,y0=Y|0,fx=X-x0,fy=Y-y0,i=y0*w+x0;
+        out[y*w+x]=(src[i]*(1-fx)+src[i+1]*fx)*(1-fy)+(src[i+w]*(1-fx)+src[i+w+1]*fx)*fy; } }
+    return out;
+  }
+  function shifted(src,w,h,dx,dy){
+    const out=new Float32Array(w*h);
+    for(let y=0;y<h;y++){ const sy=Math.min(h-1.001,Math.max(0,y+dy)), y0=sy|0, fy=sy-y0;
+      for(let x=0;x<w;x++){ const sx=Math.min(w-1.001,Math.max(0,x+dx)), x0=sx|0, fx=sx-x0, i=y0*w+x0;
+        out[y*w+x]=(src[i]*(1-fx)+src[i+1]*fx)*(1-fy)+(src[i+w]*(1-fx)+src[i+w+1]*fx)*fy; } }
+    return out;
+  }
+  // luz: cur ≈ g·ref + o, ajuste robusto (2 pasadas sin los píxeles que cambian)
+  function fitLight(ref,cur,ins){
+    let g=1,o=0,sd=1e9;
+    for(let it=0;it<2;it++){
+      let sx=0,sy=0,sxx=0,sxy=0,n=0;
+      for(let i=0;i<ref.length;i+=3){ if(!ins[i]) continue; const x=ref[i], y=cur[i];
+        if(it>0 && Math.abs(y-(g*x+o))>3*sd+2) continue; sx+=x; sy+=y; sxx+=x*x; sxy+=x*y; n++; }
+      const den=n*sxx-sx*sx; if(n<50||Math.abs(den)<1e-6) break;
+      g=(n*sxy-sx*sy)/den; o=(sy-g*sx)/n;
+      let s2=0,m=0; for(let i=0;i<ref.length;i+=3){ if(!ins[i]) continue; const r=cur[i]-(g*ref[i]+o); s2+=r*r; m++; }
+      sd=Math.sqrt(s2/Math.max(1,m));
+    }
+    return {g,o};
+  }
+  // mínimo y máximo de cada vecindario 3×3: un píxel solo "cambia" si se sale del rango de su entorno en la
+  // referencia (así el enfoque que respira, el desenfoque o un desplazamiento de medio píxel en las líneas no cuentan)
+  function minMax3(a,w,h){
+    const n=w*h, t1=new Float32Array(n), t2=new Float32Array(n), mn=new Float32Array(n), mx=new Float32Array(n);
+    for(let y=0;y<h;y++){ const o=y*w; for(let x=0;x<w;x++){ const i=o+x, l=x>0?a[i-1]:a[i], r=x<w-1?a[i+1]:a[i], c=a[i];
+      t1[i]=Math.min(l,c,r); t2[i]=Math.max(l,c,r); } }
+    for(let y=0;y<h;y++){ const o=y*w, u=y>0?o-w:o, d=y<h-1?o+w:o; for(let x=0;x<w;x++){
+      mn[o+x]=Math.min(t1[u+x],t1[o+x],t1[d+x]); mx[o+x]=Math.max(t2[u+x],t2[o+x],t2[d+x]); } }
+    return {mn,mx};
+  }
+  function resetHoles(){ HD.avg=null; HD.burstSince=0; HD.base=null; HD.prevHalf=null; HD.stableSince=0; HD.quietSince=0; HD.key=''; HD.recent=[]; HD.cands=[]; HD.view=null; }
+  function detectHole(){
+    if(video.videoWidth===0||!S.W) return null;
+    const now=performance.now();
+    const every=Math.min(250,100*Math.pow((HD.RR||170)/170,2));      // 10 análisis/s (menos si se analiza con más detalle)
+    if(now-HD.lastRun<every) return null; HD.lastRun=now;
+    const R=computeRoi(); if(!R) return null;
+    const key=[R.x0,R.y0,R.bw,R.bh,R.w,R.h,S.insideOnly,S.dianaMode,S.countOut].join(',');
+    if(key!==HD.key){                                                   // cambió la geometría: rehace la máscara de diana
+      HD.key=key; HD.R=R; HD.lastOff={x:0,y:0}; HD.curA=AFF_I; HD.baseA=AFF_I; HD.base=null; HD.avg=null; HD.prevHalf=null; HD.stableSince=0; HD.cands=[];
+      const lim=1.04, limD=(S.countOut!==false)?1.27:1.04, ins=new Uint8Array(R.w*R.h), insD=new Uint8Array(R.w*R.h), dr=new Float32Array(R.w*R.h);
+      for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const p=roiToScreen(R,x+0.5,y+0.5), d=normFromScreen(p.x,p.y).dRel, i=y*R.w+x;
+        dr[i]=d; if(d<=lim) ins[i]=1; if(d<=limD) insD[i]=1; }
+      HD.ins=ins; HD.insD=insD;
+      const edge=new Uint8Array(R.w*R.h); for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const i=y*R.w+x; if(!insD[i]) continue;
+        for(let dy=-2;dy<=2&&!edge[i];dy++)for(let dx=-2;dx<=2;dx++){ const xx=x+dx,yy=y+dy; if(xx<0||yy<0||xx>=R.w||yy>=R.h||!insD[yy*R.w+xx]){ edge[i]=1; break; } } }
+      HD.edge=edge;
+      // la diana se divide en cuatro cuartos: cada uno con su propia corrección de luz (sombras, foco lateral)
+      const cx0=R.w/2, cy0=R.h/2; HD.qi=new Uint8Array(R.w*R.h); HD.qins=[0,1,2,3].map(()=>new Uint8Array(R.w*R.h));
+      for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const i=y*R.w+x, q=(y>=cy0?2:0)+(x>=cx0?1:0); HD.qi[i]=q; if(ins[i]) HD.qins[q][i]=1; }
+      HD.qn=HD.qins.map(m=>{ let c=0; for(let i=0;i<m.length;i+=3) c+=m[i]; return c; });
+    }
+    const ins=HD.ins, insD=HD.insD||HD.ins, w=R.w, h=R.h, n=w*h, cur=grabRoi(R);
+    const say=(t,st)=>{ HD.info=t; HD.state=st; };
+    // 1) ¿hay movimiento? (mano, persona, papel que tiembla, cámara tocada): se compara con el análisis anterior
+    const hw=w>>1, hh=h>>1, half=new Float32Array(hw*hh);
+    for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ const i=2*y*w+2*x; half[y*hw+x]=(cur[i]+cur[i+1]+cur[i+w]+cur[i+w+1])/4; }
+    // solo es "movimiento" si el cambio forma una zona grande y seguida (mano, persona, papel que se mueve);
+    // el ruido y los parpadeos de compresión salen como puntos sueltos y no paran la detección
+    let mov=0, tot=0, bigMov=0; const mm=new Uint8Array(hw*hh), thrM=Math.max(20,5*(HD.sig||0));
+    if(HD.prevHalf && HD.prevHalf.length===half.length){
+      for(let y=0;y<hh;y++)for(let x=0;x<hw;x++){ if(!ins[2*y*w+2*x]) continue; tot++;
+        if(Math.abs(half[y*hw+x]-HD.prevHalf[y*hw+x])>thrM){ mov++; mm[y*hw+x]=1; } }
+      if(tot && mov/tot>0.004){ const hs0=holeSize(); bigMov=blobs(mm,hw,hh).reduce((a,c)=>Math.max(a,c.n),0);
+        if(bigMov<Math.max(0.003*tot, 3*hs0.A/4) && mov/tot<0.03) mov=0; }   // puntos sueltos: no es movimiento
+    }
+    HD.prevHalf=half;
+    if(tot && mov/tot>0.004){ HD.stableSince=now; HD.cands=[]; HD.view=null; HD.avg=null;
+      say('Movimiento en la imagen: esperando a que se quede quieta…','mov'); return null; }
+    if(!HD.stableSince) HD.stableSince=now;
+    // media de varios fotogramas quietos: la referencia sale con mucho menos ruido que una sola foto
+    // y cuánto "baila" cada píxel cuando no pasa nada (ruido, compresión, enfoque que busca, bordes de líneas):
+    // un cambio solo cuenta si destaca sobre lo que ese píxel suele variar
+    if(!HD.avg||HD.avg.length!==n){ HD.avg=Float32Array.from(cur); HD.avgN=1; if(!HD.vr||HD.vr.length!==n){ HD.vr=new Float32Array(n); HD.vrSince=now; } }
+    const avgUpd=()=>{ const a=HD.avg, v=HD.vr, k=Math.max(0.2,1/(++HD.avgN));
+      for(let i=0;i<n;i++){ const e=cur[i]-a[i], e2=e*e; v[i]=e2>v[i]?e2:v[i]*0.995; a[i]+=e*k; } };
+    if(now-HD.stableSince<500){ avgUpd(); say('Estabilizando…','wait'); return null; }
+    // 2) referencia ESTABLE: foto de la diana quieta con los impactos ya conocidos. No se toca mientras hay movimiento,
+    //    así un impacto que aparece mientras algo tapa la diana sigue siendo "nuevo" cuando todo vuelve a estar quieto
+    if(!HD.curA){ HD.curA=AFF_I; HD.lastOff={x:0,y:0}; }
+    const setBase=g=>{ HD.base=prepSnap(g,R,ins,now); HD.baseA=HD.curA.slice(); };
+    if(!HD.base){ avgUpd(); setBase(Float32Array.from(HD.avg)); HD.quietSince=now; say('Referencia tomada: diana lista','ok'); return null; }
+    const sn=HD.base;
+    // alinear y corregir luz
+    const sh=estShift(sn,cur,R);
+    // ajuste fino afín (la tarjeta se desplaza y gira un poco en su soporte con cada impacto)
+    const Wm=lkAffine(sn,cur,R,sh)||[1,0,sh.dx,0,1,sh.dy];               // cur(u) ≈ base(Wm·u)
+    HD.curA=affMul(HD.baseA||AFF_I,Wm);                                   // cur → calibración
+    { const c=affApply(HD.curA,R.w/2,R.h/2); HD.lastOff={x:R.w/2-c.x, y:R.h/2-c.y}; }
+    const dmax=Math.max(...[[0,0],[w,0],[0,h],[w,h]].map(([x,y])=>{ const q=affApply(Wm,x,y); return Math.hypot(q.x-x,q.y-y); }));
+    const still=dmax<0.15;                                               // sin movimiento: no hace falta realinear
+    const ref=still?sn.g:warpAff(sn.g,w,h,Wm), grad=still?sn.grad:warpAff(sn.grad,w,h,Wm);
+    const L=S.lightComp?fitLight(ref,cur,ins):{g:1,o:0};
+    const LQ=[0,1,2,3].map(q=>S.lightComp&&HD.qn[q]>=150?fitLight(ref,cur,HD.qins[q]):L), qi=HD.qi;
+    const QG=new Float32Array(LQ.map(l=>l.g)), QO=new Float32Array(LQ.map(l=>l.o));
+    // mapa de cambio (ambos sentidos), umbral por zona, bordes de líneas/números atenuados
+    // ruido de la cámara (desviación robusta del residuo en zonas lisas): sube los umbrales si la imagen es ruidosa
+    const rs=[]; for(let i=0;i<n;i+=7){ if(ins[i] && grad[i]<HOLE_G0*0.25){ const q=qi[i]; rs.push(Math.abs(cur[i]-(QG[q]*ref[i]+QO[q]))); } }
+    rs.sort((a,b)=>a-b); const sig=rs.length>50?1.4826*rs[rs.length>>1]:2; HD.sig=sig;
+    { const pv=[]; for(let i=0;i<n;i+=11) if(ins[i]) pv.push(ref[i]); pv.sort((a,b)=>a-b); HD.paper=pv.length?pv[Math.floor(pv.length*0.9)]:200; }
+    const BL=!!S.backlit, thrD=Math.max(HOLE_THR_D,3.5*sig), thrL=Math.max(HOLE_THR_L,4.5*sig);
+    const vr=HD.vr, VK=3.2-0.2*S.holeSens, VC=2.6-0.1*S.holeSens;
+    const E=new Float32Array(n), DF=new Float32Array(n); let big=0,cnt=0;
+    for(let i=0;i<n;i++){ if(!insD[i]) continue; if(ins[i]) cnt++;
+      const q=qi[i], c=cur[i], pr=QG[q]*ref[i]+QO[q], raw=BL?Math.max(0,c-pr):Math.abs(c-pr), d=Math.max(0,raw-0.5*sig);   // se descuenta parte del ruido típico
+      const tb=ref[i]<sn.mid?thrD:thrL, thr=Math.max(tb, Math.min(VC*tb, VK*Math.sqrt(vr[i])));
+      DF[i]=raw; if(raw>thr&&ins[i]) big++;
+      let e=d/thr; if(e>2) e=2; const gq=grad[i]/HOLE_G0; E[i]=e/(1+gq*gq); }
+    if(big>cnt*0.15){   // la cámara se ha movido o la luz ha cambiado mucho: nueva referencia
+      setBase(cur); HD.cands=[]; HD.view=null; HD.quietSince=now;
+      say('Cámara movida o cambio fuerte de luz: referencia rehecha','ok'); return null; }
+    // suavizado del tamaño de un impacto: une las fibras sueltas en una sola mancha y apaga el ruido
+    const hs=holeSize(), r=hs.r, W1=w+1, I=new Float64Array(W1*(h+1));
+    for(let y=0;y<h;y++){ let row=0; for(let x=0;x<w;x++){ row+=E[y*w+x]; I[(y+1)*W1+x+1]=I[y*W1+x+1]+row; } }
+    const Tb=holeTb(), mask=new Uint8Array(n); let mx=0;
+    for(let y=0;y<h;y++){ const ya=Math.max(0,y-r), yb=Math.min(h,y+r+1);
+      for(let x=0;x<w;x++){ const xa=Math.max(0,x-r), xb=Math.min(w,x+r+1);
+        const v=(I[yb*W1+xb]-I[ya*W1+xb]-I[yb*W1+xa]+I[ya*W1+xa])/((yb-ya)*(xb-xa));
+        if(v>mx && ins[y*w+x]) mx=v; if(v>Tb && insD[y*w+x]) mask[y*w+x]=1; } }
+    // manchas con tamaño y forma de impacto, que no estén donde ya se marcó uno
+    // (los impactos ya registrados se ignoran: así un parche pegado encima o un agujero que se rasga no cuentan)
+    const near=0.9*hs.d/HD.RR, known=S.shots.map(s=>({rx:s.rx,ry:s.ry})).concat(HD.recent);
+    const all=blobs(mask,w,h,HD.edge,DF,ins);
+    // algo grande tapa la diana (mano o persona quieta delante): no se cuenta nada ni se toca la referencia.
+    // Si sigue así más de 6 s, es un cambio permanente (p. ej. han movido la diana): nueva referencia
+    if(all.some(c=>c.ni>12*hs.A)){
+      HD.cands=[]; HD.view=null; HD.quietSince=0;
+      if(!HD.occSince) HD.occSince=now;
+      else if(now-HD.occSince>6000){ setBase(cur); HD.occSince=0; say('Cambio permanente en la diana: referencia rehecha','ok'); return null; }
+      say('Algo tapa la diana: esperando…','mov'); return null;
+    }
+    HD.occSince=0;
+    const bigOk=c=>c.n>3.5*hs.A && c.n<=10*hs.A && c.ar<=1.8 && c.fill>=0.5;   // redondo pero más grande de lo esperado
+    if(all.some(bigOk)) HD.bigSeen=(HD.bigSeen||0)+1;
+    const ok=all.filter(c=>c.n>=Math.max(5,0.12*hs.A) && (c.n<=3.5*hs.A||bigOk(c)) && c.ar<=S.roundMax && c.fill>=0.3 && c.ne<=Math.max(4,1.2*hs.d))
+      .filter(c=>{ const at=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x>=0&&y>=0&&x<w&&y<h&&insD[y*w+x]?DF[y*w+x]:-1; };
+        const px=c.pk%w, py=(c.pk/w)|0, rh=Math.max(1.5,hs.d/2,(c.fill>=0.7&&c.ar<=1.3)?0.5*Math.sqrt(c.n/Math.PI):0);
+        // centro = media ponderada del cambio en un círculo del tamaño del impacto alrededor del pico
+        let sw=0,sxx=0,syy=0; const R2=Math.ceil(rh); for(let dy=-R2;dy<=R2;dy++)for(let dx=-R2;dx<=R2;dx++){ if(dx*dx+dy*dy>rh*rh) continue; const v=at(px+dx,py+dy); if(v>0){ sw+=v; sxx+=v*(px+dx); syy+=v*(py+dy); } }
+        if(sw>0){ c.cx=sxx/sw; c.cy=syy/sw; }
+        let cen=0,cn=0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ const v=at(c.cx+dx,c.cy+dy); if(v>=0){cen+=v;cn++;} }
+        let an=0,anN=0; for(let k=0;k<24;k++){ const a=k/24*6.2832, rr=(k%2?2.2:3.0)*rh, v=at(c.cx+rr*Math.cos(a),c.cy+rr*Math.sin(a)); if(v>=0){an+=v;anN++;} }
+        if(!cn) return false; cen/=cn; c.cenv=cen; if(anN<8) return cen>=HOLE_PK; an/=anN; c.sharp=cen>0?an/cen:1;
+        return cen>=HOLE_PK && an-sig<0.2*cen; })
+      .map(c=>{ const u=affApply(HD.curA,c.cx+0.5,c.cy+0.5), p=roiToScreen(R,u.x,u.y), q=normFromScreen(p.x,p.y); return {...c,p,q}; })
+      .filter(c=>{ if(c.q.dRel<=1.0) return true;
+        if(S.countOut===false || c.q.dRel>1.25) return false;
+        // fuera del aro 1 cuenta como 0, pero solo si alrededor todo es papel claro (no el soporte, pinzas ni fondo)
+        if(!(c.cenv>=2*HOLE_PK) || !(c.sharp<0.15)) return false;
+        const rh=Math.max(2,hs.d/2); let mn=1e9;
+        for(let k=0;k<16;k++){ const a=k/16*6.2832; for(const f of [2.2,3.2]){ const x=Math.round(c.cx+f*rh*Math.cos(a)), y=Math.round(c.cy+f*rh*Math.sin(a));
+          if(x<0||y<0||x>=w||y>=h) return false; mn=Math.min(mn,ref[y*w+x]); } }
+        return mn>=0.7*HD.paper; })
+      .filter(c=>!known.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<near))
+      .sort((a,b)=>b.n-a.n);
+    HD.view={R,ok};
+    const offT=Math.hypot(HD.lastOff.x,HD.lastOff.y)>=0.5?' · tarjeta movida '+(Math.hypot(HD.lastOff.x,HD.lastOff.y)/HD.RR*targetD()/2).toFixed(1).replace('.',',')+' mm':'';
+    say('Diana quieta · cambio máx. '+mx.toFixed(2).replace('.',',')+' (umbral '+Tb.toFixed(2).replace('.',',')+') · manchas nuevas: '+ok.length+offT, ok.length?'cand':'ok');
+    // 3) sin nada nuevo durante 1 s: la referencia se actualiza (absorbe impactos ya contados y cambios lentos de luz)
+    if(!ok.length){ avgUpd(); if(!HD.quietSince) HD.quietSince=now; else if(now-HD.quietSince>=1000){ setBase(Float32Array.from(HD.avg)); HD.quietSince=now; } }
+    else HD.quietSince=0;
+    // muchas manchas a la vez no son disparos (luz, enfoque, compresión): no se cuenta nada y, si sigue, nueva referencia
+    if(ok.filter(c=>c.ni>0.5*c.n).length>=5){ HD.cands=[]; avgUpd(); if(!HD.burstSince) HD.burstSince=now;
+      else if(now-HD.burstSince>1500){ HD.avg=Float32Array.from(cur); HD.avgN=1; setBase(cur); HD.burstSince=0; }
+      say('Muchos cambios a la vez: ignorados','mov'); return null; }
+    HD.burstSince=0;
+    // confirmación por tiempo de CADA mancha (varios impactos casi a la vez se siguen por separado):
+    // un agujero se queda; una sombra o el papel que se mueve, no
+    const prev=HD.cands||[], next=[], fired=[], used=new Set();
+    for(const c of ok){
+      const m=prev.find(p=>Math.hypot(c.cx-p.x,c.cy-p.y)<=Math.max(4,hs.d)), t0=m?m.t0:now;
+      if(m) used.add(m);
+      // los primeros 6 s la app aún está aprendiendo cuánto varía la imagen: no dispara
+      if(now-t0>=S.confirm*200 && now-(HD.vrSince||0)>=6000) fired.push({pt:c.p, q:c.q, big:c.n>3.5*hs.A}); else next.push({x:c.cx, y:c.cy, t0, seen:now});
+    }
+    // si una mancha falla uno o dos análisis sueltos, no pierde lo que llevaba confirmado (hasta 0,35 s)
+    prev.forEach(p=>{ if(!used.has(p) && now-p.seen<=Math.max(350,2.2*every)) next.push(p); });
+    HD.cands=next;
+    return fired.length?fired:null;
+  }
+  /* ---------- dibujo overlay ---------- */
+  function normToScreen(rx,ry){ // normalizado -> pantalla (según modo)
+    if(S.dianaMode==='persp' && S.Hinv){ return applyH(S.Hinv,rx,ry); }
+    const {cx,cy,rOuter}=dianaGeom(); return {x:cx+rx*rOuter, y:cy+ry*rOuter};
+  }
+  function drawDiana(){
+    octx.clearRect(0,0,S.W,S.H);
+    if(S.phase==='camera'){ // móvil-cámara remoto: solo cruz central, sin diana
+      const cx=S.W/2, cy=S.H/2; octx.strokeStyle='rgba(248,81,73,.9)'; octx.lineWidth=2;
+      octx.beginPath(); octx.moveTo(cx-22,cy); octx.lineTo(cx+22,cy);
+      octx.moveTo(cx,cy-22); octx.lineTo(cx,cy+22); octx.stroke();
+      octx.beginPath(); octx.arc(cx,cy,3,0,7); octx.fillStyle='rgba(248,81,73,.9)'; octx.fill();
+      return;
+    }
+    const RAD=ringRadii(), NR=RAD.length-1;
+    // los aros siguen a la tarjeta si se ha movido en su soporte (modo cartón)
+    let offS=null; if(S.detectType==='holes' && HD.R && HD.curA && HD.curA!==AFF_I){
+      // pantalla(calibración) → pantalla(ahora): S∘curA⁻¹∘S⁻¹ (roiToScreen es lineal)
+      const R=HD.R, Ai=affInv(HD.curA), o=roiToScreen(R,0,0), ux=roiToScreen(R,1,0), uy=roiToScreen(R,0,1);
+      const sx=ux.x-o.x, sy=uy.y-o.y, T=[Ai[0], Ai[1]*sx/sy, (Ai[2]+Ai[0]*(-o.x/sx)+Ai[1]*(-o.y/sy))*sx+o.x, Ai[3]*sy/sx, Ai[4], (Ai[5]+Ai[3]*(-o.x/sx)+Ai[4]*(-o.y/sy))*sy+o.y];
+      offS=1; octx.save(); octx.transform(T[0],T[3],T[1],T[4],T[2],T[5]); }
+    drawRings(RAD,NR); if(offS) octx.restore();
+  }
+  function drawRings(RAD,NR){
+    if(S.dianaMode==='persp' && S.Hinv){
+      for(let v=Math.min(NR,S.minRing||1); v<=NR; v++){
+        const rr=RAD[v]; octx.beginPath();
+        for(let a=0;a<=64;a++){ const t=a/64*Math.PI*2, p=normToScreen(rr*Math.cos(t), rr*Math.sin(t));
+          if(a===0)octx.moveTo(p.x,p.y); else octx.lineTo(p.x,p.y); }
+        strokeRing(v===(S.minRing||1));
+      }
+      const c=normToScreen(0,0); drawCross(c.x,c.y);
+    } else {
+      const {cx,cy,rOuter}=dianaGeom();
+      for(let v=Math.min(NR,S.minRing||1); v<=NR; v++){ octx.beginPath(); octx.arc(cx,cy,rOuter*RAD[v],0,7); strokeRing(v===(S.minRing||1)); }
+      drawCross(cx,cy);
+    }
+    if(S.dianaMode==='calib'){ if(S.center)mark(S.center.x*S.W,S.center.y*S.H,'#3fb950','C'); if(S.edge)mark(S.edge.x*S.W,S.edge.y*S.H,'#d29922','B'); }
+    if(S.dianaMode==='persp'){ const p=S.persp;
+      [['top','①'],['right','②'],['bottom','③'],['left','④'],['center','⑤']].forEach(([k,t])=>{
+        if(!p[k]) return; const sel=false;
+        const x=p[k].x*S.W, y=p[k].y*S.H;
+        if(k==='center'){ octx.beginPath(); octx.moveTo(x-7,y); octx.lineTo(x+7,y); octx.moveTo(x,y-7); octx.lineTo(x,y+7);
+          octx.strokeStyle='#d29922'; octx.lineWidth=1.5; octx.stroke(); }
+        mark(x,y, sel?'#ffffff':'#d29922', t); }); }
+    // todos los impactos de la sesión, a su tamaño real (calibre) en la diana
+    const c0=normToScreen(0,0), ex=normToScreen(1,0), ey=normToScreen(0,1);
+    const Rs=(Math.hypot(ex.x-c0.x,ex.y-c0.y)+Math.hypot(ey.x-c0.x,ey.y-c0.y))/2;
+    const dot=Math.max(3/(Z.s||1), bulletR()*Rs);
+    const rev=S.phase==='review';
+    S.shots.forEach((s,i)=>{ const p=normToScreen(s.rx,s.ry), last=i===S.shots.length-1;
+      octx.beginPath(); octx.arc(p.x,p.y,dot,0,7);
+      octx.fillStyle=(last&&!rev)?'rgba(255,214,10,.95)':(s.drop?'rgba(140,140,140,.7)':'rgba(248,81,73,.9)'); octx.fill();
+      octx.strokeStyle='rgba(0,0,0,.85)'; octx.lineWidth=1.2; octx.stroke();
+      if(rev){ // en la revisión cada impacto lleva su número para elegirlo fácilmente
+        const fs=Math.max(9, 13/Z.s); octx.font='800 '+fs+'px sans-serif'; octx.textAlign='left'; octx.textBaseline='bottom';
+        const lx=p.x+dot+1, ly=p.y-dot-1; octx.lineWidth=3/Z.s; octx.strokeStyle='rgba(0,0,0,.9)'; octx.strokeText(i+1,lx,ly);
+        octx.fillStyle='#fff'; octx.fillText(i+1,lx,ly); } });
+  }
+  // anillo con color vivo + halo oscuro: se ve sobre blanco y sobre negro
+  function strokeRing(outer){
+    const z=Z.s||1, w=S.ringW*(outer?1.3:1)/z;   // con zoom la línea no engorda
+    octx.lineJoin='round';
+    octx.strokeStyle='rgba(0,0,0,.6)'; octx.lineWidth=w+Math.min(1.5,0.4+S.ringW*0.5)/z; octx.stroke(); // halo fino
+    octx.strokeStyle=S.ringColor; octx.lineWidth=w; octx.stroke();          // línea viva
+  }
+  function drawCross(x,y){
+    octx.beginPath(); const k=14/(Z.s||1); octx.moveTo(x-k,y); octx.lineTo(x+k,y); octx.moveTo(x,y-k); octx.lineTo(x,y+k);
+    const z=Z.s||1;
+    octx.strokeStyle='rgba(0,0,0,.6)'; octx.lineWidth=(S.ringW+Math.min(1.5,0.4+S.ringW*0.5))/z; octx.stroke();
+    octx.strokeStyle=S.ringColor; octx.lineWidth=S.ringW/z; octx.stroke();
+  }
+  function mark(x,y,c,t){ octx.beginPath(); octx.arc(x,y,9,0,7); octx.strokeStyle=c; octx.lineWidth=2; octx.stroke();
+    octx.fillStyle=c; octx.font='bold 12px sans-serif'; octx.fillText(t,x+11,y-6); }
+
+  /* ---------- tamaño del lienzo = proporción del vídeo ---------- */
+  function setSize(){
+    const vw=video.videoWidth, vh=video.videoHeight; if(!vw||!vh) return false;
+    const W=BASE_W, H=Math.round(BASE_W*vh/vw);
+    if(overlay.width!==W||overlay.height!==H){ overlay.width=W; overlay.height=H; }
+    if(S.W!==W||S.H!==H){ S.W=W; S.H=H; buildPersp(); resetHoles(); }
+    // grosor de línea constante en pantalla: escala entre el lienzo y lo que se ve
+    const cw=overlay.clientWidth||W, ch=overlay.clientHeight||H, shown=Math.min(cw, ch*W/H);
+    Z.s=Math.max(0.05, shown/W);
+    return true;
+  }
+
+  function registerShot(x,y,extra){
+    const {rx,ry,dRel}=normFromScreen(x,y);
+    const {ring,dec}=scoreFromDist(dRel);
+    const now=performance.now();
+    // (v26.0) para la repetición: posición en el fotograma y momento del impacto
+    // cartón: justo antes del movimiento que provoca (o ~1,5 s antes de detectarlo); láser: al instante
+    const imp = S.detectType==='laser' ? now-300 : (E.lastMov && now-E.lastMov<6000) ? E.lastMov-250 : now-1500;
+    const sh=Object.assign({rx,ry,dRel,ring,dec,t:Date.now(), imp, vx:S.W?x/S.W:null, vy:S.H?y/S.H:null},extra||{});
+    S.shots.push(sh); markBest();
+    if(E.onShot) try{ E.onShot(sh); }catch(e){}
+    if(S.shotLimit>0 && S.shots.length>=S.shotLimit){ E.armed=false; if(E.onEnd) try{ E.onEnd(); }catch(e){} }
+    return sh;
+  }
+
+  // (v25.5) si el modelo no cambia se conservan el diámetro real del aro 1 y el calibre
+  function setTarget(t){
+    const same=S.target===t; S.target=t; const T0=TARGETS[t];
+    if(T0){ S.rings=10; if(!same||!(S.realmm>0)) S.realmm=T0.D; if(T0.cal&&!same) S.caliber=T0.cal; }
+    rescoreAll(); resetHoles(); HD.bigWarned=false;
+  }
+  // (v25.6) diámetro real del aro 1 y calibre, confirmados antes de cada sesión
+  function setAroCal(aro,cal){
+    const ch=Math.abs((+S.realmm||0)-aro)>0.01 || Math.abs((+S.caliber||0)-cal)>0.001;
+    S.realmm=aro; S.caliber=cal; if(ch){ rescoreAll(); resetHoles(); HD.bigWarned=false; }
+    return ch;
+  }
+  // centro de la diana en fracciones del fotograma (para enfocar ahí)
+  function targetCenterVid(){
+    if(!S.W) return {x:.5,y:.5};
+    if(S.dianaMode==='persp' && S.persp.center) return {x:S.persp.center.x, y:S.persp.center.y};
+    const g=dianaGeom(); return {x:g.cx/S.W, y:g.cy/S.H};
+  }
+  function setModal(m){
+    S.modal=m; const M=MODALS[m];
+    if(M){ S.scoreRule=M.scoreRule; S.bestOf=M.bestOf; S.shotLimit=M.shotLimit; if(M.caliber) S.caliber=M.caliber; }
+    rescoreAll();
+  }
+  function setDetect(t){ S.detectType=t; resetHoles(); LZ.base=null; }
+
+  function runAutoCalib(){
+    if(!video.videoWidth) return {ok:false, msg:'Sin imagen de la cámara.'};
+    setSize();
+    const vw=video.videoWidth, vh=video.videoHeight, k=Math.min(1,960/Math.max(vw,vh)), W=Math.round(vw*k), H=Math.round(vh*k);
+    const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const g=cv.getContext('2d'); g.drawImage(video,0,0,W,H);
+    let r; try{ r=autoCalib(g.getImageData(0,0,W,H).data,W,H,TARGETS); }catch(e){ r={ok:false,msg:'Error al analizar la imagen: '+e.message}; }
+    if(!r.ok) return r;
+    // (v25.8) solo se ajusta la POSICIÓN de la diana: modelo, aros, diámetro del aro 1, calibre y demás ajustes se conservan
+    const detName=r.model==='custom'?'diana de '+r.n+' aros':TARGETS[r.model].name;
+    const myName=TARGETS[S.target]?TARGETS[S.target].name:'personalizada de '+S.rings+' aros';
+    const Hm=r.H, a=Hm, det=a[0]*(a[4]*a[8]-a[5]*a[7])-a[1]*(a[3]*a[8]-a[5]*a[6])+a[2]*(a[3]*a[7]-a[4]*a[6]);
+    const inv=[(a[4]*a[8]-a[5]*a[7])/det,(a[2]*a[7]-a[1]*a[8])/det,(a[1]*a[5]-a[2]*a[4])/det,(a[5]*a[6]-a[3]*a[8])/det,(a[0]*a[8]-a[2]*a[6])/det,(a[2]*a[3]-a[0]*a[5])/det,(a[3]*a[7]-a[4]*a[6])/det,(a[1]*a[6]-a[0]*a[7])/det,(a[0]*a[4]-a[1]*a[3])/det];
+    const ap=(M,x,y)=>{ const w=M[6]*x+M[7]*y+M[8]; return [(M[0]*x+M[1]*y+M[2])/w,(M[3]*x+M[4]*y+M[5])/w]; };
+    const c=ap(inv,0,0), up=ap(Hm,c[0],c[1]-10), phi=Math.atan2(up[1],up[0]), d=-Math.PI/2-phi, cd=Math.cos(-d), sd=Math.sin(-d);
+    const toScr=(X,Y)=>{ const xr=X*cd-Y*sd, yr=X*sd+Y*cd, q=ap(inv,xr,yr), sp=mapCover(q[0]/W,q[1]/H); return {x:sp.x/S.W, y:sp.y/S.H}; };
+    S.persp={top:toScr(0,-1), right:toScr(1,0), bottom:toScr(0,1), left:toScr(-1,0), center:toScr(0,0)}; S.selP='center';
+    S.dianaMode='persp'; buildPersp(); resetHoles(); rescoreAll();
+    const f1=v=>(Math.round(v*10)/10).toFixed(1).replace('.',',');
+    const name='Diana colocada ('+myName+' · aro 1 '+f1(targetD())+' mm · calibre '+f1(S.caliber)+' mm)';
+    const hint=(r.model!==S.target && !(r.model==='custom'&&!TARGETS[S.target]))?'parece '+detName+'; se mantiene tu configuración':'';
+    return {ok:true, model:r.model, name, hint, rmsMM:r.rmsMM};
+  }
+
+  /* ---------- un paso: dibuja la diana y analiza el fotograma ---------- */
+  function step(){
+    if(!setSize()){ octx.clearRect(0,0,overlay.width,overlay.height); return; }
+    drawDiana();
+    const z=1/(Z.s||1);
+    if(S.detectType==='laser'){
+      const p=detectRed();
+      if(p && p.live){ E.lastLive=performance.now(); octx.beginPath(); octx.arc(p.live.x,p.live.y,12*z,0,7); octx.strokeStyle='#f85149'; octx.lineWidth=3*z; octx.stroke(); }
+      if(p && p.shot && E.armed){ const now=performance.now()/1000;
+        if(now-S.lastShot>S.cooldown){ S.lastShot=now; registerShot(p.shot.x,p.shot.y); } }
+    } else {
+      const hs=detectHole(), st=HD.state||'wait', now=performance.now();
+      if((st==='mov'||st==='wait') && now-(E.lastMovSeen||0)>1500) E.lastMov=now;
+      if(st==='mov'||st==='wait') E.lastMovSeen=now;
+      if(E.armed && S.askShot!==false) watchShot(st, hs);
+      if(hs) hs.forEach(h=>{ HD.recent.push({rx:h.q.rx, ry:h.q.ry, t:performance.now()});
+        if(E.armed){ S.lastShot=performance.now()/1000; registerShot(h.pt.x,h.pt.y,h.big?{big:true}:null);
+          if(h.big && !HD.bigWarned){ HD.bigWarned=true; if(E.onBig) try{ E.onBig(); }catch(e){} } } });
+    }
+  }
+
+  // (v25.9) «¿disparo?»: la tarjeta se mueve (como con un impacto) pero no aparece agujero nuevo
+  const ASK={evt:null, okOff:null};
+  function watchShot(st, hs){
+    const now=performance.now();
+    if(hs&&hs.length){ ASK.evt=null; return; }
+    if(st==='ok'){
+      if(ASK.evt && !ASK.evt.back) ASK.evt.back=now;
+      if(ASK.evt && now-ASK.evt.back>4000){
+        const o=HD.lastOff||{x:0,y:0}, d=Math.hypot(o.x-ASK.evt.off.x,o.y-ASK.evt.off.y)/HD.RR*targetD()/2;
+        const n0=ASK.evt.n; ASK.evt=null;
+        if(d>=0.25 && S.shots.length===n0 && E.onAsk) try{ E.onAsk(d); }catch(e){}
+      }
+      if(!ASK.evt) ASK.okOff={x:(HD.lastOff||{x:0}).x, y:(HD.lastOff||{y:0}).y};
+    } else if((st==='mov'||st==='wait') && !ASK.evt && ASK.okOff){
+      ASK.evt={t:now, off:ASK.okOff, n:S.shots.length};
+    } else if(st==='cand' && ASK.evt){ ASK.evt.back=0; }
+  }
+  // disparo fuera de la tarjeta: cuenta como 0
+  function addZero(){ if(!S.W) return null; const p=normToScreen(1.2,0);
+    return registerShot(p.x,p.y,{manual:true, ring:0, dec:0, vx:null, vy:null}); }
+
+  function status(){
+    if(!video.videoWidth) return {st:'off', txt:'Sin imagen'};
+    if(S.detectType==='laser') return performance.now()-E.lastLive<300 ? {st:'cand', txt:'🔴 Punto láser'} : {st:'ok', txt:'🔴 Láser listo'};
+    const st=HD.state||'wait';
+    return {st, txt: st==='mov'?'✋ Movimiento': st==='cand'?'◎ Impacto…': st==='ok'?'● Diana lista':'… Estabilizando'};
+  }
+  function totals(){
+    markBest(); const n=S.shots.length, cs=counted(), sum=cs.reduce((a,s)=>a+s.dec,0), sumInt=cs.reduce((a,s)=>a+s.ring,0);
+    return {n, counted:cs.length, sum:Math.round(sum*10)/10, sumInt, last:n?S.shots[n-1]:null, x:cs.filter(s=>s.dRel<=xRadius()).length};
+  }
+  function save(){ const o={}; SAVE_KEYS.forEach(k=>o[k]=S[k]); return JSON.parse(JSON.stringify(o)); }
+  function load(o){ if(!o) return; SAVE_KEYS.forEach(k=>{ if(o[k]!==undefined) S[k]=o[k]; }); buildPersp(); rescoreAll(); resetHoles(); }
+  // punto del lienzo (coordenadas CSS dentro del elemento) -> coordenadas del lienzo de trabajo
+  function cssToCanvas(cx,cy){ const cw=overlay.clientWidth, ch=overlay.clientHeight, sc=Math.min(cw/S.W, ch/S.H);
+    return {x:(cx-(cw-S.W*sc)/2)/sc, y:(cy-(ch-S.H*sc)/2)/sc}; }
+  function addShotCss(cx,cy){ if(!S.W) return null; const p=cssToCanvas(cx,cy); return registerShot(p.x,p.y,{manual:true}); }
+  function delNearCss(cx,cy){ if(!S.W||!S.shots.length) return null; const p=cssToCanvas(cx,cy); let bi=-1,bd=1e9;
+    S.shots.forEach((s,i)=>{ const q=normToScreen(s.rx,s.ry), d=Math.hypot(q.x-p.x,q.y-p.y); if(d<bd){ bd=d; bi=i; } });
+    if(bi<0||bd>40/(Z.s||1)) return null; const s=S.shots.splice(bi,1)[0]; markBest(); return s; }
+
+  Object.assign(E,{ parseCal, step, status, totals, save, load, setTarget, setModal, setDetect, setAroCal, targetCenterVid, targetD, autoCalib:runAutoCalib, ringRadii, scoreShot,
+    clear(){ S.shots=[]; HD.recent=[]; resetHoles(); ASK.evt=null; ASK.okOff=null; }, addZero, undo(){ const s=S.shots.pop(); markBest(); return s; },
+    resetRef(){ resetHoles(); LZ.base=null; }, holeInfo(){ return HD.info||''; }, addShotCss, delNearCss, xRadius, blackRadius, bulletR });
+  return E;
+}
+
+// Autocalibrado de la diana: encuentra la zona negra, los aros y la perspectiva a partir de una imagen.
+// autoCalib(rgba, W, H, TARGETS) -> {ok, model, k, H (px imagen -> coords normalizadas, radio exterior = 1),
+//                                    rings:[{r, n}], rmsMM, msg}
+function autoCalib(rgba, W, H, TARGETS){
+  const N=W*H, g=new Float32Array(N);
+  for(let i=0,j=0;i<N;i++,j+=4) g[i]=0.299*rgba[j]+0.587*rgba[j+1]+0.114*rgba[j+2];
+
+  // ---------- 1. zona negra: umbral de Otsu + cierre morfológico + mancha oscura más "redonda y llena" ----------
+  const hist=new Float64Array(256); for(let i=0;i<N;i++) hist[g[i]|0]++;
+  let sum=0; for(let i=0;i<256;i++) sum+=i*hist[i];
+  let wB=0, sB=0, best=0, thr=100;
+  for(let t=0;t<256;t++){ wB+=hist[t]; if(!wB) continue; const wF=N-wB; if(!wF) break; sB+=t*hist[t];
+    const mB=sB/wB, mF=(sum-sB)/wF, v=wB*wF*(mB-mF)*(mB-mF); if(v>best){ best=v; thr=t; } }
+  // segundo Otsu dentro de lo oscuro: separa el negro de la diana de fondos grises (pared, cartón)
+  let thr2=thr; { let n2=0,s2=0; for(let i=0;i<thr;i++){ n2+=hist[i]; s2+=i*hist[i]; }
+    let w=0,sb=0,bv=0; for(let t=0;t<thr;t++){ w+=hist[t]; if(!w) continue; const wf=n2-w; if(!wf) break; sb+=t*hist[t];
+      const a=sb/w, b=(s2-sb)/wf, v=w*wf*(a-b)*(a-b); if(v>bv){ bv=v; thr2=t; } } }
+  const rad=Math.max(1,Math.round(Math.min(W,H)/320));            // cierra las líneas blancas finas de la zona negra
+  const box=(src,val)=>{ // dilata (val=1) o erosiona (val=0) con una caja de (2·rad+1)
+    const a=new Uint8Array(N), b=new Uint8Array(N);
+    for(let y=0;y<H;y++){ let c=0; const o=y*W;
+      for(let x=-rad;x<W+rad;x++){ const xi=x+rad; if(xi<W) c+=(src[o+xi]===val)?1:0; const xo=x-rad-1; if(xo>=0) c-=(src[o+xo]===val)?1:0;
+        if(x>=0&&x<W) a[o+x]=c>0?val:1-val; } }
+    for(let x=0;x<W;x++){ let c=0;
+      for(let y=-rad;y<H+rad;y++){ const yi=y+rad; if(yi<H) c+=(a[yi*W+x]===val)?1:0; const yo=y-rad-1; if(yo>=0) c-=(a[yo*W+x]===val)?1:0;
+        if(y>=0&&y<H) b[y*W+x]=c>0?val:1-val; } }
+    return b; };
+  const lab=new Int32Array(N), stack=new Int32Array(N);
+  let bc=null, bs=0;
+  for(const th of (thr2<thr-15?[thr,thr2]:[thr])){
+    let m=new Uint8Array(N); for(let i=0;i<N;i++) m[i]=g[i]<th?1:0;
+    m=box(box(m,1),0);
+    lab.fill(-1); const comps=[];
+    for(let s=0;s<N;s++){ if(!m[s]||lab[s]>=0) continue;
+      let sp=0; stack[sp++]=s; const id=comps.length; lab[s]=id;
+      let n=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,touch=0,sg=0,x0=W,x1=0,y0=H,y1=0;
+      while(sp){ const i=stack[--sp], x=i%W, y=(i-x)/W; n++; sx+=x; sy+=y; sxx+=x*x; syy+=y*y; sxy+=x*y; sg+=g[i];
+        if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+        if(x===0||y===0||x===W-1||y===H-1) touch++;
+        if(x>0&&m[i-1]&&lab[i-1]<0){lab[i-1]=id;stack[sp++]=i-1;}
+        if(x<W-1&&m[i+1]&&lab[i+1]<0){lab[i+1]=id;stack[sp++]=i+1;}
+        if(y>0&&m[i-W]&&lab[i-W]<0){lab[i-W]=id;stack[sp++]=i-W;}
+        if(y<H-1&&m[i+W]&&lab[i+W]<0){lab[i+W]=id;stack[sp++]=i+W;} }
+      comps.push({id,n,sx,sy,sxx,syy,sxy,touch,mean:sg/n,x0,x1,y0,y1}); }
+    for(const c of comps){ if(c.n<0.003*N) continue;
+      const mx=c.sx/c.n, my=c.sy/c.n, cxx=c.sxx/c.n-mx*mx, cyy=c.syy/c.n-my*my, cxy=c.sxy/c.n-mx*my;
+      const tr=(cxx+cyy)/2, dd=Math.sqrt(((cxx-cyy)/2)**2+cxy*cxy), l1=tr+dd, l2=Math.max(1e-9,tr-dd);
+      const a=2*Math.sqrt(l1), b=2*Math.sqrt(l2), phi=0.5*Math.atan2(2*cxy,cxx-cyy);
+      if(b/a<0.35) continue;
+      // parecido a una elipse llena: intersección / unión con su elipse de momentos
+      const cp=Math.cos(phi), sp2=Math.sin(phi); let inE=0, inC=0, ae=0;
+      const X0=Math.max(0,Math.floor(mx-a-2)), X1=Math.min(W-1,Math.ceil(mx+a+2)), Y0=Math.max(0,Math.floor(my-a-2)), Y1=Math.min(H-1,Math.ceil(my+a+2));
+      for(let y=Y0;y<=Y1;y++) for(let x=X0;x<=X1;x++){ const dx=x-mx, dy=y-my, u=(dx*cp+dy*sp2)/a, v=(-dx*sp2+dy*cp)/b, ins=u*u+v*v<=1;
+        if(ins){ ae++; if(lab[y*W+x]===c.id) inE++; } }
+      const iou=inE/(c.n+ae-inE);
+      if(iou<0.75) continue;
+      const touchF=c.touch>0.02*Math.sqrt(c.n)?0.15:1;
+      const sc=Math.sqrt(c.n)*Math.pow(iou,4)*(1-c.mean/255)*touchF;
+      if(sc>bs){ bs=sc; bc={mx,my,a,b,phi,iou,mean:c.mean}; } }
+  }
+  if(!bc) return {ok:false, msg:'No encuentro la zona negra de la diana. Comprueba que se ve entera y bien iluminada.'};
+
+  // ---------- 2. perfiles radiales: líneas de los aros (oscuras fuera de la zona negra, claras dentro) ----------
+  const cph=Math.cos(bc.phi), sph=Math.sin(bc.phi);
+  const e1=[cph*bc.a, sph*bc.a], e2=[-sph*bc.b, cph*bc.b];
+  const samp=(x,y)=>{ if(x<0||y<0||x>W-1.001||y>H-1.001) return NaN; const x0=x|0, y0=y|0, fx=x-x0, fy=y-y0, i=y0*W+x0;
+    return (g[i]*(1-fx)+g[i+1]*fx)*(1-fy)+(g[i+W]*(1-fx)+g[i+W+1]*fx)*fy; };
+  const NR=240, S0=0.06, S1=3.3, DS=0.0035, NS=Math.round((S1-S0)/DS)+1;
+  const rays=[]; const valid=new Float32Array(NS);
+  for(let q=0;q<NR;q++){
+    const th=2*Math.PI*q/NR, ux=Math.cos(th), uy=Math.sin(th);
+    const dx=ux*e1[0]+uy*e2[0], dy=ux*e1[1]+uy*e2[1], pxPerS=Math.hypot(dx,dy);
+    const I=new Float32Array(NS); for(let k=0;k<NS;k++){ const s=S0+k*DS; I[k]=samp(bc.mx+s*dx, bc.my+s*dy); if(!isNaN(I[k])) valid[k]++; }
+    const w=Math.max(2,Math.round(2.5/(DS*pxPerS)));
+    const med=(lo,hi)=>{ const v=[]; for(let k=Math.round((lo-S0)/DS);k<=Math.round((hi-S0)/DS);k++) if(k>=0&&k<NS&&!isNaN(I[k])) v.push(I[k]); v.sort((a,b)=>a-b); return v.length?v[v.length>>1]:NaN; };
+    const wh=med(1.08,1.3), bl=med(0.45,0.9), con=Math.abs(wh-bl);
+    const thrR=Math.max(4,0.12*(isNaN(con)?40:con));
+    const L=new Float32Array(NS);
+    for(let k=w;k<NS-w;k++){ const s=S0+k*DS, a=I[k-w], b=I[k+w], c=I[k]; if(isNaN(a)||isNaN(b)||isNaN(c)) continue;
+      L[k]= s>1.03 ? (a+b)/2-c : (s<0.97 ? c-(a+b)/2 : 0); }
+    const peaks=[];
+    for(let k=w;k<NS-w;k++){ if(L[k]<thrR) continue; let mx=true; const h=Math.max(1,w>>1);
+      for(let j=1;j<=h;j++) if(L[k-j]>L[k]||L[k+j]>=L[k]){ mx=false; break; } if(!mx) continue;
+      const y0=L[k-1], y1=L[k], y2=L[k+1], den=y0-2*y1+y2, off=den<0?0.5*(y0-y2)/den:0;
+      peaks.push(S0+(k+off)*DS); }
+    // borde de la zona negra: mayor subida de brillo entre s=0.8 y 1.2
+    let eb=-1, ev=0; for(let k=Math.round((0.8-S0)/DS);k<=Math.round((1.2-S0)/DS);k++){ if(k-w<0||k+w>=NS) continue;
+      const d=I[k+w]-I[k-w]; if(!isNaN(d)&&d>ev){ ev=d; eb=S0+k*DS; } }
+    rays.push({dx,dy,peaks,edge: ev>Math.max(8,0.3*(isNaN(con)?40:con))?eb:null});
+  }
+  // ---------- 3. cadenas: cada aro es una curva continua de picos de rayo en rayo ----------
+  const chains=[]; let open=[];
+  for(let q=0;q<NR;q++){
+    const pk=rays[q].peaks, used=new Uint8Array(pk.length), nx=[];
+    open.sort((a,b)=>a.last-b.last);
+    for(const ch of open){ let bi=-1, bd=0.022+0.012*ch.last;
+      for(let i=0;i<pk.length;i++){ if(used[i]) continue; const d=Math.abs(pk[i]-ch.last); if(d<bd){ bd=d; bi=i; } }
+      if(bi>=0){ used[bi]=1; ch.pts.push({q,s:pk[bi]}); ch.last=pk[bi]; ch.gap=0; nx.push(ch); }
+      else if(ch.gap<4){ ch.gap++; nx.push(ch); } }
+    for(let i=0;i<pk.length;i++) if(!used[i]){ const ch={pts:[{q,s:pk[i]}], last:pk[i], gap:0}; chains.push(ch); nx.push(ch); }
+    open=nx; }
+  // une las cadenas que dan la vuelta completa (fin cerca del rayo NR-1 con principio cerca del 0)
+  for(const a of chains){ if(a.dead) continue; const qe=a.pts[a.pts.length-1].q; if(qe<NR-5) continue;
+    for(const b of chains){ if(b===a||b.dead) continue; if(b.pts[0].q>4) continue;
+      if(Math.abs(b.pts[0].s-a.pts[a.pts.length-1].s)<0.03+0.012*b.pts[0].s){ a.pts=a.pts.concat(b.pts); b.dead=true; break; } } }
+  const good=chains.filter(c=>!c.dead && new Set(c.pts.map(p=>p.q)).size>=0.25*NR)
+    .map(c=>({pts:c.pts, s:c.pts.map(p=>p.s).sort((a,b)=>a-b)[c.pts.length>>1]})).sort((a,b)=>a.s-b.s);
+  const edgePts=rays.map((r,q)=>r.edge!=null?{q,s:r.edge}:null).filter(Boolean);
+  if(good.length<2 || edgePts.length<0.25*NR)
+    return {ok:false, msg:'No distingo los aros de la diana. Acerca la cámara o mejora la luz frontal.', dbg:{bc, nch:good.length, ne:edgePts.length}};
+
+  // ---------- 4. homografía con radios libres por aro (corrige la perspectiva sin saber aún el modelo) ----------
+  const sc=bc.a, cx=bc.mx, cy=bc.my;
+  const toXY=(q,s)=>{ const r=rays[q]; return {x:(bc.mx+s*r.dx-cx)/sc, y:(bc.my+s*r.dy-cy)/sc}; };
+  const groups=[{fixed:1, pts:edgePts.map(p=>toXY(p.q,p.s))}].concat(good.map(c=>({fixed:null, s0:c.s, pts:c.pts.map(p=>toXY(p.q,p.s))})));
+  const gauss=(M,v)=>{ const n=v.length, A=M.map((r,i)=>r.concat([v[i]]));
+    for(let c=0;c<n;c++){ let pr=c; for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[pr][c])) pr=r;
+      if(Math.abs(A[pr][c])<1e-15) return null; [A[c],A[pr]]=[A[pr],A[c]];
+      for(let r=0;r<n;r++){ if(r===c) continue; const f=A[r][c]/A[c][c]; for(let k=c;k<=n;k++) A[r][k]-=f*A[c][k]; } }
+    return A.map((r,i)=>r[n]/r[i]); };
+  // params: 8 de la homografía + un radio por grupo libre. residuo = |H(p)| - R
+  function makeRes(G){ return pp=>{ const out=[]; let fi=8;
+    for(const gr of G){ const R=gr.fixed!=null?gr.fixed:pp[fi++];
+      for(const q of gr.pts){ const w=pp[6]*q.x+pp[7]*q.y+1; out.push(Math.hypot((pp[0]*q.x+pp[1]*q.y+pp[2])/w,(pp[3]*q.x+pp[4]*q.y+pp[5])/w)-R); } }
+    return out; }; }
+  function lm(pp,resf,iters){
+    let mu=1e-3, r=resf(pp), c=r.reduce((a,v)=>a+v*v,0); const n=pp.length;
+    for(let it=0;it<iters;it++){
+      const J=[]; for(let j=0;j<n;j++){ const q=pp.slice(), h=1e-6*Math.max(1e-3,Math.abs(pp[j])); q[j]+=h; const r2=resf(q); J.push(r2.map((v,i)=>(v-r[i])/h)); }
+      const A=[...Array(n)].map(()=>new Array(n).fill(0)), gv=new Array(n).fill(0);
+      for(let a=0;a<n;a++){ for(let b=a;b<n;b++){ let s=0; const Ja=J[a], Jb=J[b]; for(let i=0;i<r.length;i++) s+=Ja[i]*Jb[i]; A[a][b]=A[b][a]=s; }
+        let s=0; for(let i=0;i<r.length;i++) s+=J[a][i]*r[i]; gv[a]=s; }
+      let improved=false;
+      for(let tries=0;tries<8;tries++){
+        const M=A.map((row,i)=>{ const rr=row.slice(); rr[i]+=mu*(row[i]+1e-12); return rr; });
+        const d=gauss(M,gv.map(v=>-v)); if(!d){ mu*=10; continue; }
+        const q=pp.map((v,i)=>v+d[i]), r2=resf(q), c2=r2.reduce((a,v)=>a+v*v,0);
+        if(c2<c){ const rel=(c-c2)/c; pp=q; r=r2; c=c2; mu=Math.max(1e-9,mu/3); improved=true; if(rel<1e-10) it=iters; break; }
+        mu*=8; }
+      if(!improved) break; }
+    return {p:pp, r, c}; }
+  const trimG=(G,r)=>{ const a=r.map(Math.abs).sort((x,y)=>x-y), lim=Math.max(3*1.4826*a[a.length>>1], 0.003); let i=0;
+    return G.map(gr=>({...gr, pts:gr.pts.filter(()=>Math.abs(r[i++])<=lim)})).filter(gr=>gr.pts.length>=8); };
+  let p0=[cph/bc.a*sc, sph/bc.a*sc, 0, -sph/bc.b*sc, cph/bc.b*sc, 0, 0, 0].concat(good.map(c=>c.s));
+  let G=groups, fit=lm(p0,makeRes(G),60);
+  const keep=fit.p.slice(8); G=G.map((gr,i)=>i?{...gr, s0:keep[i-1]}:gr);
+  G=trimG(G,fit.r); fit=lm(fit.p.slice(0,8).concat(G.slice(1).map(gr=>gr.s0)),makeRes(G),60);
+  const rho=fit.p.slice(8);                         // radio de cada aro / radio de la zona negra (sin perspectiva)
+
+  // ---------- 5. modelo de diana que encaja con esos radios ----------
+  let bestM=null;
+  for(const [key,t] of Object.entries(TARGETS)){
+    const xs=t.r.slice(1).map(d=>d/t.black);
+    for(let k=0.93;k<=1.0701;k+=0.0025){      // escala libre: el borde de la zona negra puede salir algo desplazado
+      let mt=0, se=0; const asg=[];
+      for(const r of rho){ let bj=-1, bd=1; xs.forEach((x,j)=>{ if(x<0.1||Math.abs(x-1)<0.03) return; const d=Math.abs(Math.log(r/(k*x))); if(d<bd){ bd=d; bj=j; } });
+        if(bd<0.02){ mt++; se+=bd*bd; asg.push(bj+1); } else asg.push(0); }
+      const sc2=mt - Math.sqrt(se/Math.max(1,mt))*40 - Math.abs(Math.log(k))*5;
+      if(!bestM || sc2>bestM.sc) bestM={key,t,mt,sc:sc2,asg,k}; } }
+  let model, t, asg;
+  if(bestM && bestM.mt>=2 && bestM.mt>=0.6*rho.length){ model=bestM.key; t=bestM.t; asg=bestM.asg; }
+  else {   // desconocida: aros iguales, el más exterior es el borde
+    const all=[1].concat(rho).sort((a,b)=>a-b), ds=[]; for(let i=1;i<all.length;i++) ds.push(all[i]-all[i-1]); ds.sort((a,b)=>a-b);
+    const sp=ds[ds.length>>1], outer=all[all.length-1], n=Math.max(3,Math.min(12,Math.round(outer/sp)));
+    const r=[0]; for(let v=1;v<=n;v++) r.push((n-v+1)/n);
+    t={D:1, r, black:1/outer, n}; model='custom';
+    asg=rho.map(x=>{ const v=n+1-Math.round(x/outer*n); return v>=1&&v<=n?v:0; }); }
+  const D=t.D;
+  // ---------- 6. ajuste final con los radios reales del modelo ----------
+  let GF=[];
+  G.slice(1).forEach((gr,i)=>{ const v=asg[i]; if(v>0) GF.push({fixed:t.r[v]/D, pts:gr.pts}); });
+  if(GF.length<3) GF.unshift({fixed:t.black/D, pts:G[0].pts});   // el borde negro solo si hay pocos aros
+  const k0=t.black/D/(bestM&&bestM.k||1);   // de unidades de "zona negra" a radio exterior = 1
+  let pf=fit.p.slice(0,8); pf=[pf[0]*k0,pf[1]*k0,pf[2]*k0,pf[3]*k0,pf[4]*k0,pf[5]*k0,pf[6],pf[7]];
+  let ff=lm(pf,makeRes(GF),60); GF=trimG(GF,ff.r); ff=lm(ff.p,makeRes(GF),60);
+  const npts=GF.reduce((a,g)=>a+g.pts.length,0), rms=Math.sqrt(ff.c/npts);
+  const q=ff.p, Hs=[[q[0],q[1],q[2]],[q[3],q[4],q[5]],[q[6],q[7],1]], T=[[1/sc,0,-cx/sc],[0,1/sc,-cy/sc],[0,0,1]];
+  const Hpx=[]; for(let r=0;r<3;r++) for(let c=0;c<3;c++){ let s=0; for(let k=0;k<3;k++) s+=Hs[r][k]*T[k][c]; Hpx.push(s); }
+  return {ok:true, model, n:t.n||10, H:Hpx, rmsMM:model==='custom'?0:rms*D/2, rmsN:rms, rings:GF.length, pts:npts, black:bc, rho, asg, k:1, ng:G.map(g=>g.pts.length)};
+}
+
+window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
+})();
+
+</script>
+<script>
+(() => {
+  const PCVER='v1.3', PCDATE='26-11-26';    // versión visible: cambiar en cada versión
+  const $=s=>document.querySelector(s);
+  $('#appVer').textContent='Versión '+PCVER+' · actualizada el '+PCDATE;
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const LS=(k,v)=>{ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v); }catch(e){ return null; } };
+  const f1=v=>(Math.round(v*10)/10).toFixed(1).replace('.',',');
+  const log=t=>{ const el=$('#log'); el.textContent=(new Date().toLocaleTimeString()+'  '+t+'\n'+el.textContent).slice(0,5000); };
+  const say=(t,err)=>{ const s=$('#state'); s.textContent=t; s.classList.toggle('err',!!err); if(err) $('#cfg').classList.remove('hide'); };
+  if(!window.TirofijoMotor){ say('Error interno: falta el motor',1); return; }
+  const {TARGETS, MODALS}=TirofijoMotor;
+
+  const servedByG2r = location.port==='1984';
+  $('#g2r').value = LS('pc_g2r') || LS('galeria_g2r') || (servedByG2r ? location.origin : 'http://localhost:1984');
+  $('#colsSel').value = LS('pc_cols') || '0';
+
+  const P=[];     // puestos: {id, key, label, src:{kind,name|deviceId}, el, video, canvas, m, stream, pc, …}
+  let seq=0;
+
+  /* ---------- vídeo ---------- */
+  async function pullG2r(src){
+    const base=$('#g2r').value.replace(/\/$/,'');
+    const pc=new RTCPeerConnection({iceServers:[]});
+    pc.addTransceiver('video',{direction:'recvonly'});
+    const ms=new MediaStream(); pc.ontrack=e=>ms.addTrack(e.track);
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise(r=>{ if(pc.iceGatheringState==='complete') return r();
+      const t=setTimeout(r,1500); pc.addEventListener('icegatheringstatechange',()=>{ if(pc.iceGatheringState==='complete'){ clearTimeout(t); r(); } }); });
+    const res=await fetch(base+'/api/webrtc?src='+encodeURIComponent(src),{method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription.sdp});
+    if(!res.ok){ pc.close(); throw new Error('go2rtc '+res.status); }
+    await pc.setRemoteDescription({type:'answer',sdp:await res.text()});
+    await new Promise((ok,ko)=>{ const t=setTimeout(()=>ko(new Error('sin imagen')),8000);
+      const chk=()=>{ if(ms.getVideoTracks().length){ clearTimeout(t); ok(); } }; pc.addEventListener('track',chk); chk(); });
+    return {pc, stream:ms};
+  }
+  async function connect(p){
+    if(p.connecting) return; p.connecting=true; msg(p,'Conectando…');
+    try{
+      closeMedia(p);
+      if(p.src.kind==='g2r'){ const g=await pullG2r(p.src.name); p.pc=g.pc; p.stream=g.stream;
+        p.pc.addEventListener('iceconnectionstatechange',()=>{ if(['failed','closed','disconnected'].includes(p.pc&&p.pc.iceConnectionState)) p.stallSince=p.stallSince||performance.now(); }); }
+      else { p.stream=await navigator.mediaDevices.getUserMedia({video:{deviceId:p.src.deviceId?{exact:p.src.deviceId}:undefined, width:{ideal:1920}, height:{ideal:1080}}, audio:false}); }
+      p.video.srcObject=p.stream; await p.video.play().catch(()=>{});
+      p.lastT=-1; p.stallSince=0; p.fails=0; msg(p,''); log(p.label+': imagen conectada');
+      if(p.recWanted && !p.rec && p.m.armed) recStart(p);      // la grabación sigue en otro archivo
+    }catch(e){ p.fails=(p.fails||0)+1; msg(p,'Sin imagen: '+e.message+' · reintento en '+Math.min(30,3*p.fails)+' s'); log(p.label+': '+e.message);
+      p.retryAt=performance.now()+Math.min(30000,3000*p.fails); }
+    finally{ p.connecting=false; }
+  }
+  function closeMedia(p){
+    if(p.rec){ try{ p.rec.rec.stop(); }catch(e){} }    // guarda lo grabado hasta aquí
+    try{ p.pc&&p.pc.close(); }catch(e){} p.pc=null;
+    if(p.stream && p.src.kind==='cam') p.stream.getTracks().forEach(t=>t.stop());
+    p.stream=null; if(p.video) p.video.srcObject=null;
+  }
+  // vigilancia: si la imagen se congela o el enlace cae, se vuelve a conectar sola
+  setInterval(()=>{ const now=performance.now();
+    P.forEach(p=>{ if(p.connecting) return;
+      if(!p.stream){ if(!p.retryAt||now>=p.retryAt) connect(p); return; }
+      const t=p.video.currentTime;
+      if(t!==p.lastT){ p.lastT=t; p.stallSince=0; if(p.msgTxt&&p.msgTxt.startsWith('Imagen congelada')) msg(p,''); return; }
+      if(!p.stallSince) p.stallSince=now;
+      if(now-p.stallSince>6000){ msg(p,'Imagen congelada: reconectando…'); log(p.label+': imagen congelada, reconecto'); p.retryAt=0; connect(p); }
+    }); },2000);
+
+  /* ---------- puestos ---------- */
+  function cfgKey(p){ return 'tirofijo_pc_'+p.key; }
+  function persist(p){ try{ LS(cfgKey(p), JSON.stringify({m:p.m.save(), shooter:p.shooter||''})); }catch(e){} }
+  function addPuesto(src, label){
+    const key=src.kind==='g2r' ? 'g2r:'+src.name : 'cam:'+(src.label||src.deviceId);
+    if(P.some(p=>p.key===key)) return;
+    const el=$('#tileTpl').content.firstElementChild.cloneNode(true);
+    const p={id:++seq, key, src, label:label||src.name, el, video:el.querySelector('video'), canvas:el.querySelector('canvas')};
+    p.m=TirofijoMotor.create(p.video, p.canvas);
+    try{ const o=JSON.parse(LS(cfgKey(p))||'null'); if(o){ p.m.load(o.m); p.shooter=o.shooter||''; } }catch(e){}
+    p.m.onShot=sh=>onShot(p,sh);
+    p.m.onEnd=()=>{ msg(p,'Tirada completa ('+p.m.S.shotLimit+' disparos)'); setTimeout(()=>msg(p,''),4000); recStop(p); paint(p); };
+    p.m.onAsk=()=>askOpen(p);
+    el.dataset.id=p.id;
+    el.querySelector('.src').textContent=src.kind==='g2r'?src.name:'webcam';
+    const sh=el.querySelector('.shooter'); sh.value=p.shooter||''; sh.oninput=()=>{ p.shooter=sh.value; persist(p); };
+    // selectores de la vista ampliada
+    const st=el.querySelector('.selTarget');
+    st.innerHTML=Object.entries(TARGETS).map(([k,t])=>'<option value="'+k+'">'+esc(t.name)+'</option>').join('')+'<option value="custom">Personalizada</option>';
+    st.onchange=()=>{ p.m.setTarget(st.value); preFill(p); persist(p); paint(p); };
+    const sm=el.querySelector('.selModal');
+    sm.innerHTML=Object.entries(MODALS).map(([k,t])=>'<option value="'+k+'">'+esc(t.name)+'</option>').join('');
+    sm.onchange=()=>{ p.m.setModal(sm.value); preFill(p); persist(p); paint(p); };
+    const ss=el.querySelector('.selSens'); ss.oninput=()=>{ p.m.S.holeSens=+ss.value; persist(p); paint(p); };
+    // diámetro real del aro 1 y calibre (v25.6): se confirman antes de cada sesión
+    [['.qAro','.qAroMm'],['.qCal','.qCalMm']].forEach(([sel,inp])=>{ const S_=el.querySelector(sel), I_=el.querySelector(inp);
+      S_.onchange=()=>{ I_.style.display=S_.value==='otro'?'':'none'; if(S_.value==='otro') I_.focus(); else preApply(p,true); };
+      I_.onchange=()=>preApply(p,true); });
+    p.preOk=false; preFill(p);
+    p.m.onBig=()=>{ msg(p,'⚠ Los impactos se ven más grandes que el calibre: revisa calibre y diámetro real del aro 1'); setTimeout(()=>msg(p,''),9000); };
+    if(src.kind!=='cam') el.querySelector('.qcamT').textContent='Enfoque y exposición se ajustan en la propia cámara IP.';
+    const cO=el.querySelector('.cOut'), cA=el.querySelector('.cAsk');
+    cO.onchange=()=>{ p.m.S.countOut=cO.checked; p.m.resetRef(); persist(p); };
+    cA.onchange=()=>{ p.m.S.askShot=cA.checked; if(!cA.checked) askClose(p); persist(p); };
+    // marcar / quitar impactos a mano en la vista ampliada
+    p.canvas.addEventListener('click',e=>{ const r=p.canvas.getBoundingClientRect();
+      if(p.addNext){ askClose(p); p.m.addShotCss(e.clientX-r.left,e.clientY-r.top); persist(p); return; }   // tras «¿disparo?» → ➕
+      if(!el.classList.contains('big')||!e.shiftKey) return;
+      p.m.addShotCss(e.clientX-r.left,e.clientY-r.top); persist(p); });
+    p.canvas.addEventListener('contextmenu',e=>{ if(!el.classList.contains('big')) return; e.preventDefault(); const r=p.canvas.getBoundingClientRect();
+      if(p.m.delNearCss(e.clientX-r.left,e.clientY-r.top)) paint(p); });
+    P.push(p); renumber(); $('#grid').appendChild(el); paint(p); layout(); connect(p);
+  }
+  function removePuesto(p){ recStop(p); closeMedia(p); p.el.remove(); P.splice(P.indexOf(p),1); renumber(); layout(); saveList(); }
+  function renumber(){ P.forEach((p,i)=>{ p.n=i+1; p.el.querySelector('.pn').textContent='Puesto '+(i+1); }); }
+  function saveList(){ LS('pc_cams', JSON.stringify(P.filter(p=>p.src.kind==='cam').map(p=>p.src))); }
+  function msg(p,t){ p.msgTxt=t; const m=p.el.querySelector('.msg'); m.textContent=t; m.classList.toggle('show',!!t); }
+
+  function qSelSet(sel, inp, v){ const o=[...sel.options].find(o=>o.value!=='otro'&&Math.abs(+o.value-v)<0.01);
+    sel.value=o?o.value:'otro'; inp.style.display=o?'none':''; inp.value=o?'':(v||''); }
+  function preFill(p){ const el=p.el; qSelSet(el.querySelector('.qAro'),el.querySelector('.qAroMm'),p.m.targetD());
+    qSelSet(el.querySelector('.qCal'),el.querySelector('.qCalMm'),+p.m.S.caliber||0); }
+  function preApply(p,quiet){
+    const el=p.el, sa=el.querySelector('.qAro'), sc=el.querySelector('.qCal');
+    const aro=sa.value==='otro'?+el.querySelector('.qAroMm').value:+sa.value;
+    const cal=sc.value==='otro'?p.m.parseCal(el.querySelector('.qCalMm').value):+sc.value;
+    if(!(aro>5)){ msg(p,'⚠ Indica el diámetro del aro 1 en mm'); return false; }
+    if(!(cal>0.5)){ msg(p,'⚠ Indica el calibre'); return false; }
+    p.m.setAroCal(aro,cal); persist(p); paint(p); if(!quiet) msg(p,''); return true;
+  }
+  function askPre(p){ p.el.classList.add('needPre'); preFill(p);
+    msg(p,'Antes de empezar: confirma el diámetro del aro 1 (mídelo con regla) y el calibre'+(p.el.classList.contains('big')?'.':' (⛶).')); }
+  function arm(p,on){
+    if(on && !p.preOk){ askPre(p); return false; }
+    if(on && p.m.S.shotLimit && p.m.S.shots.length>=p.m.S.shotLimit) p.m.clear();
+    p.m.armed=on; if(on) recGo(p); else { recPause(p); askClose(p); } paint(p); return true;
+  }
+
+  /* ---------- «¿disparo?» (v25.9): la tarjeta se movió pero no apareció agujero nuevo ---------- */
+  function askOpen(p){
+    const a=p.el.querySelector('.ask'); p.el.querySelector('.askTxt').innerHTML='<b>¿Disparo?</b> La tarjeta se ha movido pero no aparece agujero nuevo (¿balín por un agujero ya hecho o fuera de la tarjeta?)';
+    a.classList.add('open'); p.el.classList.add('asking'); clearTimeout(p.askT); p.askT=setTimeout(()=>askClose(p),25000);
+    beep(); log(p.label+': ¿disparo? (tarjeta movida sin agujero nuevo)');
+  }
+  function askClose(p){ p.el.querySelector('.ask').classList.remove('open'); p.el.classList.remove('asking','adding'); p.addNext=false; clearTimeout(p.askT); }
+  let actx=null;
+  function beep(){ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)(); const o=actx.createOscillator(), g=actx.createGain();
+    o.frequency.value=660; o.connect(g); g.connect(actx.destination); g.gain.setValueAtTime(0.25,actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+0.35);
+    o.start(); o.stop(actx.currentTime+0.36); }catch(e){} }
+
+  /* ---------- GRABACIÓN de cada tirada (v26.0): se guarda en el disco del PC ----------
+     Carpeta elegida › Puesto › AAAAMMDD › AAAAMMDDhhmm_Puesto_Tirador.webm + .json (disparos con su momento en el vídeo).
+     Sin acceso a carpetas (Safari) se descargan al terminar. */
+  const locStamp=d=>{ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+z(d.getHours())+z(d.getMinutes()); };   // (v26.1) hora local
+  const safeName=t=>String(t||'').normalize('NFC').replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim().slice(0,40);
+  const REC={on:LS('pc_rep')==='1', dir:null, fs:!!window.showDirectoryPicker, done:[], perm:null};
+  const kvDB=()=>new Promise((ok,ko)=>{ const r=indexedDB.open('tirofijo_pc',1); r.onupgradeneeded=()=>r.result.createObjectStore('kv'); r.onsuccess=()=>ok(r.result); r.onerror=()=>ko(r.error); });
+  async function kv(k,v){ const db=await kvDB(); return new Promise((ok,ko)=>{ const tx=db.transaction('kv',v===undefined?'readonly':'readwrite'), st=tx.objectStore('kv');
+    const rq=v===undefined?st.get(k):st.put(v,k); tx.oncomplete=()=>ok(rq.result); tx.onerror=()=>ko(tx.error); }); }
+  function dirUI(){ $('#repOn').checked=REC.on;
+    $('#dirName').textContent=!REC.fs?'Este navegador no permite elegir carpeta: los vídeos se descargan':REC.dir?'📁 '+REC.dir.name:'(sin elegir)'; }
+  async function pickDir(){
+    if(!REC.fs){ dirUI(); return false; }
+    try{ REC.dir=await window.showDirectoryPicker({id:'tirofijo', mode:'readwrite', startIn:'videos'}); await kv('dir',REC.dir); REC.perm=null; dirUI(); return true; }
+    catch(e){ return false; }
+  }
+  // permiso de escritura: se pide una vez por clic (el navegador lo exige con un clic del usuario)
+  function dirReady(){
+    if(!REC.fs) return Promise.resolve(false);
+    if(REC.perm) return REC.perm;
+    REC.perm=(async()=>{ if(!REC.dir && !(await pickDir())) return false;
+      try{ if(await REC.dir.queryPermission({mode:'readwrite'})==='granted') return true;
+        return await REC.dir.requestPermission({mode:'readwrite'})==='granted'; }catch(e){ return false; } })();
+    REC.perm.then(ok=>{ if(!ok) REC.perm=null; });
+    return REC.perm;
+  }
+  function recGo(p){ if(!REC.on) return; p.recWanted=true;
+    if(p.rec){ if(p.rec.paused){ try{ p.rec.rec.resume(); }catch(e){} p.rec.pausedMs+=performance.now()-p.rec.pauseAt; p.rec.paused=false; } return; }
+    recStart(p); }
+  async function recStart(p){
+    if(p.rec || !p.stream || !window.MediaRecorder) return;
+    const types=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'];
+    const mt=types.find(t=>{ try{ return MediaRecorder.isTypeSupported(t); }catch(e){ return false; } })||'';
+    const d0=new Date(), ext=/mp4/.test(mt)?'mp4':'webm', pu=safeName(p.src.kind==='g2r'?p.src.name:'Puesto '+p.n)||('Puesto '+p.n);
+    const base=locStamp(d0)+'_'+pu.replace(/ /g,'_')+(p.shooter?'_'+safeName(p.shooter).replace(/ /g,'_'):'');
+    let rec; try{ rec=new MediaRecorder(p.stream, mt?{mimeType:mt, videoBitsPerSecond:3000000}:{videoBitsPerSecond:3000000}); }catch(e){ log(p.label+': no se puede grabar ('+e.message+')'); return; }
+    const R={rec, d0:d0.getTime(), t0:performance.now(), pausedMs:0, paused:false, mt:rec.mimeType||mt||'video/webm', ext, base, pu, chunks:[], wq:Promise.resolve(), w:null, fh:null, path:'',
+      vw:p.video.videoWidth, vh:p.video.videoHeight, shooter:p.shooter||''};
+    p.rec=R;
+    rec.ondataavailable=e=>{ if(!e.data||!e.data.size) return; if(R.w) R.wq=R.wq.then(()=>R.w.write(e.data)).catch(err=>log(p.label+': error al escribir el vídeo '+err.message)); else R.chunks.push(e.data); };
+    rec.onstop=()=>recFinish(p,R);
+    rec.start(1000);
+    if(await dirReady()){ try{
+        const d1=await REC.dir.getDirectoryHandle(pu,{create:true}), d2=await d1.getDirectoryHandle(locStamp(d0).slice(0,8),{create:true});
+        R.dir=d2; R.fh=await d2.getFileHandle(base+'.'+ext,{create:true}); const w=await R.fh.createWritable();
+        R.path=REC.dir.name+'/'+pu+'/'+locStamp(d0).slice(0,8)+'/'+base+'.'+ext;
+        R.wq=R.wq.then(async()=>{ for(const c of R.chunks) await w.write(c); R.chunks=[]; R.w=w; });
+      }catch(e){ log(p.label+': no se pudo crear el archivo en la carpeta ('+e.message+'); se descargará al terminar'); } }
+    log(p.label+': grabando la tirada'); paint(p);
+  }
+  function recPause(p){ const R=p.rec; if(!R||R.paused) return; try{ R.rec.pause(); }catch(e){} R.paused=true; R.pauseAt=performance.now(); }
+  function recStop(p){ p.recWanted=false; const R=p.rec; if(!R) return; p.rec=null; if(R.paused){ R.pausedMs+=performance.now()-R.pauseAt; R.paused=false; }
+    R.shots=p.m.S.shots.map((s,i)=>({n:i+1, ring:s.ring, dec:s.dec, manual:!!s.manual, drop:!!s.drop,
+      vt:s.vt!=null?s.vt:Math.max(0,(s.t-R.d0)/1000-1.5), vx:s.vx, vy:s.vy})).filter(s=>s.vt!=null);
+    R.dur=(performance.now()-R.t0-R.pausedMs)/1000; R.tot=p.m.totals();
+    R.stopped=true; try{ R.rec.state!=='inactive' ? R.rec.stop() : recFinish(p,R); }catch(e){ recFinish(p,R); }
+    paint(p);
+  }
+  async function recFinish(p,R){
+    if(R.fin) return; R.fin=true;
+    if(!R.stopped){ // la cámara se cortó a mitad: se guarda lo grabado y se seguirá en otro archivo al reconectar
+      R.shots=p.m.S.shots.map((s,i)=>({n:i+1, ring:s.ring, dec:s.dec, manual:!!s.manual, drop:!!s.drop, vt:s.vt, vx:s.vx, vy:s.vy})).filter(s=>s.vt!=null);
+      R.dur=(performance.now()-R.t0-R.pausedMs)/1000; R.tot=p.m.totals(); if(p.rec===R) p.rec=null; }
+    const meta={app:'Tirofijo PC', ver:PCVER, puesto:R.pu, tirador:R.shooter||p.shooter||'', fecha:new Date(R.d0).toISOString(), mt:R.mt, vw:R.vw, vh:R.vh, dur:R.dur,
+      diana:(TARGETS[p.m.S.target]||{name:'personalizada'}).name, aro1mm:p.m.targetD(), calibremm:+p.m.S.caliber||0,
+      total:R.tot?R.tot.sum:0, shots:R.shots||[]};
+    const json=new Blob([JSON.stringify(meta,null,1)],{type:'application/json'});
+    let item={meta, name:R.base, path:R.path};
+    try{
+      await R.wq;
+      if(R.w){ await R.w.close(); const jh=await R.dir.getFileHandle(R.base+'.json',{create:true}), jw=await jh.createWritable(); await jw.write(json); await jw.close();
+        item.getVideo=()=>R.fh.getFile(); }
+      else { const blob=new Blob(R.chunks,{type:R.mt}); item.getVideo=async()=>blob; dl(blob,R.base+'.'+R.ext); dl(json,R.base+'.json'); item.path='Descargas/'+R.base+'.'+R.ext; }
+    }catch(e){ log(p.label+': error al cerrar la grabación: '+e.message); }
+    REC.done.unshift(item); p.lastRep=item;
+    msg(p,'🎬 Tirada guardada'+(item.path?': '+item.path:'')); setTimeout(()=>{ if(p.msgTxt&&p.msgTxt.startsWith('🎬')) msg(p,''); },8000);
+    log(p.label+': tirada guardada '+(item.path||''));
+    if(p.recWanted && !p.rec && p.m.armed) setTimeout(()=>recStart(p),500);
+  }
+  function dl(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000); }
+
+  /* ---------- REPETICIONES: lista y visor de cada disparo (cámara lenta, fotograma a fotograma, zoom) ---------- */
+  function repModal(html){ $('#repBody').innerHTML=html; $('#repModal').classList.add('open'); }
+  function repCloseAll(){ const v=$('#rvVid'); if(v) v.pause(); if(RV&&RV.url) URL.revokeObjectURL(RV.url); RV=null; $('#repModal').classList.remove('open'); }
+  $('#repClose').onclick=repCloseAll;
+  $('#repModal').addEventListener('click',e=>{ if(e.target.id==='repModal') repCloseAll(); });
+  function repItemHtml(it,i){ const m=it.meta, d=new Date(m.fecha);
+    return '<div class="repItem"><div><b>'+esc(m.puesto)+(m.tirador?' · '+esc(m.tirador):'')+'</b> · '+d.toLocaleDateString('es-ES')+' '+d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+
+      '<span class="hint">'+m.shots.length+' disparos · total '+f1(m.total||0)+' · '+Math.max(1,Math.round((m.dur||0)/60))+' min'+(it.path?' · '+esc(it.path):'')+'</span></div>'+
+      '<button class="primary" data-rv="'+i+'">▶ Ver</button></div>'; }
+  async function repList(){
+    LIST=REC.done.slice();
+    repModal('<h3>🎬 Repeticiones</h3><div class="hint">Tiradas grabadas en esta sesión'+(REC.dir?' y en la carpeta 📁 '+esc(REC.dir.name):'')+'.</div>'+
+      '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px">'+(REC.fs?'<button id="repScan">📂 Buscar en la carpeta de grabaciones</button>':'')+
+      '<label class="chk" style="align-items:center"><button id="repOpenF">📄 Abrir vídeo y .json…</button></label><input type="file" id="repFile" accept=".webm,.mp4,.json,video/*,application/json" multiple style="display:none"></div>'+
+      '<div id="repItems"></div>');
+    repRender();
+    if($('#repScan')) $('#repScan').onclick=repScan;
+    $('#repOpenF').onclick=()=>$('#repFile').click();
+    $('#repFile').onchange=async e=>{ const fs=[...e.target.files], js=fs.filter(f=>/\.json$/i.test(f.name));
+      for(const j of js){ try{ const meta=JSON.parse(await j.text()), b=j.name.replace(/\.json$/i,''), v=fs.find(f=>f!==j&&f.name.startsWith(b+'.'));
+        if(v) LIST.unshift({meta, name:b, path:v.name, getVideo:async()=>v}); }catch(err){} }
+      const lone=fs.filter(f=>!/\.json$/i.test(f.name) && !js.some(j=>f.name.startsWith(j.name.replace(/\.json$/i,'')+'.')));
+      lone.forEach(v=>LIST.unshift({meta:{puesto:v.name, fecha:new Date(v.lastModified).toISOString(), shots:[], total:0, dur:0}, name:v.name, path:'', getVideo:async()=>v}));
+      repRender(); };
+  }
+  let LIST=[];
+  function repRender(){ const box=$('#repItems'); if(!box) return;
+    box.innerHTML=LIST.length?LIST.map(repItemHtml).join(''):'<p class="hint" style="margin-top:12px">Aún no hay ninguna. Activa «🎬 Grabar cada tirada» en ⚙ y haz una tirada'+(REC.fs?', o busca en la carpeta.':'.')+'</p>';
+    box.querySelectorAll('[data-rv]').forEach(b=>b.onclick=()=>repView(LIST[+b.dataset.rv],true)); }
+  async function repScan(){
+    if(!(await dirReady())) return; const found=[];
+    try{ for await (const [n1,h1] of REC.dir.entries()){ if(h1.kind!=='directory') continue;
+        for await (const [n2,h2] of h1.entries()){ if(h2.kind!=='directory') continue;
+          for await (const [n3,h3] of h2.entries()){ if(h3.kind!=='file'||!/\.json$/i.test(n3)) continue;
+            try{ const meta=JSON.parse(await (await h3.getFile()).text()), b=n3.replace(/\.json$/i,'');
+              let vh=null; for(const ext of ['webm','mp4']){ try{ vh=await h2.getFileHandle(b+'.'+ext); break; }catch(e){} }
+              if(vh) found.push({meta, name:b, path:REC.dir.name+'/'+n1+'/'+n2+'/'+vh.name, getVideo:()=>vh.getFile()}); }catch(e){} } } } }
+    catch(e){ log('No se pudo leer la carpeta: '+e.message); }
+    found.sort((a,b)=>new Date(b.meta.fecha)-new Date(a.meta.fecha));
+    const seen=new Set(LIST.map(i=>i.name)); LIST=LIST.concat(found.filter(f=>!seen.has(f.name)).slice(0,100)); repRender();
+  }
+  let RV=null;
+  async function repView(it, fromList){
+    if(RV&&RV.url) URL.revokeObjectURL(RV.url);
+    let blob; try{ blob=await it.getVideo(); }catch(e){ repModal('<p>No se puede abrir el vídeo: '+esc(e.message)+'</p>'); return; }
+    const url=URL.createObjectURL(blob), m=it.meta, shots=m.shots||[]; RV={it,url,sel:-1,rate:0.25,zoom:false,loop:true};
+    repModal((fromList?'<button id="rvBack" style="margin-bottom:8px">← Repeticiones</button> ':'')+'<b>'+esc(m.puesto||'')+(m.tirador?' · '+esc(m.tirador):'')+'</b>'+
+      '<div class="vwrap" id="rvWrap" style="margin-top:8px"><video id="rvVid" playsinline muted preload="auto"></video><div class="mk" id="rvMk"></div><div class="lbl" id="rvLbl">Tirada completa</div></div>'+
+      '<div class="rchips" id="rvChips">'+shots.map((s,i)=>'<button data-i="'+i+'">'+(i+1)+' · '+(s.ring===0?'0':f1(s.dec))+'</button>').join('')+'<button data-i="-1">Todo</button></div>'+
+      '<div class="ctl" id="rvRates"><button data-r="1">1×</button><button data-r="0.5">½×</button><button data-r="0.25">¼×</button><button data-r="0.1">Superlenta</button></div>'+
+      '<div class="ctl"><button id="rvPrev">◀ fotograma</button><button id="rvPlay">⏯</button><button id="rvNext">fotograma ▶</button><button id="rvZoom">🔍 Zoom</button></div>'+
+      '<p class="hint" style="margin-top:8px">Cada disparo se muestra desde 2 s antes hasta 1,5 s después y se repite. La cámara graba unos 25–30 fotogramas por segundo: el balín no suele verse en vuelo, pero sí el instante del impacto, cómo se abre el agujero y cómo reacciona la tarjeta. Teclas: ← → fotograma, espacio pausa.</p>');
+    const v=$('#rvVid'); v.src=url;
+    if(m.vw&&m.vh) $('#rvWrap').style.aspectRatio=m.vw+'/'+m.vh;
+    // los vídeos grabados en el navegador no traen duración: se fuerza a calcularla para poder saltar a cada disparo
+    v.addEventListener('loadedmetadata',()=>{ if(v.duration===Infinity||isNaN(v.duration)){ v.currentTime=1e7; v.addEventListener('timeupdate',function f(){ v.removeEventListener('timeupdate',f); v.currentTime=0; rvSel(shots.length?0:-1); }); } else rvSel(shots.length?0:-1); },{once:true});
+    v.addEventListener('timeupdate',()=>{ if(RV&&RV.sel>=0&&RV.loop){ const s=shots[RV.sel]; if(v.currentTime>s.vt+1.5) v.currentTime=Math.max(0,s.vt-2); } });
+    $('#rvChips').querySelectorAll('button').forEach(b=>b.onclick=()=>rvSel(+b.dataset.i));
+    $('#rvRates').querySelectorAll('button').forEach(b=>b.onclick=()=>{ RV.rate=+b.dataset.r; v.playbackRate=RV.rate; rvUI(); });
+    $('#rvPlay').onclick=()=>{ v.paused?v.play():v.pause(); };
+    $('#rvPrev').onclick=()=>{ v.pause(); v.currentTime=Math.max(0,v.currentTime-1/30); };
+    $('#rvNext').onclick=()=>{ v.pause(); v.currentTime=v.currentTime+1/30; };
+    $('#rvZoom').onclick=()=>{ RV.zoom=!RV.zoom; rvUI(); };
+    if($('#rvBack')) $('#rvBack').onclick=()=>{ v.pause(); const keep=LIST; repList().then(()=>{ LIST=keep; repRender(); }); };
+    rvUI();
+  }
+  function rvSel(i){
+    if(!RV) return; const v=$('#rvVid'), shots=RV.it.meta.shots||[]; RV.sel=i;
+    if(i<0){ RV.zoom=false; v.playbackRate=1; v.currentTime=0; $('#rvLbl').textContent='Tirada completa'; }
+    else { const s=shots[i]; v.currentTime=Math.max(0,s.vt-2); v.playbackRate=RV.rate;
+      $('#rvLbl').textContent='Disparo '+(i+1)+' · '+(s.ring===0?'0 (fuera)':f1(s.dec))+(s.manual?' · manual':''); }
+    v.play().catch(()=>{}); rvUI();
+  }
+  function rvUI(){
+    if(!RV) return; const v=$('#rvVid'), m=RV.it.meta, s=RV.sel>=0?(m.shots||[])[RV.sel]:null;
+    document.querySelectorAll('#rvChips button').forEach(b=>b.classList.toggle('on',+b.dataset.i===RV.sel));
+    document.querySelectorAll('#rvRates button').forEach(b=>b.classList.toggle('on',+b.dataset.r===RV.rate));
+    $('#rvZoom').classList.toggle('on',RV.zoom);
+    const mk=$('#rvMk'), W=$('#rvWrap'), vw=m.vw||v.videoWidth, vh=m.vh||v.videoHeight;
+    if(s && s.vx!=null && vw){
+      const bw=W.clientWidth, bh=W.clientHeight, ar=vw/vh; let dw=bw, dh=bw/ar; if(dh>bh){ dh=bh; dw=bh*ar; }
+      const px=(bw-dw)/2+s.vx*dw, py=(bh-dh)/2+s.vy*dh;
+      mk.style.left=px+'px'; mk.style.top=py+'px'; v.style.transformOrigin=px+'px '+py+'px';
+      v.style.transform=RV.zoom?'translate('+(bw/2-px)+'px,'+(bh/2-py)+'px) scale(3)':'none'; mk.style.display=RV.zoom?'none':'block';
+    } else { mk.style.display='none'; v.style.transform='none'; }
+  }
+  addEventListener('keydown',e=>{ if(!RV||!$('#repModal').classList.contains('open')) return; const v=$('#rvVid');
+    if(e.key==='ArrowLeft'){ v.pause(); v.currentTime=Math.max(0,v.currentTime-1/30); e.preventDefault(); }
+    else if(e.key==='ArrowRight'){ v.pause(); v.currentTime+=1/30; e.preventDefault(); }
+    else if(e.key===' '){ v.paused?v.play():v.pause(); e.preventDefault(); } });
+  $('#repBtn').onclick=repList;
+  $('#repOn').onchange=async()=>{ REC.on=$('#repOn').checked; LS('pc_rep',REC.on?'1':'0'); if(REC.on && REC.fs) await dirReady(); dirUI(); };
+  $('#dirBtn').onclick=async()=>{ if(await pickDir()) REC.perm=null; dirUI(); };
+  (async()=>{ try{ const h=await kv('dir'); if(h){ REC.dir=h; } }catch(e){} dirUI(); })();
+  /* ---------- enfoque y exposición (solo webcams; las cámaras IP se ajustan en la propia cámara) ---------- */
+  async function focusTrack(t, cmd, poi){
+    if(!t) return {ok:false, why:'sin cámara'};
+    let caps={}; try{ caps=t.getCapabilities?t.getCapabilities():{}; }catch(e){}
+    const modes=caps.focusMode||[];
+    if(!modes.length) return {ok:false, why:'esta cámara no permite controlar el enfoque'};
+    const P_ = poi ? {pointsOfInterest:[{x:Math.min(1,Math.max(0,poi.x)), y:Math.min(1,Math.max(0,poi.y))}]} : {};
+    let poiOk=false;
+    const ap=async c=>{ try{ await t.applyConstraints({advanced:[c]}); return true; }catch(e){ return false; } };
+    if(poi){ poiOk=await ap(P_);
+      try{ const st=t.getSettings(); poiOk = poiOk && !!(st.pointsOfInterest && st.pointsOfInterest.length); }catch(e){ poiOk=false; } }
+    if(cmd==='af'){ if(!modes.includes('continuous')) return {ok:false, why:'sin autoenfoque continuo'}; await ap(Object.assign({focusMode:'continuous'},P_)); return {ok:true, af:true, poi:poiOk}; }
+    if(cmd==='manual'){ if(!modes.includes('manual')) return {ok:false, why:'no admite enfoque fijo'}; await ap({focusMode:'manual'}); return {ok:true, af:false}; }
+    const prev=(t.getSettings&&t.getSettings().focusMode)||'continuous';
+    if(modes.includes('single-shot')) await ap(Object.assign({focusMode:'single-shot'},P_));
+    else if(modes.includes('continuous')){ if(modes.includes('manual')) await ap({focusMode:'manual'}); await ap(Object.assign({focusMode:'continuous'},P_)); }
+    if(prev==='manual') setTimeout(()=>ap({focusMode:'manual'}),1500);
+    else if(prev==='continuous' && modes.includes('continuous')) setTimeout(()=>ap(Object.assign({focusMode:'continuous'},P_)),1500);
+    return {ok:true, poi:poiOk, af:prev!=='manual'};
+  }
+  async function expoTrack(t, dir){
+    if(!t) return {ok:false, why:'sin cámara'};
+    let caps={}, st={}; try{ caps=t.getCapabilities?t.getCapabilities():{}; st=t.getSettings?t.getSettings():{}; }catch(e){}
+    const ec=caps.exposureCompensation;
+    if(!ec || !(ec.max>ec.min)) return {ok:false, why:'esta cámara no permite cambiar la exposición'};
+    const stp=Math.max(ec.step||0.1,(ec.max-ec.min)/12), cur=typeof st.exposureCompensation==='number'?st.exposureCompensation:0;
+    const v=Math.max(ec.min,Math.min(ec.max,Math.round((cur+dir*stp)/(ec.step||0.1))*(ec.step||0.1)));
+    try{ await t.applyConstraints({advanced:[{exposureMode:'continuous', exposureCompensation:v}]}); }catch(e){ return {ok:false, why:'no aceptó el cambio'}; }
+    return {ok:true, val:v, min:ec.min, max:ec.max};
+  }
+  async function camCmd(p,a){
+    const T=p.el.querySelector('.qcamT');
+    if(p.src.kind!=='cam'){ T.textContent='Enfoque y exposición se ajustan en la propia cámara IP.'; return; }
+    const t=p.stream&&p.stream.getVideoTracks()[0];
+    if(a==='expM'||a==='expP'){ const r=await expoTrack(t,a==='expP'?1:-1);
+      T.textContent=r.ok?'Exposición '+(r.val>0?'+':'')+(+r.val).toFixed(1)+' · referencia rehecha. Con luz trasera: que el papel no se vea quemado':'⚠ '+r.why;
+      if(r.ok) p.m.resetRef(); return; }
+    const center=a==='focusC', r=await focusTrack(t, center?'once':a==='af'?'af':'manual', center?p.m.targetCenterVid():null);
+    T.textContent=!r.ok?'⚠ Enfoque: '+r.why : center?(r.poi?'⊕ Enfocado al centro de la diana':'⊕ Enfocado (esta cámara no deja elegir el punto: enfoca la zona central)')
+      : r.af===false?'Enfoque fijo (no cambiará al disparar)':'Autoenfoque continuo';
+  }
+
+  function onShot(p,sh){
+    if(p.rec && !p.rec.paused && sh.imp!=null) sh.vt=Math.max(0,(sh.imp-p.rec.t0-p.rec.pausedMs)/1000);
+    askClose(p);
+    const f=p.el.querySelector('.flash'); f.textContent=sh.ring>0?f1(sh.dec):'0'; f.classList.remove('show'); void f.offsetWidth; f.classList.add('show');
+    log(p.label+(p.shooter?' ('+p.shooter+')':'')+': disparo '+p.m.S.shots.length+' → '+f1(sh.dec));
+    paint(p); persist(p);
+  }
+  function paint(p){
+    const T=p.m.totals(), S=p.m.S, el=p.el;
+    el.querySelector('.last').textContent=T.last?f1(T.last.dec):'—';
+    el.querySelector('.tot').textContent=f1(T.sum);
+    el.querySelector('.ntir').textContent=(T.counted<T.n?T.counted+'/':'')+T.n+(T.n===1?' tiro':' tiros')+(S.shotLimit?' de '+S.shotLimit:'')+' · '+T.sumInt+' pts';
+    el.classList.toggle('armed',p.m.armed);
+    el.querySelector('.badge').textContent=(p.m.armed?'● DETECTANDO':'PARADO')+(p.rec?(p.rec.paused?' · REC en pausa':' · 🔴 REC'):'');
+    el.querySelector('.cOut').checked=S.countOut!==false; el.querySelector('.cAsk').checked=S.askShot!==false;
+    const ba=el.querySelector('[data-a="arm"]'); ba.textContent=p.m.armed?'⏸':'▶'; ba.classList.toggle('on',p.m.armed);
+    el.querySelector('[data-a="type"]').textContent=S.detectType==='laser'?'🔴':'◎';
+    el.querySelector('[data-a="type"]').title=S.detectType==='laser'?'Detectando láser (cambiar a cartón)':'Detectando cartón (cambiar a láser)';
+    el.querySelector('.selTarget').value=TARGETS[S.target]?S.target:'custom';
+    el.querySelector('.selModal').value=MODALS[S.modal]?S.modal:'issf';
+    el.querySelector('.selSens').value=S.holeSens; el.querySelector('.vSens').textContent=S.holeSens;
+    el.querySelector('.aro').innerHTML='aro 1 '+f1(p.m.targetD())+' mm<br>cal. '+f1(+S.caliber||0)+' mm';
+    if(el.classList.contains('big')) el.querySelector('.shots').innerHTML=S.shots.map((s,i)=>'<div class="'+(s.drop?'drop':'')+(i===S.shots.length-1?' lastS':'')+'" title="'+(s.manual?'marcado a mano':'')+'">'+(s.ring===0?'0':f1(s.dec))+(s.manual?'*':'')+'</div>').join('');
+  }
+  function paintStatus(p){
+    const s=p.m.status(), c=p.el.querySelector('.st');
+    if(c.textContent!==s.txt) c.textContent=s.txt; c.className='chip st '+s.st;
+    if(p.el.classList.contains('big')){ const h=p.el.querySelector('.hinfo'), t=p.m.S.detectType==='holes'?p.m.holeInfo():p.m.liveRed; if(h.textContent!==t) h.textContent=t; }
+  }
+
+  $('#grid').addEventListener('click',e=>{
+    const b=e.target.closest('[data-a]'); if(!b) return;
+    const p=P.find(x=>x.id===+b.closest('.tile').dataset.id); if(!p) return;
+    const a=b.dataset.a, m=p.m;
+    if(a==='arm'){ if(!arm(p,!m.armed) && !p.el.classList.contains('big')) setBig(p); }
+    else if(a==='preGo'){ if(preApply(p)){ p.preOk=true; p.el.classList.remove('needPre'); arm(p,true); } }
+    else if(['focusC','af','mf','expM','expP'].includes(a)){ camCmd(p,a); }
+    else if(a==='askAdd'){ p.addNext=true; clearTimeout(p.askT); p.el.classList.add('adding'); p.el.querySelector('.askTxt').innerHTML='<b>Haz clic en la diana donde fue el disparo</b>';
+      p.askT=setTimeout(()=>askClose(p),25000); return; }
+    else if(a==='askZero'){ askClose(p); m.addZero(); persist(p); }
+    else if(a==='askNo'){ askClose(p); }
+    else if(a==='fin'){ m.armed=false; askClose(p); recStop(p); p.preOk=false; }
+    else if(a==='repLast'){ if(p.lastRep) repView(p.lastRep); else { repList(); } return; }
+    else if(a==='cal'){ msg(p,'Analizando la diana…'); setTimeout(()=>{ const r=m.autoCalib();
+      msg(p, r.ok ? '🎯 '+r.name+(r.hint?' · '+r.hint:'')+' · comprueba los aros' : '🎯 '+r.msg);
+      if(r.ok && p.src.kind==='cam') setTimeout(()=>camCmd(p,'focusC'),300);
+      setTimeout(()=>{ if(p.msgTxt&&p.msgTxt.startsWith('🎯')) msg(p,''); },6000); persist(p); paint(p); },30); }
+    else if(a==='type'){ m.setDetect(m.S.detectType==='laser'?'holes':'laser'); persist(p); }
+    else if(a==='undo'){ if(m.undo()) persist(p); }
+    else if(a==='new'){ if(!m.S.shots.length || confirm('¿Borrar los '+m.S.shots.length+' disparos de '+(p.shooter||'Puesto '+p.n)+'?')){ recStop(p); askClose(p); m.clear(); m.armed=false; p.preOk=false; persist(p); } }
+    else if(a==='big'){ setBig(p.el.classList.contains('big')?null:p); }
+    else if(a==='ref'){ m.resetRef(); msg(p,'Referencia rehecha'); setTimeout(()=>msg(p,''),2500); }
+    else if(a==='remove'){ if(confirm('¿Quitar '+p.label+' de la galería?')){ setBig(null); removePuesto(p); } return; }
+    paint(p);
+  });
+  function setBig(p){ P.forEach(x=>x.el.classList.toggle('big',x===p)); if(p) paint(p); }
+  addEventListener('keydown',e=>{ if(e.key==='Escape') setBig(null); });
+
+  $('#allArm').onclick=()=>{ let n=0; P.forEach(p=>{ if(!arm(p,true)) n++; });
+    if(n) say(n===1?'1 puesto espera que confirmes aro 1 y calibre (⛶)':n+' puestos esperan que confirmes aro 1 y calibre (⛶)'); };
+  $('#allStop').onclick=()=>{ P.forEach(p=>arm(p,false)); };
+  $('#allNew').onclick=()=>{ const n=P.reduce((a,p)=>a+p.m.S.shots.length,0);
+    if(n && !confirm('¿Borrar los disparos de todos los puestos ('+n+' en total)?')) return; P.forEach(p=>{ recStop(p); askClose(p); p.m.clear(); p.m.armed=false; p.preOk=false; persist(p); paint(p); }); };
+  $('#cfgBtn').onclick=()=>$('#cfg').classList.toggle('hide');
+
+  function layout(){
+    const n=P.length, c=+$('#colsSel').value || (n<=1?1:n<=4?2:n<=9?3:4);
+    document.documentElement.style.setProperty('--cols',c); document.documentElement.style.setProperty('--rows',Math.max(1,Math.ceil(n/c)));
+    $('#empty').style.display=n?'none':'block';
+    say(n?(n===1?'1 puesto':n+' puestos'):'Sin cámaras');
+  }
+  $('#colsSel').onchange=()=>{ LS('pc_cols',$('#colsSel').value); layout(); };
+  addEventListener('resize',layout);
+
+  /* ---------- cámaras de go2rtc ---------- */
+  async function readG2r(){
+    const base=$('#g2r').value.replace(/\/$/,''); LS('pc_g2r',$('#g2r').value);
+    if(location.protocol==='https:' && /^http:/.test(base) && !/^http:\/\/(localhost|127\.)/.test(base)){
+      say('Desde esta página (https) solo se llega a go2rtc en este mismo PC (localhost). Si go2rtc está en otro equipo, abre la página desde él.',1); return; }
+    say('Leyendo cámaras…');
+    try{
+      const r=await fetch(base+'/api/streams'); if(!r.ok) throw new Error('go2rtc respondió '+r.status);
+      const names=Object.keys(await r.json());
+      if(!names.length){ say('go2rtc no tiene cámaras configuradas',1); return; }
+      names.forEach(n=>addPuesto({kind:'g2r', name:n}, n));
+      LS('pc_auto','1'); layout(); log('go2rtc: '+names.length+' cámaras');
+    }catch(e){ say('No se puede leer go2rtc en '+base+' ('+e.message+'). ¿Está abierto go2rtc?',1); }
+  }
+  $('#connBtn').onclick=readG2r;
+
+  /* ---------- webcams (para probar sin cámaras IP) ---------- */
+  async function listCams(){
+    try{ const ds=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+      $('#camSel').innerHTML='<option value="">— elegir —</option>'+ds.map((d,i)=>'<option value="'+esc(d.deviceId)+'">'+esc(d.label||'Cámara '+(i+1))+'</option>').join('');
+      return ds; }catch(e){ return []; }
+  }
+  $('#camSel').addEventListener('focus',async()=>{ const ds=await listCams();
+    if(ds.length && !ds[0].label){ try{ const s=await navigator.mediaDevices.getUserMedia({video:true}); s.getTracks().forEach(t=>t.stop()); await listCams(); }catch(e){} } });
+  $('#camAdd').onclick=async()=>{
+    let id=$('#camSel').value;
+    if(!id){ try{ const s=await navigator.mediaDevices.getUserMedia({video:true}); id=s.getVideoTracks()[0].getSettings().deviceId||''; s.getTracks().forEach(t=>t.stop()); await listCams(); }
+      catch(e){ say('No se puede abrir la webcam: '+e.message,1); return; } }
+    const opt=[...$('#camSel').options].find(o=>o.value===id), label=opt&&opt.value?opt.textContent:'Webcam';
+    addPuesto({kind:'cam', deviceId:id, label}, label); saveList();
+  };
+
+  /* ---------- bucle: cada puesto analiza su imagen (~30 por segundo) ---------- */
+  let lastF=0, lastS=0;
+  function loop(t){
+    requestAnimationFrame(loop);
+    if(t-lastF<30) return; lastF=t;
+    for(const p of P){ if(p.stream && p.video.readyState>=2){ try{ p.m.step(); }catch(e){ if(!p.errLogged){ p.errLogged=1; log(p.label+': '+e.message); } } } }
+    if(t-lastS>300){ lastS=t; P.forEach(paintStatus); }
+  }
+  requestAnimationFrame(loop);
+
+  // la pantalla del PC no se apaga mientras la galería está abierta
+  async function wake(){ try{ if(navigator.wakeLock) await navigator.wakeLock.request('screen'); }catch(e){} }
+  wake(); document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') wake(); });
+  addEventListener('beforeunload',e=>{ P.forEach(persist); if(P.some(p=>p.rec)){ P.forEach(recStop); e.preventDefault(); e.returnValue=''; } });
+
+  // arranque: webcams guardadas y, si ya se usó, las cámaras de go2rtc
+  try{ (JSON.parse(LS('pc_cams')||'[]')||[]).forEach(s=>addPuesto(s, s.label||'Webcam')); }catch(e){}
+  const autoG=LS('pc_auto')==='1' || servedByG2r;     // abierta desde go2rtc: lee las cámaras sola
+  if(autoG) readG2r();
+  if(P.length || autoG) $('#cfg').classList.add('hide');
+  layout();
+})();
+</script>
+</body>
+</html>
