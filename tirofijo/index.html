@@ -38,6 +38,12 @@
   #overlay{position:absolute; inset:0; width:100%; height:100%; touch-action:none;}
 
   /* barra de ajuste flotante */
+  #askShot{position:absolute; left:8px; right:8px; top:52px; z-index:21; display:none; background:rgba(13,17,23,.92); border:1px solid var(--gold);
+    border-radius:12px; padding:8px 10px; font-size:13px; color:var(--txt);}
+  #askShot.open{display:block;}
+  #askShot .row{display:flex; gap:6px; margin-top:6px;}
+  #askShot button{flex:1; border:1px solid var(--line); background:var(--panel); color:var(--txt); border-radius:9px; padding:8px 4px; font-weight:700; font-size:13px;}
+  #askShot button.y{background:var(--gold); border-color:var(--gold); color:#1a1200;}
   #quickBar{position:absolute; left:0; right:0; bottom:0; z-index:19; display:none; padding:8px 8px calc(8px + env(safe-area-inset-bottom));
     background:rgba(11,18,27,.78); border-top:1px solid var(--line); backdrop-filter:blur(4px);}
   #quickBar.open{display:block;}
@@ -390,6 +396,8 @@
       </div>
     </div>
 
+    <div id="askShot"><span id="askTxt"></span>
+      <div class="row"><button class="y" id="askAdd">➕ Tocar dónde fue</button><button id="askZero">0 · fuera</button><button id="askNo">✕ No</button></div></div>
     <div id="quickBar">
       <div class="qT" id="qT">Ajustes rápidos · la imagen sigue en directo</div>
       <div class="qPre">
@@ -510,6 +518,8 @@
       <input type="range" id="roundv" min="12" max="40" value="26">
       <div class="switchrow" style="margin-top:10px"><span>Solo dentro de la diana</span><div class="sw on" id="swInside"></div></div>
       <div class="switchrow"><span>Compensar cambios de luz</span><div class="sw on" id="swLight"></div></div>
+      <div class="switchrow"><span>Disparos fuera del aro 1 cuentan como 0</span><div class="sw on" id="swOut"></div></div>
+      <div class="switchrow"><span>Preguntar «¿disparo?» si la tarjeta se mueve sin agujero nuevo</span><div class="sw on" id="swAsk"></div></div>
       <div class="switchrow"><span>🎥 Grabar vídeo de diagnóstico</span><div class="sw" id="swDiag"></div></div>
       <p style="margin-top:-4px">Graba lo que ve la cámara durante la sesión y lo que detecta la app. Al terminar puedes descargarlo y enviarlo para ajustar la detección a tu galería.</p>
       <button class="btn" id="btnRecalib" style="margin-top:10px">Rehacer referencia ahora</button>
@@ -725,7 +735,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v25.8', APPDATE='25-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v25.9', APPDATE='26-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -739,7 +749,7 @@
     fit:'contain', // contain = imagen completa | cover = llenar pantalla
     ringColor:'#ff2bd6', ringW:1.0, minRing:1, scoreRule:'edge', bestOf:0, shotLimit:0, modal:'issf', // anillos: color vivo y grosor
     holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9, target:'p25',
-    insideOnly:true, lightComp:true, backlit:false, ref:null, cand:null,
+    insideOnly:true, lightComp:true, backlit:false, countOut:true, askShot:true, ref:null, cand:null,
     persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null,
     phase:'idle', // idle | ready | leadin | running | paused | camera
@@ -1322,23 +1332,23 @@
 
   /* ---------- manchas conectadas (separa una mancha real del ruido suelto) ---------- */
   const LAB={buf:null};
-  const HOLE_PK=20;   // cambio mínimo en el centro de un impacto (niveles de gris): un brillo o reflejo cambia menos
-  function blobs(mask,w,h,edge,val){
+  const HOLE_PK=28;   // cambio mínimo en el centro de un impacto (niveles de gris): un brillo o reflejo cambia menos
+  function blobs(mask,w,h,edge,val,inner){
     const N=w*h; if(!LAB.buf||LAB.buf.length!==N) LAB.buf=new Int32Array(N); const lab=LAB.buf; lab.fill(0);
     const out=[], st=[]; let id=0;
     for(let i=0;i<N;i++){
       if(!mask[i]||lab[i]) continue;
       id++; lab[i]=id; st.push(i);
-      let n=0,sx=0,sy=0,minx=w,miny=h,maxx=0,maxy=0,ne=0,pk=-1,pkv=-Infinity;
+      let n=0,sx=0,sy=0,minx=w,miny=h,maxx=0,maxy=0,ne=0,ni=0,pk=-1,pkv=-Infinity;
       while(st.length){
-        const j=st.pop(), x=j%w, y=(j/w)|0; n++; sx+=x; sy+=y; if(edge&&edge[j]) ne++; if(val&&val[j]>pkv){ pkv=val[j]; pk=j; }
+        const j=st.pop(), x=j%w, y=(j/w)|0; n++; sx+=x; sy+=y; if(edge&&edge[j]) ne++; if(inner&&inner[j]) ni++; if(val&&val[j]>pkv){ pkv=val[j]; pk=j; }
         if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
         for(let dy=-1;dy<=1;dy++){ const yy=y+dy; if(yy<0||yy>=h) continue;
           for(let dx=-1;dx<=1;dx++){ const xx=x+dx; if(xx<0||xx>=w) continue;
             const k=yy*w+xx; if(mask[k]&&!lab[k]){ lab[k]=id; st.push(k); } } }
       }
       const bw=maxx-minx+1, bh=maxy-miny+1;
-      out.push({n, ne, pk, pkv, cx:sx/n, cy:sy/n, bw, bh, ar:Math.max(bw/bh,bh/bw), fill:n/(bw*bh)});
+      out.push({n, ne, ni:inner?ni:n, pk, pkv, cx:sx/n, cy:sy/n, bw, bh, ar:Math.max(bw/bh,bh/bw), fill:n/(bw*bh)});
     }
     return out;
   }
@@ -1426,17 +1436,18 @@
     const d=cal/dmm*2*HD.RR, r=Math.max(1,Math.round(0.45*d));
     return {d, r, A:Math.PI*Math.pow(d/2+r,2)};
   }
+  const ROI_EXT=1.3;          // se analiza hasta 1,3× el aro 1: los disparos fuera cuentan como 0
   function computeRoi(){
     const vw=video.videoWidth, vh=video.videoHeight; if(!vw||!S.W) return null;
     let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
-    for(let a=0;a<32;a++){ const t=a/32*2*Math.PI, p=normToScreen(1.08*Math.cos(t),1.08*Math.sin(t));
+    for(let a=0;a<32;a++){ const t=a/32*2*Math.PI, p=normToScreen(ROI_EXT*Math.cos(t),ROI_EXT*Math.sin(t));
       mnx=Math.min(mnx,p.x); mny=Math.min(mny,p.y); mxx=Math.max(mxx,p.x); mxy=Math.max(mxy,p.y); }
     const a0=mapCover(0,0), a1=mapCover(1,1), dw=a1.x-a0.x, dh=a1.y-a0.y;
     const vx0=(mnx-a0.x)/dw*vw, vy0=(mny-a0.y)/dh*vh, vx1=(mxx-a0.x)/dw*vw, vy1=(mxy-a0.y)/dh*vh;
     const x0=Math.max(0,Math.floor(vx0)), y0=Math.max(0,Math.floor(vy0));
     const x1=Math.min(vw,Math.ceil(vx1)), y1=Math.min(vh,Math.ceil(vy1)), bw=x1-x0, bh=y1-y0;
     if(bw<20||bh<20) return null;
-    const rv=Math.sqrt((vx1-vx0)*(vy1-vy0))/2/1.08;                  // radio de la diana en px de vídeo
+    const rv=Math.sqrt((vx1-vx0)*(vy1-vy0))/2/ROI_EXT;                  // radio de la diana en px de vídeo
     HD.rv=rv;
     // se analiza con todo el detalle que da la cámara (hasta 300 px de radio): los impactos pequeños se ven mejor
     HD.RR=170; const sc=HD.RR/rv;
@@ -1566,22 +1577,22 @@
     const every=Math.min(250,100*Math.pow((HD.RR||170)/170,2));      // 10 análisis/s (menos si se analiza con más detalle)
     if(now-HD.lastRun<every) return null; HD.lastRun=now;
     const R=computeRoi(); if(!R) return null;
-    const key=[R.x0,R.y0,R.bw,R.bh,R.w,R.h,S.insideOnly,S.dianaMode].join(',');
+    const key=[R.x0,R.y0,R.bw,R.bh,R.w,R.h,S.insideOnly,S.dianaMode,S.countOut].join(',');
     if(key!==HD.key){                                                   // cambió la geometría: rehace la máscara de diana
       HD.key=key; HD.R=R; HD.lastOff={x:0,y:0}; HD.curA=AFF_I; HD.baseA=AFF_I; HD.base=null; HD.avg=null; HD.prevHalf=null; HD.stableSince=0; HD.cands=[];
-      const lim=S.insideOnly?1.04:1.3, ins=new Uint8Array(R.w*R.h);
-      for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const p=roiToScreen(R,x+0.5,y+0.5);
-        if(normFromScreen(p.x,p.y).dRel<=lim) ins[y*R.w+x]=1; }
-      HD.ins=ins;
-      const edge=new Uint8Array(R.w*R.h); for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const i=y*R.w+x; if(!ins[i]) continue;
-        for(let dy=-2;dy<=2&&!edge[i];dy++)for(let dx=-2;dx<=2;dx++){ const xx=x+dx,yy=y+dy; if(xx<0||yy<0||xx>=R.w||yy>=R.h||!ins[yy*R.w+xx]){ edge[i]=1; break; } } }
+      const lim=1.04, limD=(S.countOut!==false)?1.27:1.04, ins=new Uint8Array(R.w*R.h), insD=new Uint8Array(R.w*R.h), dr=new Float32Array(R.w*R.h);
+      for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const p=roiToScreen(R,x+0.5,y+0.5), d=normFromScreen(p.x,p.y).dRel, i=y*R.w+x;
+        dr[i]=d; if(d<=lim) ins[i]=1; if(d<=limD) insD[i]=1; }
+      HD.ins=ins; HD.insD=insD;
+      const edge=new Uint8Array(R.w*R.h); for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const i=y*R.w+x; if(!insD[i]) continue;
+        for(let dy=-2;dy<=2&&!edge[i];dy++)for(let dx=-2;dx<=2;dx++){ const xx=x+dx,yy=y+dy; if(xx<0||yy<0||xx>=R.w||yy>=R.h||!insD[yy*R.w+xx]){ edge[i]=1; break; } } }
       HD.edge=edge;
       // la diana se divide en cuatro cuartos: cada uno con su propia corrección de luz (sombras, foco lateral)
       const cx0=R.w/2, cy0=R.h/2; HD.qi=new Uint8Array(R.w*R.h); HD.qins=[0,1,2,3].map(()=>new Uint8Array(R.w*R.h));
       for(let y=0;y<R.h;y++)for(let x=0;x<R.w;x++){ const i=y*R.w+x, q=(y>=cy0?2:0)+(x>=cx0?1:0); HD.qi[i]=q; if(ins[i]) HD.qins[q][i]=1; }
       HD.qn=HD.qins.map(m=>{ let c=0; for(let i=0;i<m.length;i+=3) c+=m[i]; return c; });
     }
-    const ins=HD.ins, w=R.w, h=R.h, n=w*h, cur=grabRoi(R);
+    const ins=HD.ins, insD=HD.insD||HD.ins, w=R.w, h=R.h, n=w*h, cur=grabRoi(R);
     const say=(t,st)=>{ HD.info=t; HD.state=st; $('#liveHole').textContent=t; };
     // 1) ¿hay movimiento? (mano, persona, papel que tiembla, cámara tocada): se compara con el análisis anterior
     const hw=w>>1, hh=h>>1, half=new Float32Array(hw*hh);
@@ -1628,13 +1639,14 @@
     // ruido de la cámara (desviación robusta del residuo en zonas lisas): sube los umbrales si la imagen es ruidosa
     const rs=[]; for(let i=0;i<n;i+=7){ if(ins[i] && grad[i]<HOLE_G0*0.25){ const q=qi[i]; rs.push(Math.abs(cur[i]-(QG[q]*ref[i]+QO[q]))); } }
     rs.sort((a,b)=>a-b); const sig=rs.length>50?1.4826*rs[rs.length>>1]:2; HD.sig=sig;
+    { const pv=[]; for(let i=0;i<n;i+=11) if(ins[i]) pv.push(ref[i]); pv.sort((a,b)=>a-b); HD.paper=pv.length?pv[Math.floor(pv.length*0.9)]:200; }
     const BL=!!S.backlit, thrD=Math.max(HOLE_THR_D,3.5*sig), thrL=Math.max(HOLE_THR_L,4.5*sig);
     const vr=HD.vr, VK=3.2-0.2*S.holeSens, VC=2.6-0.1*S.holeSens;
     const E=new Float32Array(n), DF=new Float32Array(n); let big=0,cnt=0;
-    for(let i=0;i<n;i++){ if(!ins[i]) continue; cnt++;
+    for(let i=0;i<n;i++){ if(!insD[i]) continue; if(ins[i]) cnt++;
       const q=qi[i], c=cur[i], pr=QG[q]*ref[i]+QO[q], raw=BL?Math.max(0,c-pr):Math.abs(c-pr), d=Math.max(0,raw-0.5*sig);   // se descuenta parte del ruido típico
       const tb=ref[i]<sn.mid?thrD:thrL, thr=Math.max(tb, Math.min(VC*tb, VK*Math.sqrt(vr[i])));
-      DF[i]=raw; if(raw>thr) big++;
+      DF[i]=raw; if(raw>thr&&ins[i]) big++;
       let e=d/thr; if(e>2) e=2; const gq=grad[i]/HOLE_G0; E[i]=e/(1+gq*gq); }
     if(big>cnt*0.15){   // la cámara se ha movido o la luz ha cambiado mucho: nueva referencia
       setBase(cur); HD.cands=[]; HD.view=null; HD.quietSince=now;
@@ -1646,14 +1658,14 @@
     for(let y=0;y<h;y++){ const ya=Math.max(0,y-r), yb=Math.min(h,y+r+1);
       for(let x=0;x<w;x++){ const xa=Math.max(0,x-r), xb=Math.min(w,x+r+1);
         const v=(I[yb*W1+xb]-I[ya*W1+xb]-I[yb*W1+xa]+I[ya*W1+xa])/((yb-ya)*(xb-xa));
-        if(v>mx && ins[y*w+x]) mx=v; if(v>Tb) mask[y*w+x]=1; } }
+        if(v>mx && ins[y*w+x]) mx=v; if(v>Tb && insD[y*w+x]) mask[y*w+x]=1; } }
     // manchas con tamaño y forma de impacto, que no estén donde ya se marcó uno
     // (los impactos ya registrados se ignoran: así un parche pegado encima o un agujero que se rasga no cuentan)
     const near=0.9*hs.d/HD.RR, known=S.shots.map(s=>({rx:s.rx,ry:s.ry})).concat(HD.recent);
-    const all=blobs(mask,w,h,HD.edge,DF);
+    const all=blobs(mask,w,h,HD.edge,DF,ins);
     // algo grande tapa la diana (mano o persona quieta delante): no se cuenta nada ni se toca la referencia.
     // Si sigue así más de 6 s, es un cambio permanente (p. ej. han movido la diana): nueva referencia
-    if(all.some(c=>c.n>12*hs.A)){
+    if(all.some(c=>c.ni>12*hs.A)){
       HD.cands=[]; HD.view=null; HD.quietSince=0;
       if(!HD.occSince) HD.occSince=now;
       else if(now-HD.occSince>6000){ setBase(cur); HD.occSince=0; say('Cambio permanente en la diana: referencia rehecha','ok'); return null; }
@@ -1663,7 +1675,7 @@
     const bigOk=c=>c.n>3.5*hs.A && c.n<=10*hs.A && c.ar<=1.8 && c.fill>=0.5;   // redondo pero más grande de lo esperado
     if(all.some(bigOk)) HD.bigSeen=(HD.bigSeen||0)+1;
     const ok=all.filter(c=>c.n>=Math.max(5,0.12*hs.A) && (c.n<=3.5*hs.A||bigOk(c)) && c.ar<=S.roundMax && c.fill>=0.3 && c.ne<=Math.max(4,1.2*hs.d))
-      .filter(c=>{ const at=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x>=0&&y>=0&&x<w&&y<h&&ins[y*w+x]?DF[y*w+x]:-1; };
+      .filter(c=>{ const at=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x>=0&&y>=0&&x<w&&y<h&&insD[y*w+x]?DF[y*w+x]:-1; };
         const px=c.pk%w, py=(c.pk/w)|0, rh=Math.max(1.5,hs.d/2,(c.fill>=0.7&&c.ar<=1.3)?0.5*Math.sqrt(c.n/Math.PI):0);
         // centro = media ponderada del cambio en un círculo del tamaño del impacto alrededor del pico
         let sw=0,sxx=0,syy=0; const R2=Math.ceil(rh); for(let dy=-R2;dy<=R2;dy++)for(let dx=-R2;dx<=R2;dx++){ if(dx*dx+dy*dy>rh*rh) continue; const v=at(px+dx,py+dy); if(v>0){ sw+=v; sxx+=v*(px+dx); syy+=v*(py+dy); } }
@@ -1673,7 +1685,14 @@
         if(!cn) return false; cen/=cn; c.cenv=cen; if(anN<8) return cen>=HOLE_PK; an/=anN; c.sharp=cen>0?an/cen:1;
         return cen>=HOLE_PK && an-sig<0.2*cen; })
       .map(c=>{ const u=affApply(HD.curA,c.cx+0.5,c.cy+0.5), p=roiToScreen(R,u.x,u.y), q=normFromScreen(p.x,p.y); return {...c,p,q}; })
-      .filter(c=>c.q.dRel<=1.0)      // fuera del aro 1 (pinzas, labio del soporte): no puntúa
+      .filter(c=>{ if(c.q.dRel<=1.0) return true;
+        if(S.countOut===false || c.q.dRel>1.25) return false;
+        // fuera del aro 1 cuenta como 0, pero solo si alrededor todo es papel claro (no el soporte, pinzas ni fondo)
+        if(!(c.cenv>=2*HOLE_PK) || !(c.sharp<0.15)) return false;
+        const rh=Math.max(2,hs.d/2); let mn=1e9;
+        for(let k=0;k<16;k++){ const a=k/16*6.2832; for(const f of [2.2,3.2]){ const x=Math.round(c.cx+f*rh*Math.cos(a)), y=Math.round(c.cy+f*rh*Math.sin(a));
+          if(x<0||y<0||x>=w||y>=h) return false; mn=Math.min(mn,ref[y*w+x]); } }
+        return mn>=0.7*HD.paper; })
       .filter(c=>!known.some(o=>Math.hypot(o.rx-c.q.rx,o.ry-c.q.ry)<near))
       .sort((a,b)=>b.n-a.n);
     HD.view={R,ok};
@@ -1683,7 +1702,7 @@
     if(!ok.length){ avgUpd(); if(!HD.quietSince) HD.quietSince=now; else if(now-HD.quietSince>=1000){ setBase(Float32Array.from(HD.avg)); HD.quietSince=now; } }
     else HD.quietSince=0;
     // muchas manchas a la vez no son disparos (luz, enfoque, compresión): no se cuenta nada y, si sigue, nueva referencia
-    if(ok.length>=5){ HD.cands=[]; avgUpd(); if(!HD.burstSince) HD.burstSince=now;
+    if(ok.filter(c=>c.ni>0.5*c.n).length>=5){ HD.cands=[]; avgUpd(); if(!HD.burstSince) HD.burstSince=now;
       else if(now-HD.burstSince>1500){ HD.avg=Float32Array.from(cur); HD.avgN=1; setBase(cur); HD.burstSince=0; }
       say('Muchos cambios a la vez: ignorados','mov'); return null; }
     HD.burstSince=0;
@@ -1799,6 +1818,7 @@
       // en cartón no hay espera entre disparos: cada agujero es único por su posición
       if(hs && hs.some(h=>h.big) && !HD.bigWarned){ HD.bigWarned=true; $('#pill').style.display='block';
         $('#pill').innerHTML='⚠ Los impactos se ven <b>más grandes</b> que el calibre: revisa <b>calibre</b> y <b>diámetro real del aro 1</b> en ◎ Diana (tarjetas reducidas).'; }
+      if(live && S.askShot!==false) watchShot(st, hs);
       if(hs) hs.forEach(h=>{
         HD.recent.push({rx:h.q.rx, ry:h.q.ry, t:performance.now()});
         if(live){ S.lastShot=performance.now()/1000; registerShot(h.pt.x,h.pt.y); diagLog('auto'); }
@@ -1815,6 +1835,27 @@
   }
 
   /* ---------- registro ---------- */
+  // «¿disparo?»: la tarjeta se mueve (como con un impacto) pero no aparece agujero nuevo
+  const ASK={evt:null, okOff:null};
+  const offMM=o=>o&&HD.RR?Math.hypot(o.x,o.y)/HD.RR*targetD()/2:0;
+  function watchShot(st, hs){
+    const now=performance.now();
+    if(hs&&hs.length){ ASK.evt=null; return; }                        // hubo impacto: nada que preguntar
+    if(st==='ok'){
+      if(ASK.evt && !ASK.evt.back) ASK.evt.back=now;
+      if(ASK.evt && now-ASK.evt.back>4000){
+        const o=HD.lastOff||{x:0,y:0}, d=Math.hypot(o.x-ASK.evt.off.x,o.y-ASK.evt.off.y)/HD.RR*targetD()/2;
+        const n0=ASK.evt.n; ASK.evt=null;
+        if(d>=0.25 && S.shots.length===n0) askOpen();
+      }
+      if(!ASK.evt) ASK.okOff={x:(HD.lastOff||{x:0}).x, y:(HD.lastOff||{y:0}).y};
+    } else if((st==='mov'||st==='wait') && !ASK.evt && ASK.okOff){
+      ASK.evt={t:now, off:ASK.okOff, n:S.shots.length};
+    } else if(st==='cand' && ASK.evt){ ASK.evt.back=0; }
+  }
+  let askTimer=0;
+  function askOpen(){ $('#askTxt').innerHTML='<b>¿Disparo?</b> La tarjeta se ha movido pero no aparece agujero nuevo (¿balín por un agujero ya hecho o fuera de la tarjeta?)'; $('#askShot').classList.add('open'); clearTimeout(askTimer); askTimer=setTimeout(askClose,25000); if(navigator.vibrate) navigator.vibrate([20,60,20]); }
+  function askClose(){ $('#askShot').classList.remove('open'); S.addNext=false; }
   function registerShot(x,y){
     const {rx,ry,dRel}=normFromScreen(x,y);
     const {ring,dec}=scoreFromDist(dRel);
@@ -2344,6 +2385,8 @@
   $('#roundv').oninput=e=>{S.roundMax=(+e.target.value)/10;$('#vRound').textContent=S.roundMax.toFixed(1);};
   $('#swInside').onclick=()=>{S.insideOnly=!S.insideOnly;$('#swInside').classList.toggle('on',S.insideOnly);$('#swInsideL').classList.toggle('on',S.insideOnly);};
   $('#swLight').onclick=e=>{S.lightComp=!S.lightComp;e.target.classList.toggle('on',S.lightComp);};
+  $('#swOut').onclick=e=>{S.countOut=!S.countOut;e.target.classList.toggle('on',S.countOut);resetHoles();};
+  $('#swAsk').onclick=e=>{S.askShot=!S.askShot;e.target.classList.toggle('on',S.askShot);};
   $('#btnRecalib').onclick=()=>{resetHoles();$('#liveHole').textContent='Referencia rehecha.';};
 
   document.querySelectorAll('#fireMode button').forEach(b=>b.onclick=()=>{
@@ -2627,6 +2670,7 @@ function autoCalib(rgba, W, H, TARGETS){
 
   function handleTap(x,y){
     if(S.phase==='camera'){ focusNow(); return; } // móvil-cámara: tocar = enfocar
+    if(S.addNext && S.phase==='running'){ S.addNext=false; askClose(); registerShot(x,y); S.shots[S.shots.length-1].manual=true; diagLog('add'); return; }
     if(calMode==='rvAdd'){ addShotAt(x,y); abInfo(); return; }
     if(calMode==='rvDel'){ delShotAt(x,y); abInfo(); return; }
     if(calMode){
@@ -2753,6 +2797,9 @@ function autoCalib(rgba, W, H, TARGETS){
   $('#ccTorch').onclick=async()=>{ await toggleTorch(); (CC.conns||[]).forEach(c=>{ try{ c.send({torchCap:true, torch:TORCH.on}); }catch(e){} }); };
   $('#btnTorch').onclick=toggleTorch;
   $('#btnQuick').onclick=openQuick;
+  $('#askAdd').onclick=()=>{ S.addNext=true; clearTimeout(askTimer); $('#askTxt').innerHTML='<b>Toca en la diana dónde fue el disparo</b>'; };
+  $('#askZero').onclick=()=>{ const p=normToScreen(1.2,0); askClose(); registerShot(p.x,p.y); const s=S.shots[S.shots.length-1]; s.manual=true; s.ring=0; s.dec=0; s.dRel=Math.max(s.dRel,1.2); renderStats(); diagLog('add'); };
+  $('#askNo').onclick=askClose;
   $('#qClose').onclick=closeQuick;
   $('#qAuto').onclick=()=>{ qMsg('Buscando la diana…'); setTimeout(()=>runAutoCalib(true),60); };
   $('#qFocC').onclick=()=>{ qMsg('Enfocando al centro de la diana…'); camFocus('center'); };
@@ -2866,7 +2913,7 @@ function autoCalib(rgba, W, H, TARGETS){
   const PKEY='tirofijo_perfiles';
   function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PKEY)||'{}')||{}; }catch(e){ return {}; } }
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
-  const SKEYS=['backlit','fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
+  const SKEYS=['backlit','countOut','askShot','fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
     'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target','scoreRule','bestOf','shotLimit','modal'];
   const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
   function snapshot(){
@@ -2899,7 +2946,7 @@ function autoCalib(rgba, W, H, TARGETS){
     setR('#laserMax',Math.round(S.laserMax*10),'#vLaserMax',(+S.laserMax).toFixed(1).replace('.',','));
     $('#swInsideL').classList.toggle('on',S.insideOnly);
     setR('#ringW',Math.round(S.ringW*10),'#vRingW',(+S.ringW).toFixed(1)); fillMinRing();
-    $('#swInside').classList.toggle('on',S.insideOnly); $('#swLight').classList.toggle('on',S.lightComp);
+    $('#swInside').classList.toggle('on',S.insideOnly); $('#swLight').classList.toggle('on',S.lightComp); $('#swOut').classList.toggle('on',S.countOut!==false); $('#swAsk').classList.toggle('on',S.askShot!==false);
     selSeg('#fireMode','fm',S.fireMode); selSeg('#dianaMode','dm',S.dianaMode); selSeg('#fitMode','fit',S.fit);
     document.querySelectorAll('#ringColors .rc').forEach(x=>x.classList.toggle('sel',x.dataset.c===S.ringColor));
     $('#cardStd').style.display=S.dianaMode==='standard'?'block':'none';
