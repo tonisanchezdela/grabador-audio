@@ -755,7 +755,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.0', APPDATE='26-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.1', APPDATE='26-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2225,6 +2225,7 @@
   let DIAG=null;
   /* ---------- REPETICIÓN: graba la tirada entera y permite ver cada disparo a cámara lenta ----------
      Se guarda en el propio móvil (IndexedDB), las últimas REP_MAX tiradas; se puede descargar el vídeo. */
+  const locStamp=d=>{ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+z(d.getHours())+z(d.getMinutes()); };   // hora local en los nombres de archivo
   const REP_MAX=5; let RPL=null;
   const repDB=()=>new Promise((ok,ko)=>{ const r=indexedDB.open('tirofijo_rep',1);
     r.onupgradeneeded=()=>r.result.createObjectStore('tiradas',{keyPath:'id'}); r.onsuccess=()=>ok(r.result); r.onerror=()=>ko(r.error); });
@@ -2272,7 +2273,7 @@
   }
   function repDownload(it){ const ext=/mp4/.test(it.mt)?'mp4':'webm', d=new Date(it.date);
     const a=document.createElement('a'); a.href=URL.createObjectURL(it.blob);
-    a.download='tirofijo_tirada_'+d.toISOString().slice(0,16).replace(/[-:T]/g,'')+'.'+ext; document.body.appendChild(a); a.click(); a.remove(); }
+    a.download='tirofijo_tirada_'+locStamp(d)+'.'+ext; document.body.appendChild(a); a.click(); a.remove(); }
   async function repList(){
     const body=$('#repBody'); body.innerHTML='<h3 style="margin:4px 0 10px">🎬 Repeticiones guardadas</h3><div class="hint">Últimas '+REP_MAX+' tiradas grabadas en este móvil.</div><div id="repItems"></div>';
     $('#sheetRep').classList.add('open');
@@ -2359,7 +2360,7 @@
     if(!DIAG) return; const D=DIAG; DIAG=null; clearInterval(D.st); $('#recDot').style.display='none';
     const box=$('#diagBox'); box.style.display='block'; box.innerHTML='Preparando la grabación de diagnóstico…';
     D.rec.onstop=()=>{
-      const ext=/mp4/.test(D.mt)?'mp4':'webm', stamp=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+      const ext=/mp4/.test(D.mt)?'mp4':'webm', stamp=locStamp(new Date());
       const vid=new File(D.chunks,'tirofijo_diag_'+stamp+'.'+ext,{type:D.mt});
       const info={app:APPVER, ua:navigator.userAgent, screen:{W:S.W,H:S.H,dpr:devicePixelRatio, iw:innerWidth, ih:innerHeight},
         video:{w:video.videoWidth,h:video.videoHeight}, remote:(()=>{ try{ return !video.srcObject.getVideoTracks()[0].getSettings().deviceId; }catch(e){ return null; } })(), settings:snapshot(), ev:D.ev,
