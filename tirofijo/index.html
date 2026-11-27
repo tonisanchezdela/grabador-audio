@@ -675,8 +675,7 @@
     <div class="card">
       <div class="switchrow"><span>🚦 <b>Luces</b></span><div class="sw" id="swLights"></div></div>
       <p id="lightsTxt">Con luces, mientras el temporizador está en <b style="color:#3fb950">verde</b> los impactos cuentan; en <b style="color:#f85149">rojo</b> se marcan pero <b>no cuentan</b> (salen tachados en el informe).</p>
-      <div id="lightsAlt" style="display:none"><label class="fld">En Alterno, el tramo en verde es:</label>
-        <div class="seg" id="greenOn"><button data-g="A">Tramo A</button><button data-g="B" class="sel">Tramo B</button></div></div>
+
     </div>
     <div class="card">
       <div class="switchrow"><span>🎯 <b>Número máximo de disparos</b></span><div class="sw" id="swMaxShots"></div></div>
@@ -684,12 +683,15 @@
         <input type="number" id="maxShots" value="10" min="1" max="200" inputmode="numeric"></div>
     </div>
     <div class="card" id="cardAlt" style="display:none">
-      <h3>Alterno (dos tiempos en bucle)</h3>
-      <p>Cuenta atrás de A segundos, pita, luego B segundos, pita, y vuelve a empezar. Constante. Ej.: 7 y 3.</p>
+      <h3>Alterno (rojo / verde por ciclos)</h3>
+      <p>Cada ciclo: primero el tiempo en <b style="color:#f85149">rojo</b> (esperar), pita, y luego el tiempo en <b style="color:#3fb950">verde</b> (disparar), pita. Ej. duelo: 7 s rojo y 3 s verde, 5 ciclos.</p>
       <div class="grid2">
-        <div><label class="fld">Tiempo A (s):</label><input type="number" id="altA" value="7" min="1" inputmode="numeric"></div>
-        <div><label class="fld">Tiempo B (s):</label><input type="number" id="altB" value="3" min="1" inputmode="numeric"></div>
+        <div><label class="fld">🔴 Tiempo en rojo (s):</label><input type="number" id="altA" value="7" min="1" inputmode="numeric"></div>
+        <div><label class="fld">🟢 Tiempo en verde (s):</label><input type="number" id="altB" value="3" min="1" inputmode="numeric"></div>
       </div>
+      <label class="fld">🔁 Número de ciclos (0 = sin fin):</label>
+      <input type="number" id="altCycles" value="5" min="0" max="200" inputmode="numeric">
+      <p style="margin-top:6px">Al terminar el último ciclo la tirada se acaba sola.</p>
     </div>
     <div class="card" id="cardDown" style="display:none">
       <h3>Cuenta atrás</h3>
@@ -796,7 +798,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.3', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.4', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2206,13 +2208,13 @@
 
   /* ---------- SESIÓN Y TEMPORIZADOR ---------- */
   const T={ sound:true, mode:'up', startCount:3, downSecs:60, loop:false, beepSecs:10,
-    altA:7, altB:3, altOn:'A', clock:0, lead:0, beepAcc:0, tick:null, lights:false, greenOn:'B' };
+    altA:7, altB:3, altOn:'A', cycles:5, cyc:0, clock:0, lead:0, beepAcc:0, tick:null, lights:false, greenOn:'B' };   // alterno: A = rojo, B = verde
   // luces: verde = los impactos cuentan, rojo = no cuentan (null si las luces están apagadas)
   function lightState(){
     if(!T.lights) return null;
     if(S.phase==='leadin'||S.phase==='paused') return 'red';
     if(S.phase!=='running') return null;
-    if(T.mode==='alt') return T.altOn===T.greenOn?'green':'red';
+    if(T.mode==='alt') return T.altOn==='B'?'green':'red';
     if(T.mode==='down') return T.clock>0?'green':'red';
     return 'green';
   }
@@ -2242,7 +2244,7 @@
     let lbl='SESIÓN';
     if(S.phase==='paused') lbl='PAUSA';
     else if(T.mode==='down') lbl='CUENTA ATRÁS';
-    else if(T.mode==='alt') lbl='TRAMO '+T.altOn;
+    else if(T.mode==='alt') lbl=(T.lights?'':(T.altOn==='A'?'🔴 ROJO':'🟢 VERDE')+' · ')+'CICLO '+Math.max(1,T.cyc)+(T.cycles>0?'/'+T.cycles:'');
     hud.querySelector('.ph').textContent=lbl;
     hud.querySelector('.tc').textContent=fmt(T.clock);
     hud.classList.toggle('alert', (T.mode==='down'||T.mode==='alt') && T.clock<=3 && T.clock>0);
@@ -2449,7 +2451,7 @@
     diagStart(); repStart();
     S.phase='running'; T.beepAcc=0; HD.cands=[]; HD.recent=[]; LZ.active=false; // referencias limpias
     if(T.mode==='down') T.clock=T.downSecs;
-    else if(T.mode==='alt'){ T.altOn='A'; T.clock=T.altA; }
+    else if(T.mode==='alt'){ T.altOn='A'; T.clock=T.altA; T.cyc=1; }
     else T.clock=0;
     $('#btnPause').textContent='⏸ Pausar'; $('#btnPause').classList.add('on');
     updHud(); clearTick();
@@ -2467,8 +2469,11 @@
       if(T.clock<=3 && T.clock>0) beep(660,0.12,0.35);
       if(T.clock<=0){
         // cambio de tramo, en bucle constante
-        if(T.altOn==='A'){ T.altOn='B'; T.clock=T.altB; beep(520,0.35,0.55); }
-        else { T.altOn='A'; T.clock=T.altA; beep(880,0.35,0.55); }
+        if(T.altOn==='A'){ T.altOn='B'; T.clock=T.altB; beep(880,0.35,0.55); }          // rojo → verde: ¡fuego!
+        else if(T.cycles>0 && T.cyc>=T.cycles){                                              // último ciclo terminado
+          beep(440,0.5,0.6); T.clock=0; T.altOn='A'; clearTick(); updHud();
+          flashScore('✓'); setTimeout(()=>{ if(S.phase==='running') finalizarSesion(); },1200); return; }
+        else { T.cyc++; T.altOn='A'; T.clock=T.altA; beep(520,0.35,0.55); }              // verde → rojo: siguiente ciclo
       }
     } else {
       T.clock++;
@@ -3040,11 +3045,10 @@ function autoCalib(rgba, W, H, TARGETS){
   });
   $('#downSecs').oninput=e=>{T.downSecs=Math.max(1,+e.target.value||1);};
   $('#beepSecs').oninput=e=>{T.beepSecs=Math.max(1,+e.target.value||1);};
-  function lightsUI(){ $('#swLights').classList.toggle('on',!!T.lights); $('#lightsAlt').style.display=(T.lights&&T.mode==='alt')?'block':'none';
-    document.querySelectorAll('#greenOn button').forEach(b=>b.classList.toggle('sel',b.dataset.g===T.greenOn));
+  function lightsUI(){ $('#swLights').classList.toggle('on',!!T.lights); $('#altCycles').value=T.cycles;
     $('#swMaxShots').classList.toggle('on',S.shotLimit>0); $('#maxShotsBox').style.display=S.shotLimit>0?'block':'none'; if(S.shotLimit>0) $('#maxShots').value=S.shotLimit; }
   $('#swLights').onclick=()=>{ T.lights=!T.lights; lightsUI(); try{ localStorage.setItem('tirofijo_lights',JSON.stringify({l:T.lights,g:T.greenOn})); }catch(e){} };
-  document.querySelectorAll('#greenOn button').forEach(b=>b.onclick=()=>{ T.greenOn=b.dataset.g; lightsUI(); try{ localStorage.setItem('tirofijo_lights',JSON.stringify({l:T.lights,g:T.greenOn})); }catch(e){} });
+  $('#altCycles').oninput=e=>{ T.cycles=Math.max(0,Math.min(200,parseInt(e.target.value)||0)); };
   function setShotLimit(n){ S.shotLimit=n; const sel=$('#shotLimit'); if(n>0 && ![...sel.options].some(o=>+o.value===n)){ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); }
     sel.value=String(n); S.modal='custom'; ruleUI(); lightsUI(); if(typeof puestoSave==='function') puestoSave(); }
   $('#swMaxShots').onclick=()=>setShotLimit(S.shotLimit>0?0:Math.max(1,+$('#maxShots').value||10));
@@ -3159,7 +3163,7 @@ function autoCalib(rgba, W, H, TARGETS){
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
   const SKEYS=['backlit','countOut','askShot','fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
     'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target','scoreRule','bestOf','shotLimit','modal'];
-  const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB','lights','greenOn'];
+  const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB','cycles','lights'];
   function snapshot(){
     const o={S:{},T:{},REP:{...REP},fields:{},saved:Date.now()};
     SKEYS.forEach(k=>o.S[k]=S[k]); o.S.persp=JSON.parse(JSON.stringify(S.persp));
