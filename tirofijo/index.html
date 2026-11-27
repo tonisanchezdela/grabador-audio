@@ -139,8 +139,20 @@
   #timerHud.alert .tc{color:var(--accent);}
   #timerHud.lt-green{background:rgba(22,120,52,.88); border-color:#3fb950;} #timerHud.lt-red{background:rgba(150,24,24,.9); border-color:#f85149;}
   #timerHud.lt-green .tc, #timerHud.lt-red .tc{color:#fff;} #timerHud.lt-green .ph, #timerHud.lt-red .ph{color:#fff;}
-  #stage.lt-green::after, #stage.lt-red::after{content:''; position:absolute; inset:0; pointer-events:none; z-index:4; border:6px solid; }
-  #stage.lt-green::after{border-color:rgba(63,185,80,.85);} #stage.lt-red::after{border-color:rgba(248,81,73,.9);}
+  /* luces bien visibles sobre la diana: velo de color, marco grueso con brillo y semáforo grande */
+  #stage.lt-green::before, #stage.lt-red::before{content:''; position:absolute; inset:0; pointer-events:none; z-index:4;}
+  #stage.lt-green::before{background:rgba(46,204,64,.18);} #stage.lt-red::before{background:rgba(255,40,40,.22);}
+  #stage.lt-green #hud, #stage.lt-red #hud, #stage.lt-green #timerHud, #stage.lt-red #timerHud{z-index:6;}
+  #stage.lt-green::after, #stage.lt-red::after{content:''; position:absolute; inset:0; pointer-events:none; z-index:4; border:14px solid;}
+  #stage.lt-green::after{border-color:rgba(46,204,64,.95); box-shadow:inset 0 0 60px rgba(46,204,64,.9);}
+  #stage.lt-red::after{border-color:rgba(255,40,40,.95); box-shadow:inset 0 0 60px rgba(255,40,40,.9);}
+  #bigLight{position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); z-index:5; pointer-events:none; display:none;
+    font:900 34px/1 system-ui; letter-spacing:2px; color:#fff; padding:14px 26px; border-radius:60px; border:4px solid #fff;
+    text-shadow:0 2px 6px rgba(0,0,0,.6); opacity:.9;}
+  #bigLight.g{display:block; background:rgba(30,170,50,.85); box-shadow:0 0 40px 10px rgba(46,204,64,.8);}
+  #bigLight.r{display:block; background:rgba(210,20,20,.85); box-shadow:0 0 40px 10px rgba(255,40,40,.8);}
+  #bigLight.fade{animation:lightMove .7s ease-in 1.1s forwards;}
+  @keyframes lightMove{to{top:64px; transform:translate(-50%,0); font-size:20px; padding:7px 16px; border-width:3px; opacity:.95;}}
   /* ocultar controles para ver la diana */
   #stage.controls-hidden #hud, #stage.controls-hidden #pill{display:none !important;}
   #tapHint{position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
@@ -443,6 +455,7 @@
       </div>
     </div>
 
+    <div id="bigLight"></div>
     <div id="timerHud">
       <div class="ph" id="thPhase">SESIÓN</div>
       <div class="tc" id="thClock">00:00</div>
@@ -783,7 +796,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.2', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.3', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2203,9 +2216,13 @@
     if(T.mode==='down') return T.clock>0?'green':'red';
     return 'green';
   }
-  function lightUI(){ const l=lightState(), h=$('#timerHud'), st=$('#stage');
+  let lastLight=null;
+  function lightUI(){ const l=lightState(), h=$('#timerHud'), st=$('#stage'), b=$('#bigLight');
     h.classList.toggle('lt-green',l==='green'); h.classList.toggle('lt-red',l==='red');
-    st.classList.toggle('lt-green',l==='green'); st.classList.toggle('lt-red',l==='red'); }
+    st.classList.toggle('lt-green',l==='green'); st.classList.toggle('lt-red',l==='red');
+    // semáforo grande: al cambiar se ve fuerte y luego se atenúa para no tapar los impactos
+    if(l!==lastLight){ lastLight=l; b.className=''; void b.offsetWidth;
+      if(l){ b.textContent=l==='green'?'FUEGO':'ALTO'; b.className=(l==='green'?'g':'r')+' fade'; } } }
   let audioCtx=null;
   function beep(freq=880, dur=0.18, vol=0.4){
     if(!T.sound) return;
@@ -2469,7 +2486,7 @@
     puestoSave();
     clearTick(); S.phase='review';                       // revisión antes del informe: añadir o borrar impactos
     beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380);
-    $('#rowRun').style.display='none'; $('#timerHud').style.display='none'; $('#timerHud').classList.remove('lt-green','lt-red'); $('#stage').classList.remove('lt-green','lt-red');
+    $('#rowRun').style.display='none'; $('#timerHud').style.display='none'; $('#timerHud').classList.remove('lt-green','lt-red'); $('#stage').classList.remove('lt-green','lt-red'); $('#bigLight').className=''; lastLight=null;
     openAdjust('review'); calMode=null; refreshAbSel();
   }
   function finishReview(){
