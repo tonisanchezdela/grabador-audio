@@ -807,7 +807,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.5', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.6', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1699,11 +1699,23 @@
     const sh=estShift(sn,cur,R);
     // ajuste fino afín (la tarjeta se desplaza y gira un poco en su soporte con cada impacto)
     const Wm=lkAffine(sn,cur,R,sh)||[1,0,sh.dx,0,1,sh.dy];               // cur(u) ≈ base(Wm·u)
+    const prevA=HD.curA, prevOff=HD.lastOff;
     HD.curA=affMul(HD.baseA||AFF_I,Wm);                                   // cur → calibración
     { const c=affApply(HD.curA,R.w/2,R.h/2); HD.lastOff={x:R.w/2-c.x, y:R.h/2-c.y}; }
     const dmax=Math.max(...[[0,0],[w,0],[0,h],[w,h]].map(([x,y])=>{ const q=affApply(Wm,x,y); return Math.hypot(q.x-x,q.y-y); }));
     const still=dmax<0.15;                                               // sin movimiento: no hace falta realinear
     const ref=still?sn.g:warpAff(sn.g,w,h,Wm), grad=still?sn.grad:warpAff(sn.grad,w,h,Wm);
+    // ¿se ve la misma diana? (dianas de giro, algo delante, cámara apuntando a otro sitio). Si no se parece a la referencia,
+    // se espera SIN tocar la referencia: al volver la diana, los agujeros nuevos siguen siendo nuevos
+    { let sa=0,sb=0,saa=0,sbb=0,sab=0,nn=0; for(let i=0;i<n;i+=3){ if(!ins[i]) continue; const a=ref[i], b=cur[i]; sa+=a; sb+=b; saa+=a*a; sbb+=b*b; sab+=a*b; nn++; }
+      const va=saa/nn-(sa/nn)*(sa/nn), vb=sbb/nn-(sb/nn)*(sb/nn), ncc=nn&&va>1&&vb>1?(sab/nn-(sa/nn)*(sb/nn))/Math.sqrt(va*vb):0;
+      HD.ncc=ncc;
+      if(ncc<0.5){
+        HD.curA=prevA; HD.lastOff=prevOff; HD.cands=[]; HD.view=null; HD.avg=null; HD.stableSince=0;
+        if(!HD.goneSince) HD.goneSince=now;
+        if(now-HD.goneSince<90000){ say('Diana girada o fuera de vista: esperando a que vuelva','gone'); return null; }
+        HD.goneSince=0; setBase(cur); HD.quietSince=now; say('La imagen ha cambiado del todo: referencia nueva','ok'); return null; }
+      HD.goneSince=0; }
     const L=S.lightComp?fitLight(ref,cur,ins):{g:1,o:0};
     const LQ=[0,1,2,3].map(q=>S.lightComp&&HD.qn[q]>=150?fitLight(ref,cur,HD.qins[q]):L), qi=HD.qi;
     const QG=new Float32Array(LQ.map(l=>l.g)), QO=new Float32Array(LQ.map(l=>l.o));
@@ -1888,7 +1900,7 @@
       const hs=detectHole();
       const stEl=$('#holeStatus'), st=HD.state||'wait';
       stEl.style.display='block'; stEl.className=st;
-      stEl.textContent = st==='mov'?'✋ Movimiento': st==='cand'?'◎ Impacto…': st==='ok'?'● Diana lista':'… Estabilizando';
+      stEl.textContent = st==='mov'?'✋ Movimiento': st==='gone'?'↻ Diana girada': st==='cand'?'◎ Impacto…': st==='ok'?'● Diana lista':'… Estabilizando';
       // en cartón no hay espera entre disparos: cada agujero es único por su posición
       if(hs && hs.some(h=>h.big) && !HD.bigWarned){ HD.bigWarned=true; $('#pill').style.display='block';
         $('#pill').innerHTML='⚠ Los impactos se ven <b>más grandes</b> que el calibre: revisa <b>calibre</b> y <b>diámetro real del aro 1</b> en ◎ Diana (tarjetas reducidas).'; }
@@ -1916,6 +1928,7 @@
   const offMM=o=>o&&HD.RR?Math.hypot(o.x,o.y)/HD.RR*targetD()/2:0;
   function watchShot(st, hs){
     const now=performance.now();
+    if(st==='gone'){ ASK.evt=null; ASK.okOff=null; return; }
     if(hs&&hs.length){ ASK.evt=null; return; }                        // hubo impacto: nada que preguntar
     if(st==='ok'){
       if(ASK.evt && !ASK.evt.back) ASK.evt.back=now;
