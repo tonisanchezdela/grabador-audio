@@ -49,6 +49,8 @@
   #sheetRep .ctl{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:6px;}
   #sheetRep .ctl button{border:1px solid var(--line); background:var(--panel); color:var(--txt); border-radius:10px; padding:9px 4px; font-weight:700; font-size:13px;}
   #sheetRep .ctl button.on{background:var(--accent,#3b82f6); border-color:transparent; color:#fff;}
+  #savedBox{position:absolute; left:8px; right:8px; top:52px; z-index:22; display:none; background:rgba(13,17,23,.94); border:1px solid var(--ok);
+    border-radius:12px; padding:9px 11px; font-size:13px; color:var(--txt);}
   #askShot{position:absolute; left:8px; right:8px; top:52px; z-index:21; display:none; background:rgba(13,17,23,.92); border:1px solid var(--gold);
     border-radius:12px; padding:8px 10px; font-size:13px; color:var(--txt);}
   #askShot.open{display:block;}
@@ -202,6 +204,10 @@
     transform:translateY(100%); transition:transform .25s ease; overflow-y:auto;
     padding:16px; display:none; -webkit-overflow-scrolling:touch;}
   .sheet.open{transform:translateY(0); display:block;}
+  /* botón fijo «Aceptar» al pie de los ajustes */
+  .sheetOk{position:sticky; bottom:-16px; margin:14px -16px -16px; padding:12px 16px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent, var(--bg) 30%); z-index:3;}
+  .sheetOk .btn{width:100%; font-size:17px; padding:14px;}
   .sheet h2{font-size:17px; margin:4px 0 14px;}
   .card{background:var(--panel); border:1px solid var(--line); border-radius:14px;
     padding:14px; margin-bottom:12px;}
@@ -567,6 +573,7 @@
         <button data-fm="manual">Manual (toca)</button>
       </div>
     </div>
+    <div class="sheetOk"><button class="btn primary" data-ok>✓ Aceptar</button></div>
   </div>
 
   <!-- DIANA -->
@@ -656,6 +663,7 @@
         <input type="range" id="rings" min="5" max="10" value="10">
       </div>
     </div>
+    <div class="sheetOk"><button class="btn primary" data-ok>✓ Aceptar</button></div>
   </div>
 
   <!-- TEMPORIZADOR -->
@@ -715,6 +723,7 @@
     <div class="card">
       <div class="switchrow"><span>🔊 Sonido</span><div class="sw on" id="swSound"></div></div>
     </div>
+    <div class="sheetOk"><button class="btn primary" data-ok>✓ Aceptar</button></div>
   </div>
 
 
@@ -745,7 +754,7 @@
       <p style="font-weight:700; word-break:break-all" id="saveName"></p>
       <label class="switchrow"><span>📄 Informe PDF</span><input type="checkbox" id="svPdf" checked disabled></label>
       <label class="switchrow" id="svVidRow"><span>🎬 Vídeo de la tirada</span><input type="checkbox" id="svVid" checked></label>
-      <label class="switchrow"><span>📊 Datos de la sesión (.json)</span><input type="checkbox" id="svJson"></label>
+      <label class="switchrow"><span>📊 Datos de la sesión (.json)</span><input type="checkbox" id="svJson" checked></label>
       <div class="row" style="margin-top:10px"><button class="btn" id="svCancel" style="flex:1">Cancelar</button><button class="btn primary" id="svGo" style="flex:2">⬇ Guardar y nueva sesión</button></div>
       <p class="hint" style="margin-top:8px">Después de guardar se borran los impactos de la diana y vuelves a la pantalla de tiro para empezar otra sesión.</p>
     </div>
@@ -798,7 +807,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.4', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.5', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2257,6 +2266,7 @@
     if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
     if(S.phase!=='ready') return;
     S.showRings=false; ringsUI();          // en la sesión solo se ven los impactos sobre la imagen real
+    if($('#savedBox')) $('#savedBox').style.display='none';
     S.shots=[]; S.lastShot=0; renderStats();   // nueva sesión: borra impactos anteriores
     if(CP.active){ CP.active.started=Date.now(); CP.active.removed=0; updCompBanner(); }
     $('#rowReady').style.display='none'; $('#rowRun').style.display='flex';
@@ -2302,7 +2312,7 @@
   function repStart(){
     RPL=null; RPL_LAST=null; $('#repBox').style.display='none';
     if(!S.repRec || !video.srcObject || !window.MediaRecorder) return;
-    const types=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'];
+    const types=['video/mp4;codecs=avc1.42E01E','video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
     const mt=types.find(t=>{ try{ return MediaRecorder.isTypeSupported(t); }catch(e){ return false; } })||'';
     try{
       const rec=new MediaRecorder(video.srcObject, mt?{mimeType:mt, videoBitsPerSecond:3000000}:{videoBitsPerSecond:3000000});
@@ -2408,7 +2418,7 @@
     DIAG=null; $('#diagBox').style.display='none'; $('#recDot').style.display='none';
     if(!S.diagRec) return;
     if(!video.srcObject || !window.MediaRecorder){ $('#pill').style.display='block'; $('#pill').textContent='Este navegador no permite grabar el vídeo de diagnóstico.'; return; }
-    const types=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'];
+    const types=['video/mp4;codecs=avc1.42E01E','video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
     const mt=types.find(t=>{ try{ return MediaRecorder.isTypeSupported(t); }catch(e){ return false; } })||'';
     try{
       const rec=new MediaRecorder(video.srcObject, mt?{mimeType:mt, videoBitsPerSecond:5000000}:{videoBitsPerSecond:5000000});
@@ -2533,6 +2543,14 @@
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
     if(S.running && S.phase!=='camera') showControls();
+  });
+  // «Aceptar»: guarda lo configurado (también para la próxima vez que se abra la app) y vuelve a la diana
+  function saveConfig(){ try{ localStorage.setItem('tirofijo_actual', JSON.stringify(snapshot())); }catch(e){} puestoSave(); }
+  document.querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>{
+    saveConfig();
+    document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
+    if(S.running && S.phase!=='camera') showControls();
+    const p=$('#pill'); p.style.display='block'; p.textContent='✓ Ajustes guardados'; clearTimeout(saveConfig.t); saveConfig.t=setTimeout(()=>{ if(p.textContent==='✓ Ajustes guardados') p.style.display='none'; },2500);
   });
   $('#btnCfg').onclick=()=>$('#sheetCfg').classList.add('open');
   $('#btnDiana').onclick=()=>$('#sheetDiana').classList.add('open');
@@ -3127,23 +3145,32 @@ function autoCalib(rgba, W, H, TARGETS){
   }
   // guardar la sesión (PDF + vídeo + datos) con fecha y hora, y dejar la diana limpia para otra sesión
   const sessStamp=()=>{ const d=new Date(), z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+'_'+z(d.getHours())+'-'+z(d.getMinutes()); };
-  $('#btnPdf').onclick=()=>{ const st=sessStamp(); $('#saveName').textContent='Tirofijo_'+st+' (.pdf'+(RPL_LAST?', .webm':'')+')';
+  $('#btnPdf').onclick=()=>{ const st=sessStamp(); $('#saveName').textContent='Tirofijo_'+st+' (.pdf'+(RPL_LAST?(/mp4/.test(RPL_LAST.mt)?', .mp4':', .webm'):'')+', .json)';
     $('#svVidRow').style.display=RPL_LAST?'':'none'; $('#saveBox').style.display='block'; $('#saveBox').scrollIntoView({behavior:'smooth',block:'center'}); };
   $('#svCancel').onclick=()=>{ $('#saveBox').style.display='none'; };
   $('#svGo').onclick=async()=>{
     const msg=$('#pdfMsg'), st=sessStamp(), base='Tirofijo_'+st; msg.textContent='Guardando…';
     try{
-      const blob=await makePdf(); saveBlob(blob, base+'.pdf');
-      if(RPL_LAST && $('#svVid').checked){ await new Promise(r=>setTimeout(r,600)); saveBlob(RPL_LAST.blob, base+(/mp4/.test(RPL_LAST.mt)?'.mp4':'.webm')); }
-      if($('#svJson').checked){ await new Promise(r=>setTimeout(r,600));
+      const files=[]; const blob=await makePdf(); files.push({k:'📄 PDF', b:blob, n:base+'.pdf'});
+      if(RPL_LAST && $('#svVid').checked) files.push({k:'🎬 Vídeo', b:RPL_LAST.blob, n:base+(/mp4/.test(RPL_LAST.mt)?'.mp4':'.webm')});
+      if($('#svJson').checked){
         const data={app:APPVER, fecha:new Date().toISOString(), tirador:$('#rName').value||'', diana:S.target, aro1_mm:S.realmm, calibre_mm:S.caliber,
           disparos:S.shots.map((s,i)=>({n:i+1, anillo:s.ring, decimas:+(+s.dec).toFixed(1), x:+s.rx.toFixed(4), y:+s.ry.toFixed(4), cuenta:!s.drop, luz_roja:!!s.late, manual:!!s.manual}))};
-        saveBlob(new Blob([JSON.stringify(data,null,1)],{type:'application/json'}), base+'.json'); }
+        files.push({k:'📊 Datos', b:new Blob([JSON.stringify(data,null,1)],{type:'application/json'}), n:base+'.json'}); }
+      for(let i=0;i<files.length;i++){ if(i) await new Promise(r=>setTimeout(r,1200)); saveBlob(files[i].b, files[i].n); }
       $('#saveBox').style.display='none';
       newSessionClean(); msg.textContent='';
-      $('#pill').style.display='block'; $('#pill').innerHTML='💾 Sesión guardada en Descargas como <b>'+base+'</b>. Diana limpia: pulsa <b>▶ Nueva sesión</b>.';
+      savedPanel(base, files);
     }catch(e){ msg.textContent='No se pudo guardar ('+(e&&e.message||e)+').'; }
   };
+  // tras guardar: aviso en la pantalla de tiro con un botón por archivo, por si el navegador bloqueó alguna descarga
+  function savedPanel(base, files){
+    let p=$('#savedBox'); if(!p){ p=document.createElement('div'); p.id='savedBox'; $('#stage').appendChild(p); }
+    p.innerHTML='<div><b>💾 Sesión guardada</b> en Descargas como <b>'+base+'</b>.<br>¿Falta algún archivo? Púlsalo para descargarlo:</div><div class="row" style="margin-top:6px; flex-wrap:wrap">'+
+      files.map((f,i)=>'<button class="btn sm" data-sv="'+i+'">'+f.k+'</button>').join('')+'<button class="btn sm" data-sv="x">✕</button></div>';
+    p.style.display='block';
+    p.querySelectorAll('[data-sv]').forEach(b=>b.onclick=()=>{ if(b.dataset.sv==='x'){ p.style.display='none'; return; } const f=files[+b.dataset.sv]; saveBlob(f.b,f.n); b.textContent='✓ '+f.k; });
+  }
   function newSessionClean(){
     S.shots=[]; S.lastShot=0; renderStats(); resetHoles();
     document.querySelectorAll('.sheet').forEach(x=>x.classList.remove('open'));
@@ -3241,10 +3268,11 @@ function autoCalib(rgba, W, H, TARGETS){
     renderProfiles();
   };
   $('#suPf').onchange=e=>{ const n=e.target.value; if(!n) return;
-    applySnapshot(loadProfiles()[n]); try{localStorage.setItem(PKEY+'_last',n);}catch(err){} };
+    applySnapshot(loadProfiles()[n]); try{localStorage.setItem(PKEY+'_last',n);}catch(err){} saveConfig(); };
   renderProfiles();
   // al abrir, carga automáticamente el último perfil usado
-  (function(){ let last=''; try{ last=localStorage.getItem(PKEY+'_last')||''; }catch(e){}
+  (function(){ let cur=null, last=''; try{ cur=JSON.parse(localStorage.getItem('tirofijo_actual')||'null'); last=localStorage.getItem(PKEY+'_last')||''; }catch(e){}
+    if(cur){ try{ applySnapshot(cur); return; }catch(e){} }
     const P=loadProfiles(); if(last && P[last]) applySnapshot(P[last]); })();
   /* =====================================================================
      COMPETICIONES (Firebase: cuenta de Google + Firestore)
