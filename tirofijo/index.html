@@ -137,6 +137,10 @@
   #timerHud .ph{font-size:9px; color:var(--gold); letter-spacing:.5px; text-transform:uppercase;}
   #timerHud .tc{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
   #timerHud.alert .tc{color:var(--accent);}
+  #timerHud.lt-green{background:rgba(22,120,52,.88); border-color:#3fb950;} #timerHud.lt-red{background:rgba(150,24,24,.9); border-color:#f85149;}
+  #timerHud.lt-green .tc, #timerHud.lt-red .tc{color:#fff;} #timerHud.lt-green .ph, #timerHud.lt-red .ph{color:#fff;}
+  #stage.lt-green::after, #stage.lt-red::after{content:''; position:absolute; inset:0; pointer-events:none; z-index:4; border:6px solid; }
+  #stage.lt-green::after{border-color:rgba(63,185,80,.85);} #stage.lt-red::after{border-color:rgba(248,81,73,.9);}
   /* ocultar controles para ver la diana */
   #stage.controls-hidden #hud, #stage.controls-hidden #pill{display:none !important;}
   #tapHint{position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
@@ -453,6 +457,9 @@
         <button class="btn" id="btnTorch" style="display:none">🔦</button>
         <button class="btn" id="btnQuick" aria-label="Ajustes rápidos">⚡</button>
       </div>
+      <div class="row" style="margin:-4px 0 10px">
+        <button class="btn sm" id="btnRings" style="flex:1">◎ Mostrar diana y puntos</button>
+      </div>
       <div class="row" id="rowCam">
         <button class="btn primary" id="btnStart">▶ Iniciar cámara</button>
       </div>
@@ -652,6 +659,17 @@
       </div>
       <p style="margin-top:10px">Arranca automáticamente al iniciar la cámara.</p>
     </div>
+    <div class="card">
+      <div class="switchrow"><span>🚦 <b>Luces</b></span><div class="sw" id="swLights"></div></div>
+      <p id="lightsTxt">Con luces, mientras el temporizador está en <b style="color:#3fb950">verde</b> los impactos cuentan; en <b style="color:#f85149">rojo</b> se marcan pero <b>no cuentan</b> (salen tachados en el informe).</p>
+      <div id="lightsAlt" style="display:none"><label class="fld">En Alterno, el tramo en verde es:</label>
+        <div class="seg" id="greenOn"><button data-g="A">Tramo A</button><button data-g="B" class="sel">Tramo B</button></div></div>
+    </div>
+    <div class="card">
+      <div class="switchrow"><span>🎯 <b>Número máximo de disparos</b></span><div class="sw" id="swMaxShots"></div></div>
+      <div id="maxShotsBox" style="display:none"><label class="fld">Disparos que cuentan por tirada (al llegar, la tirada termina sola):</label>
+        <input type="number" id="maxShots" value="10" min="1" max="200" inputmode="numeric"></div>
+    </div>
     <div class="card" id="cardAlt" style="display:none">
       <h3>Alterno (dos tiempos en bucle)</h3>
       <p>Cuenta atrás de A segundos, pita, luego B segundos, pita, y vuelve a empezar. Constante. Ej.: 7 y 3.</p>
@@ -701,11 +719,21 @@
   <div class="sheet" id="sheetReport">
     <button class="close" data-close>✕</button>
     <div class="noprint row" style="margin-bottom:12px">
-      <button class="btn primary" id="btnPdf">⬇ Descargar PDF</button>
+      <button class="btn primary" id="btnPdf">💾 Guardar sesión</button>
       <button class="btn" id="btnShare">↗ Compartir</button>
       <button class="btn" id="btnPrint" style="flex:0 0 auto" title="Imprimir">🖨</button>
     </div>
     <div class="noprint warn" id="pdfMsg" style="margin:-4px 0 10px; text-align:center"></div>
+    <div class="noprint card" id="saveBox" style="display:none">
+      <h3 style="margin-top:0">💾 Guardar la sesión</h3>
+      <p>Se guarda en este teléfono u ordenador (carpeta Descargas) con la fecha y hora:</p>
+      <p style="font-weight:700; word-break:break-all" id="saveName"></p>
+      <label class="switchrow"><span>📄 Informe PDF</span><input type="checkbox" id="svPdf" checked disabled></label>
+      <label class="switchrow" id="svVidRow"><span>🎬 Vídeo de la tirada</span><input type="checkbox" id="svVid" checked></label>
+      <label class="switchrow"><span>📊 Datos de la sesión (.json)</span><input type="checkbox" id="svJson"></label>
+      <div class="row" style="margin-top:10px"><button class="btn" id="svCancel" style="flex:1">Cancelar</button><button class="btn primary" id="svGo" style="flex:2">⬇ Guardar y nueva sesión</button></div>
+      <p class="hint" style="margin-top:8px">Después de guardar se borran los impactos de la diana y vuelves a la pantalla de tiro para empezar otra sesión.</p>
+    </div>
     <div class="noprint card" id="compSend" style="display:none; text-align:center"></div>
     <div class="noprint card" id="repBox" style="display:none; text-align:center"></div>
     <div class="noprint card" id="diagBox" style="display:none; text-align:center"></div>
@@ -755,7 +783,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.1', APPDATE='26-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.2', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1341,9 +1369,9 @@
   function rescoreAll(){ S.shots.forEach(s=>{ const r=scoreShot(s.dRel); s.ring=r.ring; s.dec=r.dec; }); markBest(); }
   // "cuentan los N mejores": los demás disparos se marcan como descartados (no suman)
   function markBest(sh){
-    sh=sh||S.shots; sh.forEach(s=>s.drop=false);
-    const N=S.bestOf|0; if(!N || sh.length<=N) return sh;
-    sh.map((s,i)=>({s,i})).sort((a,b)=>(b.s.dec-a.s.dec)||(b.s.ring-a.s.ring)||(a.i-b.i)).slice(N).forEach(o=>o.s.drop=true);
+    sh=sh||S.shots; sh.forEach(s=>s.drop=!!s.late);             // con luz roja nunca cuenta
+    const N=S.bestOf|0, ok=sh.filter(s=>!s.late); if(!N || ok.length<=N) return sh;
+    ok.map((s,i)=>({s,i})).sort((a,b)=>(b.s.dec-a.s.dec)||(b.s.ring-a.s.ring)||(a.i-b.i)).slice(N).forEach(o=>o.s.drop=true);
     return sh;
   }
   const counted=()=>S.shots.filter(s=>!s.drop);
@@ -1765,6 +1793,7 @@
     drawRings(RAD,NR); if(offS) octx.restore();
   }
   function drawRings(RAD,NR){
+    if(S.showRings!==false){
     if(S.dianaMode==='persp' && S.Hinv){
       for(let v=Math.min(NR,S.minRing||1); v<=NR; v++){
         const rr=RAD[v]; octx.beginPath();
@@ -1786,6 +1815,7 @@
         if(k==='center'){ octx.beginPath(); octx.moveTo(x-7,y); octx.lineTo(x+7,y); octx.moveTo(x,y-7); octx.lineTo(x,y+7);
           octx.strokeStyle='#d29922'; octx.lineWidth=1.5; octx.stroke(); }
         mark(x,y, sel?'#ffffff':'#d29922', t); }); }
+    }
     // todos los impactos de la sesión, a su tamaño real (calibre) en la diana
     const c0=normToScreen(0,0), ex=normToScreen(1,0), ey=normToScreen(0,1);
     const Rs=(Math.hypot(ex.x-c0.x,ex.y-c0.y)+Math.hypot(ey.x-c0.x,ey.y-c0.y))/2;
@@ -1881,7 +1911,9 @@
   function registerShot(x,y){
     const {rx,ry,dRel}=normFromScreen(x,y);
     const {ring,dec}=scoreFromDist(dRel);
-    S.shots.push({rx,ry,dRel,ring,dec,t:Date.now()}); repMark(S.shots[S.shots.length-1],x,y);
+    const late=lightState()==='red';
+    S.shots.push({rx,ry,dRel,ring,dec,t:Date.now(),late}); repMark(S.shots[S.shots.length-1],x,y);
+    if(late){ flashScore('✕'); renderStats(); if(navigator.vibrate) navigator.vibrate([80,60,80]); return; }   // luz roja: no cuenta
     flashScore(ring); renderStats();
     if(navigator.vibrate) navigator.vibrate(ring>0?60:[30,40,30]);
     compAfterShot();
@@ -2130,13 +2162,14 @@
     $('#countTable').innerHTML=ct;
 
     $('#sumLine').textContent = st.n
-      ? 'Total: '+f1(st.totalDec)+' (sin décimas: '+st.total+') · Tiros: '+(st.nc<st.n?st.nc+' de '+st.n+' (se descartan los peores)':st.n)+' · Media: '+f1(st.avg)
+      ? 'Total: '+f1(st.totalDec)+' (sin décimas: '+st.total+') · Tiros: '+(st.nc<st.n?st.nc+' de '+st.n+(S.shots.some(s=>s.late)?' (no cuentan los de luz roja'+(S.bestOf?' ni los peores':'')+')':' (se descartan los peores)'):st.n)+' · Media: '+f1(st.avg)
       : 'Sin disparos';
 
     // series de 10 disparos
     let sh='';
-    const SER=S.shotLimit>0?S.shotLimit:10;              // avancarga: series de 13
-    if(st.nc<st.n) sh+='<p style="margin:4px 0 8px;color:#777;font-size:12px">Tachados: disparos descartados (cuentan los '+st.nc+' mejores).</p>';
+    const nLate=S.shots.filter(s=>s.late).length;
+    const SER=S.shotLimit>0?S.shotLimit+nLate:10;        // avancarga: series de 13 (los de luz roja van en la misma serie)
+    if(st.nc<st.n) sh+='<p style="margin:4px 0 8px;color:#777;font-size:12px">Tachados: '+(nLate?nLate+' fuera de tiempo (luz roja)'+(st.n-nLate>st.nc?' y descartados (cuentan los '+st.nc+' mejores)':''):'disparos descartados (cuentan los '+st.nc+' mejores)')+'.</p>';
     for(let s0=0; s0<S.shots.length; s0+=SER){
       const part=S.shots.slice(s0,s0+SER);
       const pc=part.filter(s=>!s.drop), sr=pc.reduce((a,s)=>a+s.ring,0), sd=pc.reduce((a,s)=>a+s.dec,0);
@@ -2160,7 +2193,19 @@
 
   /* ---------- SESIÓN Y TEMPORIZADOR ---------- */
   const T={ sound:true, mode:'up', startCount:3, downSecs:60, loop:false, beepSecs:10,
-    altA:7, altB:3, altOn:'A', clock:0, lead:0, beepAcc:0, tick:null };
+    altA:7, altB:3, altOn:'A', clock:0, lead:0, beepAcc:0, tick:null, lights:false, greenOn:'B' };
+  // luces: verde = los impactos cuentan, rojo = no cuentan (null si las luces están apagadas)
+  function lightState(){
+    if(!T.lights) return null;
+    if(S.phase==='leadin'||S.phase==='paused') return 'red';
+    if(S.phase!=='running') return null;
+    if(T.mode==='alt') return T.altOn===T.greenOn?'green':'red';
+    if(T.mode==='down') return T.clock>0?'green':'red';
+    return 'green';
+  }
+  function lightUI(){ const l=lightState(), h=$('#timerHud'), st=$('#stage');
+    h.classList.toggle('lt-green',l==='green'); h.classList.toggle('lt-red',l==='red');
+    st.classList.toggle('lt-green',l==='green'); st.classList.toggle('lt-red',l==='red'); }
   let audioCtx=null;
   function beep(freq=880, dur=0.18, vol=0.4){
     if(!T.sound) return;
@@ -2175,8 +2220,8 @@
   function fmt(s){ s=Math.max(0,s); const m=Math.floor(s/60), ss=s%60; return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'); }
   function updHud(){
     const hud=$('#timerHud'); hud.style.display='block';
-    if(S.phase==='leadin'){ hud.querySelector('.ph').textContent='PREPARADOS'; hud.querySelector('.tc').textContent=T.lead;
-      hud.classList.add('alert'); return; }
+    if(S.phase==='leadin'){ hud.querySelector('.ph').textContent=(T.lights?'🔴 ':'')+'PREPARADOS'; hud.querySelector('.tc').textContent=T.lead;
+      hud.classList.add('alert'); lightUI(); return; }
     let lbl='SESIÓN';
     if(S.phase==='paused') lbl='PAUSA';
     else if(T.mode==='down') lbl='CUENTA ATRÁS';
@@ -2184,12 +2229,15 @@
     hud.querySelector('.ph').textContent=lbl;
     hud.querySelector('.tc').textContent=fmt(T.clock);
     hud.classList.toggle('alert', (T.mode==='down'||T.mode==='alt') && T.clock<=3 && T.clock>0);
+    const l=lightState(); if(l) hud.querySelector('.ph').textContent=(l==='green'?'🟢 FUEGO · ':'🔴 ALTO · ')+lbl;
+    lightUI();
   }
   function clearTick(){ if(T.tick){ clearInterval(T.tick); T.tick=null; } }
 
   function iniciarSesion(){
     if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
     if(S.phase!=='ready') return;
+    S.showRings=false; ringsUI();          // en la sesión solo se ven los impactos sobre la imagen real
     S.shots=[]; S.lastShot=0; renderStats();   // nueva sesión: borra impactos anteriores
     if(CP.active){ CP.active.started=Date.now(); CP.active.removed=0; updCompBanner(); }
     $('#rowReady').style.display='none'; $('#rowRun').style.display='flex';
@@ -2226,14 +2274,14 @@
   /* ---------- REPETICIÓN: graba la tirada entera y permite ver cada disparo a cámara lenta ----------
      Se guarda en el propio móvil (IndexedDB), las últimas REP_MAX tiradas; se puede descargar el vídeo. */
   const locStamp=d=>{ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+z(d.getHours())+z(d.getMinutes()); };   // hora local en los nombres de archivo
-  const REP_MAX=5; let RPL=null;
+  const REP_MAX=5; let RPL=null, RPL_LAST=null;
   const repDB=()=>new Promise((ok,ko)=>{ const r=indexedDB.open('tirofijo_rep',1);
     r.onupgradeneeded=()=>r.result.createObjectStore('tiradas',{keyPath:'id'}); r.onsuccess=()=>ok(r.result); r.onerror=()=>ko(r.error); });
   async function repTx(mode,fn){ const db=await repDB(); return new Promise((ok,ko)=>{ const tx=db.transaction('tiradas',mode), st=tx.objectStore('tiradas'); const res=fn(st);
     tx.oncomplete=()=>ok(res&&res.result!==undefined?res.result:res); tx.onerror=()=>ko(tx.error); }); }
   const repAll=()=>repTx('readonly',st=>st.getAll());
   function repStart(){
-    RPL=null; $('#repBox').style.display='none';
+    RPL=null; RPL_LAST=null; $('#repBox').style.display='none';
     if(!S.repRec || !video.srcObject || !window.MediaRecorder) return;
     const types=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'];
     const mt=types.find(t=>{ try{ return MediaRecorder.isTypeSupported(t); }catch(e){ return false; } })||'';
@@ -2266,7 +2314,7 @@
       }catch(e){ console.warn('repetición no guardada',e); }
       const mb=(blob.size/1048576).toFixed(0);
       box.innerHTML='🎬 Repetición de la tirada ('+mb+' MB) <div class="row" style="margin-top:8px"><button class="btn primary sm" id="repOpen" style="flex:1">▶ Ver disparos</button><button class="btn sm" id="repDl" style="flex:1">⬇ Descargar vídeo</button></div>';
-      $('#repOpen').onclick=()=>repView(item);
+      RPL_LAST=item; $('#repOpen').onclick=()=>repView(item);
       $('#repDl').onclick=()=>repDownload(item);
     };
     try{ R.rec.stop(); }catch(e){ box.textContent='No se pudo guardar la repetición.'; }
@@ -2396,7 +2444,7 @@
       T.clock--;
       if(T.clock<=5 && T.clock>0) beep(660,0.12,0.35);
       if(T.clock<=0){ beep(440,0.5,0.6); T.clock = T.loop ? T.downSecs : 0;
-        if(!T.loop){ clearTick(); if(CP.active&&CP.active.started) finalizarSesion(); } }
+        if(!T.loop){ clearTick(); if(CP.active&&CP.active.started) finalizarSesion(); else updHud(); } }
     } else if(T.mode==='alt'){
       T.clock--;
       if(T.clock<=3 && T.clock>0) beep(660,0.12,0.35);
@@ -2421,7 +2469,7 @@
     puestoSave();
     clearTick(); S.phase='review';                       // revisión antes del informe: añadir o borrar impactos
     beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380);
-    $('#rowRun').style.display='none'; $('#timerHud').style.display='none';
+    $('#rowRun').style.display='none'; $('#timerHud').style.display='none'; $('#timerHud').classList.remove('lt-green','lt-red'); $('#stage').classList.remove('lt-green','lt-red');
     openAdjust('review'); calMode=null; refreshAbSel();
   }
   function finishReview(){
@@ -2513,7 +2561,7 @@
   $('#modal').onchange=e=>setModal(e.target.value);
   document.querySelectorAll('#scoreRule button').forEach(b=>b.onclick=()=>{ S.scoreRule=b.dataset.v; S.modal='custom'; ruleUI(); rescoreAll(); renderStats(); });
   $('#bestOf').onchange=e=>{ S.bestOf=+e.target.value||0; S.modal='custom'; ruleUI(); rescoreAll(); renderStats(); };
-  $('#shotLimit').onchange=e=>{ S.shotLimit=+e.target.value||0; S.modal='custom'; ruleUI(); };
+  $('#shotLimit').onchange=e=>{ S.shotLimit=+e.target.value||0; S.modal='custom'; ruleUI(); lightsUI(); };
   ruleUI();
   $('#realmm2').oninput=e=>{S.realmm=+e.target.value||0;$('#realmm').value=e.target.value;rescoreAll();renderStats();};
   const confTxt=()=>(S.confirm*0.2).toFixed(1).replace('.',',');
@@ -2849,6 +2897,7 @@ function autoCalib(rgba, W, H, TARGETS){
         (calMode==='rvAdd'?'Toca donde AÑADIR un impacto':calMode==='rvDel'?'Toca el impacto a BORRAR':'Elige Impacto + o Impacto −'); }
   }
   function openAdjust(kind){
+    if(kind!=='review'){ S.showRings=true; if(typeof ringsUI==='function') ringsUI(); }
     document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
     const bar=$('#adjustBar'); bar.dataset.kind=kind; $('#hud').style.display='none';
     const row=$('#abRow'); row.innerHTML=''; calMode=null;
@@ -2936,6 +2985,10 @@ function autoCalib(rgba, W, H, TARGETS){
   $('#ccTorch').onclick=async()=>{ await toggleTorch(); (CC.conns||[]).forEach(c=>{ try{ c.send({torchCap:true, torch:TORCH.on}); }catch(e){} }); };
   $('#btnTorch').onclick=toggleTorch;
   $('#btnQuick').onclick=openQuick;
+  function ringsUI(){ const b=$('#btnRings'); if(!b) return; const on=S.showRings!==false;
+    b.textContent=on?'◎ Ocultar diana y puntos':'◎ Mostrar diana y puntos'; b.classList.toggle('on',on); }
+  $('#btnRings').onclick=()=>{ S.showRings=(S.showRings===false); ringsUI(); };
+  ringsUI();
   $('#askAdd').onclick=()=>{ S.addNext=true; clearTimeout(askTimer); $('#askTxt').innerHTML='<b>Toca en la diana dónde fue el disparo</b>'; };
   $('#askZero').onclick=()=>{ const p=normToScreen(1.2,0); askClose(); registerShot(p.x,p.y); const s=S.shots[S.shots.length-1]; s.manual=true; s.ring=0; s.dec=0; s.dRel=Math.max(s.dRel,1.2); renderStats(); diagLog('add'); };
   $('#askNo').onclick=askClose;
@@ -2966,10 +3019,21 @@ function autoCalib(rgba, W, H, TARGETS){
     b.classList.add('sel'); T.mode=b.dataset.tm;
     $('#cardDown').style.display = T.mode==='down'?'block':'none';
     $('#cardBeep').style.display = T.mode==='beep'?'block':'none';
-    $('#cardAlt').style.display = T.mode==='alt'?'block':'none';
+    $('#cardAlt').style.display = T.mode==='alt'?'block':'none'; lightsUI();
   });
   $('#downSecs').oninput=e=>{T.downSecs=Math.max(1,+e.target.value||1);};
   $('#beepSecs').oninput=e=>{T.beepSecs=Math.max(1,+e.target.value||1);};
+  function lightsUI(){ $('#swLights').classList.toggle('on',!!T.lights); $('#lightsAlt').style.display=(T.lights&&T.mode==='alt')?'block':'none';
+    document.querySelectorAll('#greenOn button').forEach(b=>b.classList.toggle('sel',b.dataset.g===T.greenOn));
+    $('#swMaxShots').classList.toggle('on',S.shotLimit>0); $('#maxShotsBox').style.display=S.shotLimit>0?'block':'none'; if(S.shotLimit>0) $('#maxShots').value=S.shotLimit; }
+  $('#swLights').onclick=()=>{ T.lights=!T.lights; lightsUI(); try{ localStorage.setItem('tirofijo_lights',JSON.stringify({l:T.lights,g:T.greenOn})); }catch(e){} };
+  document.querySelectorAll('#greenOn button').forEach(b=>b.onclick=()=>{ T.greenOn=b.dataset.g; lightsUI(); try{ localStorage.setItem('tirofijo_lights',JSON.stringify({l:T.lights,g:T.greenOn})); }catch(e){} });
+  function setShotLimit(n){ S.shotLimit=n; const sel=$('#shotLimit'); if(n>0 && ![...sel.options].some(o=>+o.value===n)){ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); }
+    sel.value=String(n); S.modal='custom'; ruleUI(); lightsUI(); if(typeof puestoSave==='function') puestoSave(); }
+  $('#swMaxShots').onclick=()=>setShotLimit(S.shotLimit>0?0:Math.max(1,+$('#maxShots').value||10));
+  $('#maxShots').onchange=e=>setShotLimit(Math.max(1,Math.min(200,+e.target.value||10)));
+  try{ const o=JSON.parse(localStorage.getItem('tirofijo_lights')||'null'); if(o){ T.lights=!!o.l; T.greenOn=o.g==='A'?'A':'B'; } }catch(e){}
+  lightsUI(); $('#btnTimer').addEventListener('click',()=>setTimeout(lightsUI,0));
   $('#altA').oninput=e=>{T.altA=Math.max(1,+e.target.value||1);};
   $('#altB').oninput=e=>{T.altB=Math.max(1,+e.target.value||1);};
   $('#swLoop').onclick=e=>{T.loop=!T.loop;e.target.classList.toggle('on',T.loop);};
@@ -3040,7 +3104,31 @@ function autoCalib(rgba, W, H, TARGETS){
       msg.textContent='PDF guardado en la carpeta Descargas: '+name;
     }catch(e){ msg.textContent='No se pudo generar el PDF ('+(e&&e.message||e)+'). Prueba con 🖨 Imprimir → Guardar como PDF.'; }
   }
-  $('#btnPdf').onclick=()=>pdfAction(false);
+  // guardar la sesión (PDF + vídeo + datos) con fecha y hora, y dejar la diana limpia para otra sesión
+  const sessStamp=()=>{ const d=new Date(), z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+'_'+z(d.getHours())+'-'+z(d.getMinutes()); };
+  $('#btnPdf').onclick=()=>{ const st=sessStamp(); $('#saveName').textContent='Tirofijo_'+st+' (.pdf'+(RPL_LAST?', .webm':'')+')';
+    $('#svVidRow').style.display=RPL_LAST?'':'none'; $('#saveBox').style.display='block'; $('#saveBox').scrollIntoView({behavior:'smooth',block:'center'}); };
+  $('#svCancel').onclick=()=>{ $('#saveBox').style.display='none'; };
+  $('#svGo').onclick=async()=>{
+    const msg=$('#pdfMsg'), st=sessStamp(), base='Tirofijo_'+st; msg.textContent='Guardando…';
+    try{
+      const blob=await makePdf(); saveBlob(blob, base+'.pdf');
+      if(RPL_LAST && $('#svVid').checked){ await new Promise(r=>setTimeout(r,600)); saveBlob(RPL_LAST.blob, base+(/mp4/.test(RPL_LAST.mt)?'.mp4':'.webm')); }
+      if($('#svJson').checked){ await new Promise(r=>setTimeout(r,600));
+        const data={app:APPVER, fecha:new Date().toISOString(), tirador:$('#rName').value||'', diana:S.target, aro1_mm:S.realmm, calibre_mm:S.caliber,
+          disparos:S.shots.map((s,i)=>({n:i+1, anillo:s.ring, decimas:+(+s.dec).toFixed(1), x:+s.rx.toFixed(4), y:+s.ry.toFixed(4), cuenta:!s.drop, luz_roja:!!s.late, manual:!!s.manual}))};
+        saveBlob(new Blob([JSON.stringify(data,null,1)],{type:'application/json'}), base+'.json'); }
+      $('#saveBox').style.display='none';
+      newSessionClean(); msg.textContent='';
+      $('#pill').style.display='block'; $('#pill').innerHTML='💾 Sesión guardada en Descargas como <b>'+base+'</b>. Diana limpia: pulsa <b>▶ Nueva sesión</b>.';
+    }catch(e){ msg.textContent='No se pudo guardar ('+(e&&e.message||e)+').'; }
+  };
+  function newSessionClean(){
+    S.shots=[]; S.lastShot=0; renderStats(); resetHoles();
+    document.querySelectorAll('.sheet').forEach(x=>x.classList.remove('open'));
+    if($('#adjustBar').classList.contains('open')) closeAdjust(); $('#hud').style.display='';
+    S.showRings=true; ringsUI(); if(typeof resetZoom==='function') resetZoom();
+  }
   $('#btnShare').onclick=()=>pdfAction(true);
   document.querySelectorAll('#report .rf, #rTitle').forEach(i=>i.addEventListener('input',copyPrintFields));
   document.querySelectorAll('#rGun button').forEach(b=>b.onclick=()=>{ REP.gun=b.dataset.g;
@@ -3054,7 +3142,7 @@ function autoCalib(rgba, W, H, TARGETS){
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
   const SKEYS=['backlit','countOut','askShot','fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
     'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target','scoreRule','bestOf','shotLimit','modal'];
-  const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB'];
+  const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB','lights','greenOn'];
   function snapshot(){
     const o={S:{},T:{},REP:{...REP},fields:{},saved:Date.now()};
     SKEYS.forEach(k=>o.S[k]=S[k]); o.S.persp=JSON.parse(JSON.stringify(S.persp));
@@ -3097,7 +3185,7 @@ function autoCalib(rgba, W, H, TARGETS){
     selSeg('#timerMode','tm',T.mode);
     $('#cardDown').style.display=T.mode==='down'?'block':'none';
     $('#cardBeep').style.display=T.mode==='beep'?'block':'none';
-    $('#cardAlt').style.display=T.mode==='alt'?'block':'none';
+    $('#cardAlt').style.display=T.mode==='alt'?'block':'none'; if(typeof lightsUI==='function') lightsUI();
     $('#downSecs').value=T.downSecs; $('#beepSecs').value=T.beepSecs; $('#altA').value=T.altA; $('#altB').value=T.altB;
     $('#swLoop').classList.toggle('on',T.loop); setR('#startcd',T.startCount,'#vStart'); $('#swSound').classList.toggle('on',T.sound);
     selSeg('#rGun','g',REP.gun); selSeg('#rHand','h',REP.hand);
@@ -3518,11 +3606,12 @@ function autoCalib(rgba, W, H, TARGETS){
   }
   function compAfterShot(){
     const a=CP.active;
-    if(!a && S.shotLimit>0 && S.phase==='running' && S.shots.length>=S.shotLimit){   // tirada completa
+    const nOk=S.shots.filter(s=>!s.late).length;
+    if(!a && S.shotLimit>0 && S.phase==='running' && nOk>=S.shotLimit){   // tirada completa
       flashScore('✓'); setTimeout(()=>{ if(S.phase==='running') finalizarSesion(); },1300); return; }
     if(!a||!a.started) return;
     updCompBanner();
-    if(S.phase==='running' && S.shots.length>=a.sess.shots){
+    if(S.phase==='running' && nOk>=a.sess.shots){
       flashScore('✓'); setTimeout(()=>{ if(S.phase==='running') finalizarSesion(); },1300);
     }
   }
