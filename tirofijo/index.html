@@ -826,7 +826,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v27.1', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v27.2', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2572,9 +2572,7 @@
       ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{duel:5,g:3,r:7,n:5})}]}
   };
   // avancarga: 30 min seguidos, 13 disparos, cuentan los 10 mejores (reglas de avancarga: impacto en la línea por el centro)
-  [['KUCHENREUTER','Pistola de percusión (original)'],['COLT','Revólver de percusión (original)'],['MARIETTE','Revólver de percusión (réplica)'],
-   ['COMINAZZO','Pistola de chispa (original)'],['WOGDON','Pistola de chispa (réplica)'],['TANZUTSU','Pistola de mecha'],['AVANCARGA','Otra modalidad de avancarga']]
-    .forEach(([k,n])=>MODS[k]={n, av:true, d:'Avancarga: 30 minutos seguidos, 13 disparos, cuentan los 10 mejores.', ph:[{l:'13 disparos',ser:[{g:1800,n:13}]}]});
+  MODS['AVANCARGA']={n:'30 min seguidos · 13 disparos · cuentan los 10 mejores', av:true, d:'30 minutos seguidos, 13 disparos, cuentan los 10 mejores.', ph:[{l:'13 disparos',ser:[{g:1800,n:13}]}]};
   // pasos del programa: rojo (pausa/aviso) y verde (serie). Cada paso sabe a qué serie pertenece
   function modSteps(key){
     const M=MODS[key], st=[], lbl=[]; let k=0;
@@ -3470,7 +3468,7 @@ function autoCalib(rgba, W, H, TARGETS){
   // modalidades
   const modBtnH=k=>'<button data-mod="'+k+'"><b>'+k+'</b><span>'+MODS[k].n+'</span></button>';
   $('#modList').innerHTML='<div class="modHd">🔫 Arma de fuego</div>'+Object.keys(MODS).filter(k=>!MODS[k].av).map(modBtnH).join('')
-    +'<div class="modHd">💨 Avancarga · 30 min, 13 disparos, cuentan los 10 mejores</div>'+Object.keys(MODS).filter(k=>MODS[k].av).map(modBtnH).join('');
+    +'<div class="modHd">💨 Avancarga</div>'+Object.keys(MODS).filter(k=>MODS[k].av).map(modBtnH).join('');
   function modUI(){
     document.querySelectorAll('#modList button').forEach(b=>b.classList.toggle('sel',T.mode==='mod'&&b.dataset.mod===T.mod));
     const on=T.mode==='mod'&&!!MODS[T.mod];
