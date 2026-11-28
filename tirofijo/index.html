@@ -234,7 +234,7 @@
   #rowRun.mod .btn{min-width:0; padding-left:9px; padding-right:9px;} #rowRun.mod{gap:6px;}
   .modList{display:flex; flex-direction:column; gap:6px;}
   .modList button{display:flex; gap:10px; align-items:center; text-align:left; padding:9px 11px; border-radius:10px; border:1px solid #30363d; background:#161b22; color:#e6edf3; font-size:13px;}
-  .modList button b{min-width:62px; color:#ffd60a;} .modList button.sel{border-color:#3fb950; background:#12261a;}
+  .modList button b{min-width:62px; color:#ffd60a;} .modHd{font-size:12px; font-weight:800; color:#8b949e; margin:6px 2px 0;} .modList button.sel{border-color:#3fb950; background:#12261a;}
   .warn{font-size:12px; color:var(--gold); margin-top:8px;}
   .val{font-variant-numeric:tabular-nums;}
 
@@ -826,7 +826,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.9', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v27.0', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2571,6 +2571,10 @@
     'SPM':{n:'Pistola 25m (precisión y tiro rápido)', d:'30+30 disparos. Precisión: 6 series de 5 en 300 s. Tiro rápido: 6 series de 5 en 10 s (10×5 disparos máx.).',
       ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{g:10,n:5})}]}
   };
+  // avancarga: 30 min seguidos, 13 disparos, cuentan los 10 mejores (reglas de avancarga: impacto en la línea por el centro)
+  [['KUCHENREUTER','Pistola de percusión (original)'],['COLT','Revólver de percusión (original)'],['MARIETTE','Revólver de percusión (réplica)'],
+   ['COMINAZZO','Pistola de chispa (original)'],['WOGDON','Pistola de chispa (réplica)'],['TANZUTSU','Pistola de mecha'],['AVANCARGA','Otra modalidad de avancarga']]
+    .forEach(([k,n])=>MODS[k]={n, av:true, d:'Avancarga: 30 minutos seguidos, 13 disparos, cuentan los 10 mejores.', ph:[{l:'13 disparos',ser:[{g:1800,n:13}]}]});
   // pasos del programa: rojo (pausa/aviso) y verde (serie). Cada paso sabe a qué serie pertenece
   function modSteps(key){
     const M=MODS[key], st=[], lbl=[]; let k=0;
@@ -3464,18 +3468,25 @@ function autoCalib(rgba, W, H, TARGETS){
     $('#cardAlt').style.display = T.mode==='alt'?'block':'none'; T.mod=''; modUI(); lightsUI();
   });
   // modalidades
-  $('#modList').innerHTML=Object.keys(MODS).map(k=>'<button data-mod="'+k+'"><b>'+k+'</b><span>'+MODS[k].n+'</span></button>').join('');
+  const modBtnH=k=>'<button data-mod="'+k+'"><b>'+k+'</b><span>'+MODS[k].n+'</span></button>';
+  $('#modList').innerHTML='<div class="modHd">🔫 Arma de fuego</div>'+Object.keys(MODS).filter(k=>!MODS[k].av).map(modBtnH).join('')
+    +'<div class="modHd">💨 Avancarga · 30 min, 13 disparos, cuentan los 10 mejores</div>'+Object.keys(MODS).filter(k=>MODS[k].av).map(modBtnH).join('');
   function modUI(){
     document.querySelectorAll('#modList button').forEach(b=>b.classList.toggle('sel',T.mode==='mod'&&b.dataset.mod===T.mod));
     const on=T.mode==='mod'&&!!MODS[T.mod];
     $('#modBox').style.display=on?'block':'none';
-    if(on){ const P=modSteps(T.mod); $('#modDesc').innerHTML='<b>'+MODS[T.mod].n+'</b><br>'+MODS[T.mod].d+' '+P.nSer+(P.nSer>1?' series':' serie')+', '+P.tot+' disparos.'; }
+    if(on){ const P=modSteps(T.mod); $('#modDesc').innerHTML='<b>'+T.mod+' · '+MODS[T.mod].n+'</b><br>'+MODS[T.mod].d+(MODS[T.mod].av?'':' '+P.nSer+(P.nSer>1?' series':' serie')+', '+P.tot+' disparos.'); }
     $('#modPause').value=T.modPause; $('#modFirst').value=T.modFirst;
     if(on) document.querySelectorAll('#timerMode button').forEach(x=>x.classList.remove('sel'));
     ['cardDown','cardBeep','cardAlt'].forEach(id=>{ if(on) $('#'+id).style.display='none'; });
     const lc=$('#swLights').closest('.card'), mc=$('#swMaxShots').closest('.card'); lc.style.display=mc.style.display=on?'none':'';
   }
-  document.querySelectorAll('#modList button').forEach(b=>b.onclick=()=>{ T.mode='mod'; T.mod=b.dataset.mod; modUI(); });
+  document.querySelectorAll('#modList button').forEach(b=>b.onclick=()=>{ T.mode='mod'; T.mod=b.dataset.mod;
+    // reglas de puntuación de la modalidad (el calibre se respeta: se pregunta antes de cada sesión)
+    const cal=S.caliber, av=!!MODS[T.mod].av;
+    if(av && S.modal!=='avancarga'){ setModal('avancarga'); S.caliber=cal; $('#caliber').value=$('#caliber2').value=cal; calHints(); rescoreAll(); }
+    else if(!av && S.modal==='avancarga'){ setModal('issf'); }
+    modUI(); });
   $('#modPause').oninput=e=>{ T.modPause=Math.max(3,Math.min(900,+e.target.value||60)); };
   $('#modFirst').oninput=e=>{ T.modFirst=Math.max(3,Math.min(120,+e.target.value||7)); };
   modUI();
