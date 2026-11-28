@@ -501,6 +501,7 @@
         <div class="abFix" id="abFix"></div>
       </div>
       <div class="abInfo" id="abInfo"></div>
+      <div class="abInfo" id="fxInfo" style="display:none;color:#7dd3fc;font-weight:700"></div>
     </div>
   </div>
 
@@ -557,6 +558,7 @@
       <div class="switchrow"><span>Compensar cambios de luz</span><div class="sw on" id="swLight"></div></div>
       <div class="switchrow"><span>Disparos fuera del aro 1 cuentan como 0</span><div class="sw on" id="swOut"></div></div>
       <div class="switchrow"><span>Preguntar «¿disparo?» si la tarjeta se mueve sin agujero nuevo</span><div class="sw on" id="swAsk"></div></div>
+      <div class="switchrow"><span>🔬 Análisis final exhaustivo: foto a la máxima resolución al empezar y al terminar para encontrar impactos no detectados</span><div class="sw on" id="swFx"></div></div>
       <div class="switchrow"><span>🎬 Grabar cada tirada para verla después (repetición de cada disparo, cámara lenta)</span><div class="sw" id="swRep"></div></div>
       <button class="btn sm" id="btnRepList" style="width:100%; margin:2px 0 8px">🎬 Repeticiones guardadas</button>
       <div class="switchrow"><span>🎥 Grabar vídeo de diagnóstico</span><div class="sw" id="swDiag"></div></div>
@@ -807,7 +809,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.6', APPDATE='27-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.7', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1173,6 +1175,7 @@
       try{ conn.send({torchCap:torchCap(camTrack()), torch:TORCH.on}); }catch(e){}
     });
       conn.on('data', async d=>{                                 // el móvil que puntúa enciende o apaga la linterna
+        if(d && d.photo){ fxServePhoto(conn,d.photo); }
         if(d && d.expo){ const r=await expoTrack(camTrack(), d.expo); try{ conn.send({expoAck:r}); }catch(e){} }
         if(d && d.focus){ const r=await focusTrack(camTrack(), d.focus, d.poi||null);
           if(r.ok && r.af!==undefined && d.focus!=='once'){ CC.af=r.af; $('#ccAF').classList.toggle('on',CC.af); $('#ccAF').textContent='Autoenfoque: '+(CC.af?'ON':'OFF'); }
@@ -1221,6 +1224,7 @@
     conn.on('open', ()=>{ if(!S.running) $('#suStatus').textContent='Enlazado, esperando vídeo…'; });
     conn.on('data', d=>{ if(d && 'torchCap' in d){ TORCH.remoteCap=!!d.torchCap; TORCH.on=!!d.torch; torchUI(); quickUI(); }
       if(d && d.expoAck){ expoDone(d.expoAck); }
+      if(d && d.photoPart!==undefined){ fxRemoteData(d); }
       if(d && d.focusAck){ if(typeof d.af==='boolean') QF.af=d.af; qMsg(focusResultTxt(d.focusAck, QF.pend&&QF.pend.center)); QF.pend=null; quickUI(); } });
     conn.on('close', ()=>{ if(LINK.active) linkLost('El móvil-cámara se ha desconectado.'); });
     conn.on('error', ()=>{ if(!S.running) $('#suStatus').textContent='No se pudo enlazar. Revisa el código.'; });
@@ -1522,8 +1526,10 @@
     const rv=Math.sqrt((vx1-vx0)*(vy1-vy0))/2/ROI_EXT;                  // radio de la diana en px de vídeo
     HD.rv=rv;
     // se analiza con todo el detalle que da la cámara (hasta 300 px de radio): los impactos pequeños se ven mejor
-    HD.RR=170; const sc=HD.RR/rv;
-    const w=Math.max(16,Math.min(720,Math.round(bw*sc))), h=Math.max(16,Math.min(720,Math.round(bh*sc)));
+    // calibre pequeño en diana grande (p. ej. ,22 en 50 cm): se sube la resolución para que el agujero mida ≥ 7 px
+    const dExp=(S.caliber>0?S.caliber:9)/targetD()*2*170;
+    HD.RR=Math.round(Math.max(170, Math.min(rv, 340, dExp>0?170*7/dExp:170))); const sc=HD.RR/rv;
+    const w=Math.max(16,Math.min(900,Math.round(bw*sc))), h=Math.max(16,Math.min(900,Math.round(bh*sc)));
     return {x0,y0,bw,bh,w,h,vw,vh};
   }
   function roiToScreen(R,x,y){ return mapCover((R.x0+x*R.bw/R.w)/R.vw, (R.y0+y*R.bh/R.h)/R.vh); }
@@ -1642,6 +1648,284 @@
       mn[o+x]=Math.min(t1[u+x],t1[o+x],t1[d+x]); mx[o+x]=Math.max(t2[u+x],t2[o+x],t2[d+x]); } }
     return {mn,mx};
   }
+  /* ---------- ANÁLISIS FINAL EXHAUSTIVO ----------
+     Foto a la máxima resolución al empezar y otra al terminar. Al final se comparan con calma (sin prisa de
+     tiempo real ni movimiento) para encontrar los agujeros que la detección en directo no vio, y marcar como
+     dudosos los detectados que no aparecen en la foto final. */
+  const FX={A:null, busy:false, res:null, msg:'', sug:[]};
+  const FX_RR=700;                 // radio del aro 1 en la rejilla de alta resolución (px), como máximo
+  const fxSleep=ms=>new Promise(r=>setTimeout(r,ms));
+  // media de varios fotogramas del vídeo (si la cámara no permite fotos): menos ruido que un solo fotograma
+  async function fxVideoAvg(){
+    const vw=video.videoWidth, vh=video.videoHeight; if(!vw) return null;
+    const c=document.createElement('canvas'); c.width=vw; c.height=vh; const g=c.getContext('2d');
+    for(let k=0;k<6;k++){ g.globalAlpha=1/(k+1); g.drawImage(video,0,0,vw,vh); await fxSleep(90); }
+    g.globalAlpha=1; return {img:c, w:vw, h:vh, src:'vídeo'};
+  }
+  // foto con ImageCapture de una pista local (máxima resolución, sin flash)
+  async function fxTakePhoto(t){
+    if(!t || !window.ImageCapture) return null;
+    try{ const ic=new ImageCapture(t), o={};
+      try{ const pc=await ic.getPhotoCapabilities(); if(pc.imageWidth&&pc.imageWidth.max) o.imageWidth=pc.imageWidth.max;
+        if(pc.imageHeight&&pc.imageHeight.max) o.imageHeight=pc.imageHeight.max;
+        if(pc.fillLightMode&&pc.fillLightMode.includes('off')) o.fillLightMode='off'; }catch(e){}
+      const blob=await Promise.race([ic.takePhoto(o), fxSleep(8000).then(()=>null)]);
+      if(TORCH.on) setTorchOn(t,true);                       // algunos móviles apagan la linterna al hacer la foto
+      return blob||null; }catch(e){ return null; }
+  }
+  // cámara remota: se pide la foto al móvil-cámara y llega por trozos
+  const FXR={id:0, parts:null, ok:null};
+  function fxRemotePhoto(){
+    const conn=LINK.conn; if(!conn || !conn.open || LINK.mode==='direct' || FXR.no) return Promise.resolve(null);
+    const id=++FXR.id; FXR.parts=null;
+    // si el móvil-cámara no contesta (versión antigua), no se vuelve a esperar en esta sesión
+    return new Promise(ok=>{ FXR.ok=b=>{ FXR.ok=null; ok(b); }; try{ conn.send({photo:id}); }catch(e){ ok(null); }
+      setTimeout(()=>{ if(FXR.ok&&FXR.id===id&&!FXR.parts){ FXR.ok=null; FXR.no=true; ok(null); } },6000);
+      setTimeout(()=>{ if(FXR.ok&&FXR.id===id){ FXR.ok=null; ok(null); } },30000); });
+  }
+  function fxRemoteData(d){                                  // en el móvil que puntúa: trozos de la foto
+    if(!d || d.photoPart===undefined || d.photoPart!==FXR.id || !FXR.ok) return;
+    if(d.none){ FXR.ok(null); return; }
+    if(!FXR.parts) FXR.parts=new Array(d.n);
+    FXR.parts[d.i]=d.b;
+    if(FXR.parts.filter(x=>x!==undefined).length===d.n){
+      try{ const bin=FXR.parts.map(b64=>{ const s=atob(b64), u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; });
+        FXR.ok(new Blob(bin,{type:'image/jpeg'})); }catch(e){ FXR.ok(null); } }
+  }
+  async function fxServePhoto(conn,id){                      // en el móvil-cámara: hace la foto y la envía
+    const blob=await fxTakePhoto(camTrack());
+    if(!blob){ try{ conn.send({photoPart:id, none:1}); }catch(e){} return; }
+    const buf=new Uint8Array(await blob.arrayBuffer()), CH=120000, n=Math.ceil(buf.length/CH);
+    for(let i=0;i<n;i++){ let s=''; const sub=buf.subarray(i*CH,(i+1)*CH);
+      for(let k=0;k<sub.length;k+=8192) s+=String.fromCharCode.apply(null,sub.subarray(k,k+8192));
+      try{ conn.send({photoPart:id, i, n, b:btoa(s)}); }catch(e){ return; }
+      if(i%8===7) await fxSleep(20); }
+  }
+  async function fxCapture(){
+    let blob=null;
+    const so=video.srcObject, lt=camTrack()||(so&&so.getVideoTracks?so.getVideoTracks()[0]:null);
+    if(LINK.active) blob=await fxRemotePhoto(); else blob=await fxTakePhoto(lt);
+    if(blob){ try{ const b=await createImageBitmap(blob,{imageOrientation:'from-image'}); return {img:b, w:b.width, h:b.height, src:'foto'}; }catch(e){} }
+    return fxVideoAvg();
+  }
+  // gris de la foto en una rejilla w×h; T: rejilla (continua) → foto, afín [a,b,c,d,e,f]
+  function fxRender(P,T,w,h){
+    const c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d',{willReadFrequently:true});
+    g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+    const I=affInv(T); g.setTransform(I[0],I[3],I[1],I[4],I[2],I[5]); g.drawImage(P.img,0,0);
+    const d=g.getImageData(0,0,w,h).data, n=w*h, out=new Float32Array(n);
+    for(let i=0,p=0;i<n;i++,p+=4) out[i]=d[p]*0.299+d[p+1]*0.587+d[p+2]*0.114;
+    return out;
+  }
+  const fxNcc=(a,b,m)=>{ let sa=0,sb=0,saa=0,sbb=0,sab=0,n=0; for(let i=0;i<a.length;i+=3){ if(!m[i]) continue; const x=a[i],y=b[i]; sa+=x; sb+=y; saa+=x*x; sbb+=y*y; sab+=x*y; n++; }
+    if(n<50) return 0; const va=saa/n-(sa/n)**2, vb=sbb/n-(sb/n)**2; return va>1&&vb>1?(sab/n-(sa/n)*(sb/n))/Math.sqrt(va*vb):0; };
+  // alinea B con A (la tarjeta se mueve o gira un poco): devuelve Wm con B(u) ≈ A(Wm·u). Primero a 1/4, luego fino
+  function fxAlign(A,B,w,h,ins){
+    let d0={dx:0,dy:0};
+    if(w>400){ const k=4, w4=Math.floor(w/k), h4=Math.floor(h/k), a4=new Float32Array(w4*h4), b4=new Float32Array(w4*h4), m4=new Uint8Array(w4*h4);
+      for(let y=0;y<h4;y++)for(let x=0;x<w4;x++){ let sa=0,sb=0; for(let dy=0;dy<k;dy++)for(let dx=0;dx<k;dx++){ const i=(y*k+dy)*w+x*k+dx; sa+=A[i]; sb+=B[i]; }
+        a4[y*w4+x]=sa/16; b4[y*w4+x]=sb/16; m4[y*w4+x]=ins[(y*k+2)*w+x*k+2]; }
+      const R4={w:w4,h:h4}, s4=prepSnap(a4,R4,m4,0), sh=estShift(s4,b4,R4), W4=lkAffine(s4,b4,R4,sh);
+      if(W4){ const c=affApply(W4,w4/2,h4/2); d0={dx:k*(c.x-w4/2), dy:k*(c.y-h4/2)}; } else d0={dx:k*sh.dx, dy:k*sh.dy}; }
+    // B se recoloca con el desplazamiento grueso y se afina (estShift busca ±20 px)
+    const R={w,h}, sn=prepSnap(A,R,ins,0), moved=Math.abs(d0.dx)>0.5||Math.abs(d0.dy)>0.5;
+    const r=estShift(sn,moved?shifted(B,w,h,-d0.dx,-d0.dy):B,R), tot={dx:(moved?d0.dx:0)+r.dx, dy:(moved?d0.dy:0)+r.dy};
+    return lkAffine(sn,B,R,tot)||[1,0,tot.dx,0,1,tot.dy];
+  }
+  // foto girada 90° (la foto viene en otra orientación que el vídeo)
+  function fxRot(P,dir){ const c=document.createElement('canvas'); c.width=P.h; c.height=P.w; const g=c.getContext('2d');
+    g.translate(c.width/2,c.height/2); g.rotate(dir*Math.PI/2); g.drawImage(P.img,-P.w/2,-P.h/2); return {img:c, w:c.width, h:c.height, src:P.src}; }
+  function fxLocalLight(A,B,w,h,r4){
+    const n=w*h, g=new Float32Array(n), o=new Float32Array(n);
+    if(!S.lightComp){ g.fill(1); return {g,o}; }
+    const k=4, w4=Math.ceil(w/k), h4=Math.ceil(h/k), n4=w4*h4, G4=new Float32Array(n4), O4=new Float32Array(n4);
+    const box=X=>{ const t=new Float64Array(n4), u=new Float64Array(n4);
+      for(let y=0;y<h4;y++){ let acc=0; const r=y*w4; for(let x=-r4;x<w4;x++){ if(x+r4<w4) acc+=X[r+x+r4]; if(x-r4-1>=0) acc-=X[r+x-r4-1]; if(x>=0) t[r+x]=acc; } }
+      for(let x=0;x<w4;x++){ let acc=0; for(let y=-r4;y<h4;y++){ if(y+r4<h4) acc+=t[(y+r4)*w4+x]; if(y-r4-1>=0) acc-=t[(y-r4-1)*w4+x]; if(y>=0) u[y*w4+x]=acc; } }
+      return u; };
+    let lim=Infinity;
+    // 2 pasadas: la segunda sin los píxeles que no encajan (agujeros, sombras que se mueven)
+    for(let pass=0;pass<2;pass++){
+      const Q=[0,1,2,3,4].map(()=>new Float64Array(n4)), rs=[];
+      for(let y=0;y<h;y++){ const r=((y/k)|0)*w4; for(let x=0;x<w;x++){ const i=y*w+x, j=r+((x/k)|0);
+        if(pass){ const e=Math.abs(B[i]-(G4[j]*A[i]+O4[j])); if(e>lim) continue; }
+        const a=A[i]-128, b=B[i]-128; Q[0][j]+=a; Q[1][j]+=b; Q[2][j]+=a*a; Q[3][j]+=a*b; Q[4][j]++; } }
+      const [Sa,Sb,Saa,Sab,Sn]=Q.map(box), eps=25;
+      for(let j=0;j<n4;j++){ const N=Math.max(1,Sn[j]), ma=Sa[j]/N, mb=Sb[j]/N, va=Math.max(0,Saa[j]/N-ma*ma), cv=Sab[j]/N-ma*mb;
+        const gm=Math.max(0.2,Math.min(5,(mb+128)/Math.max(8,ma+128))), gg=Math.max(0.2,Math.min(5,(cv+eps*gm)/(va+eps)));
+        G4[j]=gg; O4[j]=(mb+128)-gg*(ma+128); }
+      if(!pass){ for(let i=0;i<n;i+=13){ const y=(i/w)|0, x=i-y*w, j=((y/k)|0)*w4+((x/k)|0); rs.push(Math.abs(B[i]-(G4[j]*A[i]+O4[j]))); }
+        rs.sort((a,b)=>a-b); lim=Math.max(10,3*1.4826*(rs[rs.length>>1]||2)); }
+    }
+    for(let y=0;y<h;y++){ const fy=Math.max(0,Math.min(h4-1.001,(y+0.5)/k-0.5)), y0=fy|0, ty=fy-y0;
+      for(let x=0;x<w;x++){ const fx=Math.max(0,Math.min(w4-1.001,(x+0.5)/k-0.5)), x0=fx|0, tx=fx-x0, j=y0*w4+x0, i=y*w+x;
+        g[i]=(G4[j]*(1-tx)+G4[j+1]*tx)*(1-ty)+(G4[j+w4]*(1-tx)+G4[j+w4+1]*tx)*ty;
+        o[i]=(O4[j]*(1-tx)+O4[j+1]*tx)*(1-ty)+(O4[j+w4]*(1-tx)+O4[j+w4+1]*tx)*ty; } }
+    return {g,o};
+  }
+  // ajuste fino LOCAL: el papel se ondula o se dobla un poco y la afín no basta. Bloques de 48 px, ±4 px
+  function fxFlow(ref,B,w,h,ins){
+    const w2=w>>1, h2=h>>1, a=new Float32Array(w2*h2), b=new Float32Array(w2*h2);
+    for(let y=0;y<h2;y++)for(let x=0;x<w2;x++){ const i=2*y*w+2*x; a[y*w2+x]=(ref[i]+ref[i+1]+ref[i+w]+ref[i+w+1])/4; b[y*w2+x]=(B[i]+B[i+1]+B[i+w]+B[i+w+1])/4; }
+    const T=24, R=2, gx=Math.floor((w2-T-2*R)/T)+1, gy=Math.floor((h2-T-2*R)/T)+1, ng=gx*gy;
+    if(gx<2||gy<2) return ref;
+    const DX=new Float32Array(ng), DY=new Float32Array(ng), OK=new Uint8Array(ng);
+    for(let ty=0;ty<gy;ty++)for(let tx=0;tx<gx;tx++){ const x0=R+tx*T, y0=R+ty*T, t=ty*gx+tx;
+      if(!ins[(2*(y0+T/2))*w+2*(x0+T/2)]) continue;
+      let sa=0,saa=0; for(let y=y0;y<y0+T;y++)for(let x=x0;x<x0+T;x++){ const v=a[y*w2+x]; sa+=v; saa+=v*v; }
+      const N=T*T, ma=sa/N, va=saa/N-ma*ma; if(va<30) continue;
+      const C=new Float32Array((2*R+1)*(2*R+1)); let best=-2,bx=0,by=0;
+      for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){ let sb=0,sbb=0,sab=0;
+        for(let y=y0;y<y0+T;y++){ const ra=y*w2, rb=(y+dy)*w2+dx; for(let x=x0;x<x0+T;x++){ const u=a[ra+x], v=b[rb+x]; sb+=v; sbb+=v*v; sab+=u*v; } }
+        const mb=sb/N, vb=sbb/N-mb*mb, z=vb>1?(sab/N-ma*mb)/Math.sqrt(va*vb):-1; C[(dy+R)*(2*R+1)+dx+R]=z; if(z>best){best=z;bx=dx;by=dy;} }
+      if(best<0.6) continue;
+      const at=(dx,dy)=>C[(dy+R)*(2*R+1)+dx+R], sub=(l,c,r)=>{ const d=l-2*c+r; return d<0?Math.max(-0.5,Math.min(0.5,0.5*(l-r)/d)):0; };
+      DX[t]=bx+(Math.abs(bx)<R?sub(at(bx-1,by),best,at(bx+1,by)):0); DY[t]=by+(Math.abs(by)<R?sub(at(bx,by-1),best,at(bx,by+1)):0); OK[t]=1; }
+    // huecos (zonas lisas) con la media de los vecinos; mediana 3×3 contra valores sueltos
+    for(let it=0;it<30;it++){ let ch=0; for(let t=0;t<ng;t++){ if(OK[t]) continue; const x=t%gx, y=(t/gx)|0; let sx=0,sy=0,c=0;
+        for(const [ex,ey] of [[1,0],[-1,0],[0,1],[0,-1]]){ const xx=x+ex, yy=y+ey; if(xx<0||yy<0||xx>=gx||yy>=gy) continue; const q=yy*gx+xx; if(OK[q]){ sx+=DX[q]; sy+=DY[q]; c++; } }
+        if(c){ DX[t]=sx/c; DY[t]=sy/c; OK[t]=2; ch++; } } if(!ch) break; }
+    const med=X=>{ const out=new Float32Array(ng); for(let y=0;y<gy;y++)for(let x=0;x<gx;x++){ const v=[];
+      for(let ey=-1;ey<=1;ey++)for(let ex=-1;ex<=1;ex++){ const xx=x+ex, yy=y+ey; if(xx>=0&&yy>=0&&xx<gx&&yy<gy&&OK[yy*gx+xx]) v.push(X[yy*gx+xx]); }
+      v.sort((p,q)=>p-q); out[y*gx+x]=v.length?v[v.length>>1]:0; } return out; };
+    const MX=med(DX), MY=med(DY), out=new Float32Array(w*h);
+    for(let y=0;y<h;y++){ const fy=Math.max(0,Math.min(gy-1.001,((y+0.5)/2-0.5-R-T/2)/T)), y0=fy|0, ty=fy-y0;
+      for(let x=0;x<w;x++){ const fx=Math.max(0,Math.min(gx-1.001,((x+0.5)/2-0.5-R-T/2)/T)), x0=fx|0, tx=fx-x0, j=y0*gx+x0;
+        const dx=2*((MX[j]*(1-tx)+MX[j+1]*tx)*(1-ty)+(MX[j+gx]*(1-tx)+MX[j+gx+1]*tx)*ty), dy=2*((MY[j]*(1-tx)+MY[j+1]*tx)*(1-ty)+(MY[j+gx]*(1-tx)+MY[j+gx+1]*tx)*ty);
+        const X=Math.min(w-1.001,Math.max(0,x-dx)), Y=Math.min(h-1.001,Math.max(0,y-dy)), xi=X|0, yi=Y|0, ax=X-xi, ay=Y-yi, i=yi*w+xi;
+        out[y*w+x]=(ref[i]*(1-ax)+ref[i+1]*ax)*(1-ay)+(ref[i+w]*(1-ax)+ref[i+w+1]*ax)*ay; } }
+    return out;
+  }
+  // al empezar la tirada: foto inicial y su correspondencia con la imagen en directo
+  async function fxStart(){
+    FX.A=null; FX.res=null; FX.sug=[]; fxUI('');
+    if(!S.fxOn || S.detectType!=='holes') return;
+    const R=HD.R; if(!R||!HD.ins||HD.ins.length!==R.w*R.h) return;
+    const live=grabRoi(R), rv=HD.rv, RR0=HD.RR, curA=(HD.curA||AFF_I).slice(), ins=HD.ins;
+    const backup=await fxVideoAvg();                         // por si la foto falla o tarda (cámara remota antigua)
+    let P=await fxCapture(); if(!P||P.src!=='foto') P=backup; if(!P) return;
+    const vw=R.vw, vh=R.vh, kx=R.bw/R.w, ky=R.bh/R.h, sn=prepSnap(live,R,ins,0);
+    const cands=((P.w>P.h)!==(vw>vh))?[fxRot(P,1),fxRot(P,-1)]:[P];
+    let best=null;
+    for(const Q of cands){ const s1=Q.w/vw, s2=Q.h/vh, hyps=[{s:s1, ox:0, oy:(Q.h-s1*vh)/2}];
+      if(Math.abs(s1-s2)>0.01*s1) hyps.push({s:s2, ox:(Q.w-s2*vw)/2, oy:0});
+      for(const H of hyps){
+        const T=[H.s*kx,0,H.ox+H.s*R.x0, 0,H.s*ky,H.oy+H.s*R.y0];      // rejilla en directo → foto
+        const g=fxRender(Q,T,R.w,R.h), sh=estShift(sn,g,R), Wm=lkAffine(sn,g,R,sh)||[1,0,sh.dx,0,1,sh.dy];
+        const nc=fxNcc(warpAff(live,R.w,R.h,Wm),g,ins);
+        if(!best||nc>best.nc) best={nc, T:affMul(T,affInv(Wm)), s:H.s, Q};
+      } }
+    if(!best||best.nc<0.6){ if(P!==backup&&backup){ P=backup; const T=[kx,0,R.x0,0,ky,R.y0]; best={nc:1,T,s:1,Q:backup}; } else return; }
+    const Q=best.Q, F=Math.max(1,Math.min(FX_RR/RR0, best.s*rv/RR0, 1900/Math.max(R.w,R.h)));
+    const w=Math.round(R.w*F), h=Math.round(R.h*F), Th=affMul(best.T,[1/F,0,0,0,1/F,0]);   // rejilla alta → foto
+    FX.A={g:fxRender(Q,Th,w,h), w, h, F, T:Th, R, curA, RR:RR0*F, src:Q.src, rot:cands.length>1?(Q===cands[0]?1:-1):0};
+    [P,backup,...cands].forEach(o=>{ if(o&&o.img&&o.img.close) try{ o.img.close(); }catch(e){} });
+  }
+  // al terminar: foto final, comparación y resultado
+  async function fxEnd(){
+    const A=FX.A; if(!A||FX.busy) return null;
+    FX.busy=true; fxUI('🔬 Análisis final: haciendo la foto…');
+    try{
+      let P=await fxCapture(); if(!P){ fxUI('🔬 Análisis final: no se pudo hacer la foto'); return null; }
+      if(A.src==='foto'&&P.src!=='foto'){ fxUI('🔬 Análisis final: la cámara no dio la foto final'); return null; }
+      if(A.src!=='foto'&&P.src==='foto'){ if(P.img.close) P.img.close(); P=await fxVideoAvg(); }
+      if(A.rot) P=fxRot(P,A.rot);
+      fxUI('🔬 Analizando la foto final con detalle…'); await fxSleep(30); const t0=performance.now();
+      const w=A.w, h=A.h, n=w*h, B=fxRender(P,A.T,w,h); if(P.img.close) P.img.close();
+      // máscaras de la diana en la rejilla alta (calculadas a 1/4 y ampliadas)
+      const R=A.R, lim=1.04, limD=(S.countOut!==false)?1.27:1.04, k=4, w4=Math.ceil(w/k), h4=Math.ceil(h/k), dr4=new Float32Array(w4*h4);
+      const toNorm=(X,Y)=>{ const u=affApply(A.curA,X/A.F,Y/A.F), p=roiToScreen(R,u.x,u.y); return normFromScreen(p.x,p.y); };
+      for(let y=0;y<h4;y++)for(let x=0;x<w4;x++) dr4[y*w4+x]=toNorm((x+0.5)*k,(y+0.5)*k).dRel;
+      const ins=new Uint8Array(n), insD=new Uint8Array(n), edge=new Uint8Array(n), eb=3/A.RR;
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){ const d=dr4[((y/k)|0)*w4+((x/k)|0)], i=y*w+x; if(d<=lim) ins[i]=1; if(d<=limD){ insD[i]=1; if(d>limD-eb) edge[i]=1; } }
+      const Wm=fxAlign(A.g,B,w,h,ins);
+      const ref0=warpAff(A.g,w,h,Wm), nc=fxNcc(ref0,B,ins);
+      if(nc<0.6){ fxUI('🔬 La foto final no se parece a la inicial (¿diana girada?). Ponla de frente y pulsa «Repetir análisis»'); return null; }
+      const ref=fxFlow(ref0,B,w,h,ins);
+      // luz por cuartos, ruido, cambio fuera del rango del entorno (tolera desajustes de 1–2 px en las líneas)
+      const dmm=targetD(), cal=S.caliber>0?S.caliber:9, hd=cal/dmm*2*A.RR, hr=Math.max(1,Math.round(0.45*hd)), hA=Math.PI*Math.pow(hd/2+hr,2);
+      // luz LOCAL (sol y sombras que cambian entre las dos fotos): en cada zona de ~8 agujeros, final ≈ g·inicial + o
+      const GO=fxLocalLight(ref,B,w,h,Math.max(6,Math.round(0.75*hd)));
+      let MM=minMax3(ref,w,h); if(hd>=8){ const m1=minMax3(MM.mn,w,h).mn, m2=minMax3(MM.mx,w,h).mx; MM={mn:m1,mx:m2}; }
+      const grad=new Float32Array(n);
+      for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){ const i=y*w+x; const gx=(ref[i+1]-ref[i-1])/2, gy=(ref[i+w]-ref[i-w])/2; grad[i]=Math.sqrt(gx*gx+gy*gy); }
+      const BL=!!S.backlit, DF=new Float32Array(n), rs=[];
+      for(let i=0;i<n;i++){ if(!insD[i]) continue; const G=GO.g[i], O=GO.o[i], c=B[i], hi=G*MM.mx[i]+O, lo=G*MM.mn[i]+O;
+        DF[i]=BL?Math.max(0,c-hi):Math.max(0,c-hi,lo-c); if(ins[i]&&i%7===0&&grad[i]<HOLE_G0*0.25) rs.push(Math.abs(c-(G*ref[i]+O))); }
+      rs.sort((a,b)=>a-b); const sig=rs.length>50?1.4826*rs[rs.length>>1]:2;
+      const sm=[]; for(let i=0;i<n;i+=9) if(ins[i]) sm.push(ref[i]); sm.sort((a,b)=>a-b);
+      const mid=sm.length?(sm[Math.floor(sm.length*0.15)]+sm[Math.floor(sm.length*0.85)])/2:128, paper=sm.length?sm[Math.floor(sm.length*0.9)]:200;
+      const thrD=Math.max(16,4*sig), thrL=Math.max(28,5*sig), E=new Float32Array(n);
+      for(let i=0;i<n;i++){ if(!insD[i]) continue; const thr=ref[i]<mid?thrD:thrL; let e=Math.max(0,DF[i]-0.5*sig)/thr; if(e>2) e=2; const gq=grad[i]/HOLE_G0; E[i]=e/(1+gq*gq); }
+      const W1=w+1, I=new Float64Array(W1*(h+1));
+      for(let y=0;y<h;y++){ let row=0; for(let x=0;x<w;x++){ row+=E[y*w+x]; I[(y+1)*W1+x+1]=I[y*W1+x+1]+row; } }
+      const Tb=holeTb(), mask=new Uint8Array(n);
+      for(let y=0;y<h;y++){ const ya=Math.max(0,y-hr), yb=Math.min(h,y+hr+1);
+        for(let x=0;x<w;x++){ if(!insD[y*w+x]) continue; const xa=Math.max(0,x-hr), xb=Math.min(w,x+hr+1);
+          if((I[yb*W1+xb]-I[ya*W1+xb]-I[yb*W1+xa]+I[ya*W1+xa])/((yb-ya)*(xb-xa))>Tb) mask[y*w+x]=1; } }
+      const at=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x>=0&&y>=0&&x<w&&y<h&&insD[y*w+x]?DF[y*w+x]:-1; };
+      const all=blobs(mask,w,h,edge,DF,ins);
+      all.forEach((c,i)=>c.id=i+1);
+      const inGrid=c=>c.cx-c.bw/2>3 && c.cx+c.bw/2<w-4 && c.cy-c.bh/2>3 && c.cy+c.bh/2<h-4;    // el borde de la rejilla no cuenta
+      const good=all.filter(c=>c.n>=Math.max(8,0.1*hA) && c.n<=12*hA && c.ar<=Math.max(2.2,S.roundMax) && c.fill>=0.3 && c.ne<=Math.max(6,1.2*hd) && inGrid(c))
+        .filter(c=>{ const px=c.pk%w, py=(c.pk/w)|0, rh=Math.max(2,hd/2);
+          let sw=0,sx=0,sy=0; const R2=Math.ceil(rh); for(let dy=-R2;dy<=R2;dy++)for(let dx=-R2;dx<=R2;dx++){ if(dx*dx+dy*dy>rh*rh) continue; const v=at(px+dx,py+dy); if(v>0){ sw+=v; sx+=v*(px+dx); sy+=v*(py+dy); } }
+          if(sw>0){ c.cx=sx/sw; c.cy=sy/sw; }
+          let cen=0,cn=0; const rc=Math.max(1,Math.round(hd/4)); for(let dy=-rc;dy<=rc;dy++)for(let dx=-rc;dx<=rc;dx++){ const v=at(c.cx+dx,c.cy+dy); if(v>=0){cen+=v;cn++;} }
+          let an=0,anN=0; for(let k2=0;k2<32;k2++){ const a=k2/32*6.2832, rr=(k2%2?2.2:3.0)*rh, v=at(c.cx+rr*Math.cos(a),c.cy+rr*Math.sin(a)); if(v>=0){an+=v;anN++;} }
+          if(!cn) return false; cen/=cn; c.cenv=cen; c.sharp=anN>=8&&cen>0?an/anN/cen:0;
+          // con dos fotos quietas el ruido es muy bajo: un agujero débil (negro sobre negro) vale si destaca limpio de su entorno
+          if(cen>=HOLE_PK && (anN<8 || an/anN-sig<0.2*cen)) return true;
+          return cen>=Math.max(12,7*sig) && anN>=8 && c.sharp<=0.1 && c.ar<=1.5 && toNorm(c.cx+0.5,c.cy+0.5).dRel<=1.0; });
+      // agujeros juntos (dos disparos que se tocan): por tamaño frente a un agujero suelto, y se separan por k-medias
+      const singles=good.filter(c=>c.ar<=1.3&&c.fill>=0.7).map(c=>c.n).sort((a,b)=>a-b);
+      const nS=singles.length>=3?singles[singles.length>>1]:0.65*hA, lab=LAB.buf, pts=[];
+      for(const c of good){ const r=c.n/nS, k=r<1.6?1:Math.min((c.fill>=0.6&&c.ar<=1.6)?4:2,Math.round(r));
+        if(k===1){ pts.push({c, x:c.cx, y:c.cy, k:1}); continue; }
+        const x0=Math.max(0,Math.floor(c.cx-c.bw)), x1=Math.min(w,Math.ceil(c.cx+c.bw)), y0=Math.max(0,Math.floor(c.cy-c.bh)), y1=Math.min(h,Math.ceil(c.cy+c.bh)), P=[];
+        for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){ const i=y*w+x; if(lab[i]===c.id) P.push([x,y,Math.max(0.1,DF[i])]); }
+        let sxx=0,syy=0,sxy=0,sw=0; for(const [x,y,v] of P){ const dx=x-c.cx, dy=y-c.cy; sxx+=v*dx*dx; syy+=v*dy*dy; sxy+=v*dx*dy; sw+=v; }
+        const th=0.5*Math.atan2(2*sxy,sxx-syy), sd=Math.sqrt(Math.max(1,(sxx*Math.cos(th)**2+2*sxy*Math.sin(th)*Math.cos(th)+syy*Math.sin(th)**2)/sw));
+        let C=[]; for(let j=0;j<k;j++){ const f=k===1?0:(2*j/(k-1)-1)*1.2*sd; C.push([c.cx+f*Math.cos(th), c.cy+f*Math.sin(th)]); }
+        for(let it=0;it<10;it++){ const acc=C.map(()=>[0,0,0]);
+          for(const [x,y,v] of P){ let bj=0,bd=1e18; C.forEach((q,j)=>{ const d=(x-q[0])**2+(y-q[1])**2; if(d<bd){bd=d;bj=j;} }); acc[bj][0]+=v*x; acc[bj][1]+=v*y; acc[bj][2]+=v; }
+          C=C.map((q,j)=>acc[j][2]>0?[acc[j][0]/acc[j][2],acc[j][1]/acc[j][2]]:q); }
+        C.forEach(q=>pts.push({c, x:q[0], y:q[1], k, pair:true})); }
+      const holes=pts.map(o=>{ const u=affApply(Wm,o.x+0.5,o.y+0.5), q=toNorm(u.x,u.y); return {...o.c, q, k:1, pair:!!o.pair}; })
+        .filter(c=>{ if(c.q.dRel<=1.0) return true; if(S.countOut===false||c.q.dRel>1.25) return false;
+          if(!(c.cenv>=2*HOLE_PK)||!(c.sharp<0.15)) return false;
+          const rh=Math.max(2,hd/2); for(let k2=0;k2<16;k2++){ const a=k2/16*6.2832; for(const f of [2.2,3.2]){ const x=Math.round(c.cx+f*rh*Math.cos(a)), y=Math.round(c.cy+f*rh*Math.sin(a));
+            if(x<0||y<0||x>=w||y>=h||ref[y*w+x]<0.7*paper) return false; } } return true; });
+      // muchas manchas: luz o enfoque muy distintos entre las dos fotos, el resultado no es fiable
+      const res={holes:holes.map(c=>({rx:c.q.rx, ry:c.q.ry, dRel:c.q.dRel, k:1, pair:c.pair, n:c.n, cen:+c.cenv.toFixed(0)})), t:Math.round(performance.now()-t0), ncc:nc, sig, src:A.src+'/'+P.src, size:w+'×'+h, hd};
+      FX.res=res; return res;
+    } finally { FX.busy=false; }
+  }
+  // compara con los impactos en directo: añade los que faltan (recuperados) y marca dudosos los que no están
+  function fxApply(res,forceAdd){
+    S.shots.forEach(s=>{ delete s.dud; }); S.shots=S.shots.filter(s=>!s.rec); FX.sug=[];
+    if(!res){ renderStats(); try{ abInfo(); }catch(e){} return; }
+    const tol=Math.max(2.5*bulletR(), 0)+3/(targetD()/2), use=res.holes.map(hh=>({...hh, left:hh.k}));
+    const live=S.shots.filter(s=>!(s.manual&&s.ring===0&&s.dRel>=1.2));
+    const pairs=[]; live.forEach(s=>use.forEach((hh,j)=>{ const d=Math.hypot(s.rx-hh.rx,s.ry-hh.ry); if(d<=tol) pairs.push({s,j,d}); }));
+    pairs.sort((a,b)=>a.d-b.d); const done=new Set();
+    for(const p of pairs){ if(done.has(p.s)||use[p.j].left<=0) continue; done.add(p.s); use[p.j].left--; }
+    const miss=use.filter(hh=>hh.left===hh.k);
+    // fotos fiables (luz parecida, sin cambios raros) y pocos que faltan: se añaden solos. Si no, quedan como sugerencias
+    const auto=forceAdd || (res.ncc>=0.9 && res.sig<=4 && miss.length<=Math.max(6,Math.ceil(0.5*live.length)));
+    let nd=0; if(auto) live.forEach(s=>{ if(!done.has(s)&&!s.manual){ s.dud=true; nd++; } });
+    const t=S.shots.length?S.shots[S.shots.length-1].t:Date.now(); let nr=0;
+    miss.forEach(hh=>{ const {ring,dec}=scoreFromDist(hh.dRel), o={rx:hh.rx, ry:hh.ry, dRel:hh.dRel, ring:hh.dRel>1?0:ring, dec:hh.dRel>1?0:dec, t, rec:true};
+      if(auto){ S.shots.push(o); nr++; } else FX.sug.push(o); });
+    renderStats(); try{ abInfo(); }catch(e){}
+    if(auto) fxUI('🔬 Análisis final ('+res.size+'): '+(nr?nr+' recuperado'+(nr>1?'s':'')+' (azul)':'ninguno sin detectar')+(nd?' · '+nd+' dudoso'+(nd>1?'s':'')+' (naranja: compruébalo y bórralo con ➖ si no es un disparo)':'')+'.');
+    else fxUI('🔬 Análisis final ('+res.size+'): '+FX.sug.length+' posible'+(FX.sug.length>1?'s':'')+' impacto'+(FX.sug.length>1?'s':'')+' sin detectar (círculos azules). '+
+      (res.ncc<0.9||res.sig>4?'La luz ha cambiado mucho entre las dos fotos: revísalos. ':'')+'Toca ➕ Impacto sobre uno para añadirlo o «Añadir sugeridos».');
+    if(S.phase==='review'){ const m=FX.msg; try{ openAdjust('review'); }catch(e){} fxUI(m); }
+    return {nr,nd,sug:FX.sug.length};
+  }
+  function fxUI(t){ FX.msg=t; const el=$('#fxInfo'); if(el){ el.textContent=t; el.style.display=t?'block':'none'; } }
+  async function fxRun(){ if(!FX.A){ fxUI(''); return; } const r=await fxEnd(); if(S.phase!=='review'){ fxUI(''); return; } if(r) fxApply(r); }
   function resetHoles(){ HD.avg=null; HD.burstSince=0; HD.base=null; HD.prevHalf=null; HD.stableSince=0; HD.quietSince=0; HD.key=''; HD.recent=[]; HD.cands=[]; HD.view=null; }
   function detectHole(){
     if(video.videoWidth===0||!S.W) return null;
@@ -1859,12 +2143,16 @@
     const rev=S.phase==='review';
     S.shots.forEach((s,i)=>{ const p=normToScreen(s.rx,s.ry), last=i===S.shots.length-1;
       octx.beginPath(); octx.arc(p.x,p.y,dot,0,7);
-      octx.fillStyle=(last&&!rev)?'rgba(255,214,10,.95)':(s.drop?'rgba(140,140,140,.7)':'rgba(248,81,73,.9)'); octx.fill();
+      octx.fillStyle=s.rec?'rgba(34,211,238,.95)':(last&&!rev)?'rgba(255,214,10,.95)':(s.drop?'rgba(140,140,140,.7)':'rgba(248,81,73,.9)'); octx.fill();
       octx.strokeStyle='rgba(0,0,0,.85)'; octx.lineWidth=1.2; octx.stroke();
+      if(rev&&(s.dud||s.rec)){ octx.save(); octx.setLineDash([4/Z.s,3/Z.s]); octx.strokeStyle=s.dud?'#ff9f1a':'#22d3ee'; octx.lineWidth=2.5/Z.s;
+        octx.beginPath(); octx.arc(p.x,p.y,dot+5/Z.s,0,7); octx.stroke(); octx.restore(); }
       if(rev){ // en la revisión cada impacto lleva su número para elegirlo fácilmente
         const fs=Math.max(9, 13/Z.s); octx.font='800 '+fs+'px sans-serif'; octx.textAlign='left'; octx.textBaseline='bottom';
         const lx=p.x+dot+1, ly=p.y-dot-1; octx.lineWidth=3/Z.s; octx.strokeStyle='rgba(0,0,0,.9)'; octx.strokeText(i+1,lx,ly);
         octx.fillStyle='#fff'; octx.fillText(i+1,lx,ly); } });
+    if(rev && FX.sug && FX.sug.length){ octx.save(); octx.setLineDash([5/Z.s,4/Z.s]); octx.strokeStyle='#22d3ee'; octx.lineWidth=2.5/Z.s;
+      FX.sug.forEach(o=>{ const p=normToScreen(o.rx,o.ry); octx.beginPath(); octx.arc(p.x,p.y,dot+6/Z.s,0,7); octx.stroke(); }); octx.restore(); }
   }
   // anillo con color vivo + halo oscuro: se ve sobre blanco y sobre negro
   function strokeRing(outer){
@@ -2281,6 +2569,7 @@
     S.showRings=false; ringsUI();          // en la sesión solo se ven los impactos sobre la imagen real
     if($('#savedBox')) $('#savedBox').style.display='none';
     S.shots=[]; S.lastShot=0; renderStats();   // nueva sesión: borra impactos anteriores
+    fxStart().catch(()=>{ FX.A=null; });       // foto inicial para el análisis final exhaustivo
     if(CP.active){ CP.active.started=Date.now(); CP.active.removed=0; updCompBanner(); }
     $('#rowReady').style.display='none'; $('#rowRun').style.display='flex';
     clearTick();
@@ -2407,7 +2696,7 @@
     const v=$('#rvVid'), it=RV.it; RV.sel=i;
     if(i<0){ RV.zoom=false; v.playbackRate=1; v.currentTime=0; $('#rvLbl').textContent='Tirada completa'; }
     else { const s=it.shots[i]; v.currentTime=Math.max(0,s.vt-2); v.playbackRate=RV.rate;
-      $('#rvLbl').textContent='Disparo '+(i+1)+' · '+(s.ring===0?'0 (fuera)':f1(s.dec))+(s.manual?' · manual':''); }
+      $('#rvLbl').textContent='Disparo '+(i+1)+' · '+(s.ring===0?'0 (fuera)':f1(s.dec))+(s.manual?' · manual':'')+(s.rec?' · recuperado en el análisis final':''); }
     v.play().catch(()=>{}); rvUI();
   }
   function rvUI(){
@@ -2426,6 +2715,7 @@
     } else { mk.style.display='none'; v.style.transform='none'; }
   }
   try{ S.repRec=localStorage.getItem('tirofijo_rep')==='1'; }catch(e){}
+  S.fxOn=true; try{ S.fxOn=localStorage.getItem('tirofijo_fx')!=='0'; }catch(e){}
 
   function diagStart(){
     DIAG=null; $('#diagBox').style.display='none'; $('#recDot').style.display='none';
@@ -2454,7 +2744,7 @@
       const vid=new File(D.chunks,'tirofijo_diag_'+stamp+'.'+ext,{type:D.mt});
       const info={app:APPVER, ua:navigator.userAgent, screen:{W:S.W,H:S.H,dpr:devicePixelRatio, iw:innerWidth, ih:innerHeight},
         video:{w:video.videoWidth,h:video.videoHeight}, remote:(()=>{ try{ return !video.srcObject.getVideoTracks()[0].getSettings().deviceId; }catch(e){ return null; } })(), settings:snapshot(), ev:D.ev,
-        final:S.shots.map(s=>({rx:+s.rx.toFixed(4), ry:+s.ry.toFixed(4), ring:s.ring, dec:s.dec, manual:!!s.manual}))};
+        final:S.shots.map(s=>({rx:+s.rx.toFixed(4), ry:+s.ry.toFixed(4), ring:s.ring, dec:s.dec, manual:!!s.manual, rec:!!s.rec, dud:!!s.dud})), fx:FX.res?{n:FX.res.holes.length, size:FX.res.size, src:FX.res.src, holes:FX.res.holes}:null};
       const js=new File([JSON.stringify(info)],'tirofijo_diag_'+stamp+'.json',{type:'application/json'});
       const mb=(vid.size/1048576).toFixed(1).replace('.',',');
       box.innerHTML='🎥 Grabación de diagnóstico ('+mb+' MB)<div class="row" style="margin-top:8px"><button class="btn sm" id="diagShare" style="flex:1">↗ Compartir</button><button class="btn sm" id="diagDl" style="flex:1">⬇ Descargar</button></div>';
@@ -2465,6 +2755,8 @@
   }
   try{ S.diagRec=localStorage.getItem('tirofijo_diag')==='1'; }catch(e){}
   $('#swDiag').classList.toggle('on',!!S.diagRec);
+  $('#swFx').classList.toggle('on',!!S.fxOn);
+  $('#swFx').onclick=e=>{ S.fxOn=!S.fxOn; e.target.classList.toggle('on',S.fxOn); try{ localStorage.setItem('tirofijo_fx',S.fxOn?'1':'0'); }catch(err){} };
   $('#swRep').classList.toggle('on',!!S.repRec);
   $('#swRep').onclick=e=>{ S.repRec=!S.repRec; e.target.classList.toggle('on',S.repRec); try{ localStorage.setItem('tirofijo_rep',S.repRec?'1':'0'); }catch(err){} };
   $('#btnRepList').onclick=()=>{ document.querySelectorAll('.sheet').forEach(x=>x.classList.remove('open')); repList(); };
@@ -2516,6 +2808,7 @@
     beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380);
     $('#rowRun').style.display='none'; $('#timerHud').style.display='none'; $('#timerHud').classList.remove('lt-green','lt-red'); $('#stage').classList.remove('lt-green','lt-red'); $('#bigLight').className=''; lastLight=null;
     openAdjust('review'); calMode=null; refreshAbSel();
+    if(FX.A) fxRun().catch(()=>fxUI('🔬 Análisis final: error'));
   }
   function finishReview(){
     diagStop(); repStop();
@@ -2525,6 +2818,9 @@
   }
   // revisión: añadir un impacto donde se toca / borrar el más cercano
   function addShotAt(x,y){
+    if(FX.sug&&FX.sug.length){ const c0=normToScreen(0,0), e1=normToScreen(1,0), Rs=Math.hypot(e1.x-c0.x,e1.y-c0.y), lim=Math.max(bulletR()*Rs*2.5, 26/Z.s);
+      let bi=-1,bd=1e9; FX.sug.forEach((o,i)=>{ const p=normToScreen(o.rx,o.ry), d=Math.hypot(p.x-x,p.y-y); if(d<bd){bd=d;bi=i;} });
+      if(bi>=0&&bd<=lim){ S.shots.push({...FX.sug[bi]}); FX.sug.splice(bi,1); renderStats(); flashScore('+'); return; } }
     const prevT=S.shots.length?S.shots[S.shots.length-1].t:Date.now();
     registerShot(x,y); const s=S.shots[S.shots.length-1]; s.t=prevT; s.manual=true; diagLog('add');
   }
@@ -2988,6 +3284,9 @@ function autoCalib(rgba, W, H, TARGETS){
       $('#abT').textContent='Revisión: amplía con dos dedos, elige Impacto + o Impacto − y toca en la diana';
       mk('➕ Impacto',()=>calMode=(calMode==='rvAdd'?null:'rvAdd'),'rvAdd');
       mk('➖ Impacto',()=>calMode=(calMode==='rvDel'?null:'rvDel'),'rvDel');
+      if(FX.A) mk('🔬 Repetir análisis',()=>{ if(!FX.busy) fxRun().catch(()=>fxUI('🔬 Análisis final: error')); });
+      if(FX.sug&&FX.sug.length) mk('✓ Añadir sugeridos ('+FX.sug.length+')',()=>{ FX.sug.forEach(o=>S.shots.push({...o})); FX.sug=[]; renderStats(); fxUI('🔬 Sugeridos añadidos (azul). Borra con ➖ los que no sean disparos.'); openAdjust('review'); });
+      if(FX.A) mk('↩ Quitar recuperados',()=>{ fxApply(null); fxUI('🔬 Recuperados quitados'); });
     } else if(kind==='laser'){
       $('#abT').textContent='Enciende el láser sobre la diana: el círculo rojo marca el punto detectado';
       mk('Umbral −',()=>{S.thr=Math.max(90,S.thr-10);$('#thr').value=S.thr;$('#vThr').textContent=S.thr;abInfo();});
@@ -3004,7 +3303,7 @@ function autoCalib(rgba, W, H, TARGETS){
     $('#stage').classList.add('adjusting');
     bar.classList.add('open'); abInfo(); refreshAbSel();
   }
-  function closeAdjust(){ $('#adjustBar').classList.remove('open'); $('#stage').classList.remove('adjusting');
+  function closeAdjust(){ fxUI(''); $('#adjustBar').classList.remove('open'); $('#stage').classList.remove('adjusting');
     $('#hud').style.display=''; calMode=null; showControls(); puestoSave(); }
 
   // color y grosor de los anillos
@@ -3168,7 +3467,7 @@ function autoCalib(rgba, W, H, TARGETS){
       if(RPL_LAST && $('#svVid').checked) files.push({k:'🎬 Vídeo', b:RPL_LAST.blob, n:base+(/mp4/.test(RPL_LAST.mt)?'.mp4':'.webm')});
       if($('#svJson').checked){
         const data={app:APPVER, fecha:new Date().toISOString(), tirador:$('#rName').value||'', diana:S.target, aro1_mm:S.realmm, calibre_mm:S.caliber,
-          disparos:S.shots.map((s,i)=>({n:i+1, anillo:s.ring, decimas:+(+s.dec).toFixed(1), x:+s.rx.toFixed(4), y:+s.ry.toFixed(4), cuenta:!s.drop, luz_roja:!!s.late, manual:!!s.manual}))};
+          disparos:S.shots.map((s,i)=>({n:i+1, anillo:s.ring, decimas:+(+s.dec).toFixed(1), x:+s.rx.toFixed(4), y:+s.ry.toFixed(4), cuenta:!s.drop, luz_roja:!!s.late, manual:!!s.manual, recuperado:!!s.rec, dudoso:!!s.dud}))};
         files.push({k:'📊 Datos', b:new Blob([JSON.stringify(data,null,1)],{type:'application/json'}), n:base+'.json'}); }
       for(let i=0;i<files.length;i++){ if(i) await new Promise(r=>setTimeout(r,1200)); saveBlob(files[i].b, files[i].n); }
       $('#saveBox').style.display='none';
