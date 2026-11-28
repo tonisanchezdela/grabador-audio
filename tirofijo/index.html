@@ -231,6 +231,10 @@
   .big{font-size:40px; font-weight:800; margin:2px 0;}
   .sub{font-size:12px; color:var(--muted);}
   .grid2{display:flex; gap:10px;} .grid2>div{flex:1;}
+  #rowRun.mod .btn{min-width:0; padding-left:9px; padding-right:9px;} #rowRun.mod{gap:6px;}
+  .modList{display:flex; flex-direction:column; gap:6px;}
+  .modList button{display:flex; gap:10px; align-items:center; text-align:left; padding:9px 11px; border-radius:10px; border:1px solid #30363d; background:#161b22; color:#e6edf3; font-size:13px;}
+  .modList button b{min-width:62px; color:#ffd60a;} .modList button.sel{border-color:#3fb950; background:#12261a;}
   .warn{font-size:12px; color:var(--gold); margin-top:8px;}
   .val{font-variant-numeric:tabular-nums;}
 
@@ -489,6 +493,7 @@
       <div class="row" id="rowRun" style="display:none">
         <button class="btn" id="btnUndoQuick" style="flex:0 0 auto; padding-left:16px; padding-right:16px">↩ Anular</button>
         <button class="btn on" id="btnPause">⏸ Pausar</button>
+        <button class="btn" id="btnModNext" title="Empezar ya la siguiente serie" style="display:none;flex:0 0 auto;padding-left:14px;padding-right:14px">⏭</button>
         <button class="btn danger" id="btnFinish">■ Finalizar</button>
       </div>
     </div>
@@ -671,9 +676,21 @@
   <!-- TEMPORIZADOR -->
   <div class="sheet" id="sheetTimer">
     <button class="close" data-close>✕</button>
-    <h2>Temporizador</h2>
+    <h2>Modalidades</h2>
     <div class="card">
-      <h3>Modo</h3>
+      <h3>Modalidad</h3>
+      <div class="modList" id="modList"></div>
+      <div id="modBox" style="display:none">
+        <p id="modDesc" style="margin:8px 0"></p>
+        <div class="grid2">
+          <div><label class="fld">🔴 Pausa entre series (s):</label><input type="number" id="modPause" value="60" min="3" max="900" inputmode="numeric"></div>
+          <div><label class="fld">🔴 Aviso antes de la 1ª (s):</label><input type="number" id="modFirst" value="7" min="3" max="120" inputmode="numeric"></div>
+        </div>
+        <p style="margin-top:6px">Cada serie empieza con <b style="color:#3fb950">luz verde</b> y pitido (los impactos cuentan) y termina con <b style="color:#f85149">luz roja</b> y pitido (los impactos no cuentan, tampoco los que pasen del número de la serie). En la pausa puedes pulsar ⏭ para empezar ya la siguiente serie.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Temporizador libre</h3>
       <div class="seg" id="timerMode">
         <button data-tm="up" class="sel">Cron.↑</button>
         <button data-tm="down">Atrás</button>
@@ -809,7 +826,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.8', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.9', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2197,6 +2214,8 @@
       // en cartón no hay espera entre disparos: cada agujero es único por su posición
       if(hs && hs.some(h=>h.big) && !HD.bigWarned){ HD.bigWarned=true; $('#pill').style.display='block';
         $('#pill').innerHTML='⚠ Los impactos se ven <b>más grandes</b> que el calibre: revisa <b>calibre</b> y <b>diámetro real del aro 1</b> en ◎ Diana (tarjetas reducidas).'; }
+      if((st==='mov'||st==='wait') && performance.now()-(S.lastMovSeen||0)>1500) S.lastMov=performance.now();
+      S.lastMovSeen = (st==='mov'||st==='wait') ? performance.now() : S.lastMovSeen;
       if(RPL && (st==='mov'||st==='wait') && performance.now()-(RPL.lastMovSeen||0)>1500) RPL.lastMov=performance.now();
       if(RPL) RPL.lastMovSeen = (st==='mov'||st==='wait') ? performance.now() : RPL.lastMovSeen;
       if(live && S.askShot!==false) watchShot(st, hs);
@@ -2241,8 +2260,12 @@
   function registerShot(x,y){
     const {rx,ry,dRel}=normFromScreen(x,y);
     const {ring,dec}=scoreFromDist(dRel);
-    const late=lightState()==='red';
-    S.shots.push({rx,ry,dRel,ring,dec,t:Date.now(),late}); repMark(S.shots[S.shots.length-1],x,y);
+    let late=false, over=false, ser;
+    if(lightState()){                                     // con luces: la luz del momento del disparo
+      const L=lightAt(impactTime()); late=L.c==='red';
+      if(T.mode==='mod'&&T.ms&&L.i>=0&&T.ms[L.i]){ const stp=T.ms[L.i]; ser=(stp.c==='red'&&stp.pre&&stp.ser>1)?stp.ser-1:stp.ser;
+        if(!late&&stp.n){ T.cnt[L.i]=(T.cnt[L.i]||0)+1; if(T.cnt[L.i]>stp.n){ over=true; late=true; } } } }
+    S.shots.push({rx,ry,dRel,ring,dec,t:Date.now(),late,over,ser}); repMark(S.shots[S.shots.length-1],x,y);
     if(late){ flashScore('✕'); renderStats(); if(navigator.vibrate) navigator.vibrate([80,60,80]); return; }   // luz roja: no cuenta
     flashScore(ring); renderStats();
     if(navigator.vibrate) navigator.vibrate(ring>0?60:[30,40,30]);
@@ -2499,12 +2522,19 @@
     let sh='';
     const nLate=S.shots.filter(s=>s.late).length;
     const SER=S.shotLimit>0?S.shotLimit+nLate:10;        // avancarga: series de 13 (los de luz roja van en la misma serie)
-    if(st.nc<st.n) sh+='<p style="margin:4px 0 8px;color:#777;font-size:12px">Tachados: '+(nLate?nLate+' fuera de tiempo (luz roja)'+(st.n-nLate>st.nc?' y descartados (cuentan los '+st.nc+' mejores)':''):'disparos descartados (cuentan los '+st.nc+' mejores)')+'.</p>';
-    for(let s0=0; s0<S.shots.length; s0+=SER){
-      const part=S.shots.slice(s0,s0+SER);
+    if(st.nc<st.n) sh+='<p style="margin:4px 0 8px;color:#777;font-size:12px">Tachados: '+(nLate?nLate+' fuera de tiempo (luz roja'+(S.shots.some(s=>s.over)?' o de más en su serie':'')+')'+(st.n-nLate>st.nc?' y descartados (cuentan los '+st.nc+' mejores)':''):'disparos descartados (cuentan los '+st.nc+' mejores)')+'.</p>';
+    const groups=[];
+    if(S.modInfo && S.shots.some(s=>s.ser)){
+      // modalidad: una tabla por serie del programa; los recuperados o añadidos a mano, aparte (sin orden)
+      sh+='<p style="margin:4px 0 8px;font-weight:700">Modalidad '+S.modInfo.key+' · '+S.modInfo.name+'</p>';
+      let base=0; for(let k=1;k<=S.modInfo.nSer;k++){ const part=S.shots.filter(s=>s.ser===k); if(part.length) groups.push({t:'Serie '+k+' · '+S.modInfo.lbl[k], part, base}); base+=part.length; }
+      const rest=S.shots.filter(s=>!s.ser); if(rest.length) groups.push({t:'Sin orden (análisis final o añadidos a mano)', part:rest, base});
+    } else for(let s0=0; s0<S.shots.length; s0+=SER) groups.push({t:'Serie '+(s0/SER+1), part:S.shots.slice(s0,s0+SER), base:s0});
+    for(const G of groups){
+      const part=G.part, s0=G.base;
       const pc=part.filter(s=>!s.drop), sr=pc.reduce((a,s)=>a+s.ring,0), sd=pc.reduce((a,s)=>a+s.dec,0);
       const dc=s=>s.drop?' style="color:#aaa;text-decoration:line-through"':'';
-      sh+='<div class="serie">Serie '+(s0/SER+1)+'</div><table'+(part.length>10?' class="wide"':'')+'>';
+      sh+='<div class="serie">'+G.t+'</div><table'+(part.length>10?' class="wide"':'')+'>';
       sh+='<tr class="lbl"><td>Tiro</td>'+part.map((_,i)=>'<th>'+(s0+i+1)+'</th>').join('')+'<th>Σ</th></tr>';
       sh+='<tr class="lbl"><td>Anillos</td>'+part.map(s=>'<td'+dc(s)+'>'+s.ring+'</td>').join('')+'<td><b>'+sr+'</b></td></tr>';
       sh+='<tr class="lbl"><td>Décimas</td>'+part.map(s=>'<td'+dc(s)+'>'+f1(s.dec)+'</td>').join('')+'<td><b>'+f1(sd)+'</b></td></tr></table>';
@@ -2523,9 +2553,52 @@
 
   /* ---------- SESIÓN Y TEMPORIZADOR ---------- */
   const T={ sound:true, mode:'up', startCount:3, downSecs:60, loop:false, beepSecs:10,
-    altA:7, altB:3, altOn:'A', cycles:5, cyc:0, clock:0, lead:0, beepAcc:0, tick:null, lights:false, greenOn:'B' };   // alterno: A = rojo, B = verde
+    altA:7, altB:3, altOn:'A', cycles:5, cyc:0, clock:0, lead:0, beepAcc:0, tick:null, lights:false, greenOn:'B',
+    mod:'', modPause:60, modFirst:7, ms:null, mi:0, cnt:[], lh:[] };   // alterno: A = rojo, B = verde
+  // MODALIDADES (programa de series con luces): fases → series {g: segundos en verde, n: disparos} o duelo {duel, g, r}
+  const rpt=(k,o)=>Array.from({length:k},()=>({...o}));
+  const MODS={
+    'FR3X40':{n:'50m Carabina 3 posiciones (rodilla, tumbado, en pie)', d:'3×40 disparos · 1 h 45 min en total.', ph:[{l:'3×40',ser:[{g:6300,n:120}]}]},
+    'FR60PR':{n:'50m Carabina tendido', d:'60 disparos · 1 h en total.', ph:[{l:'60 disparos',ser:[{g:3600,n:60}]}]},
+    'RFP':{n:'25m Pistola Tiro Rápido', d:'30+30 disparos. Cada fase: 6 series de 5 disparos (2 en 8 s, 2 en 6 s y 2 en 4 s).',
+      ph:[1,2].map(f=>({l:'Fase '+f, ser:[8,8,6,6,4,4].map(g=>({g,n:5}))}))},
+    'STP':{n:'25m Pistola Standard (series 150, 20, 10 s)', d:'20+20+20 disparos: 4 series de 5 en 150 s, 4 en 20 s y 4 en 10 s.',
+      ph:[{l:'150 s',ser:rpt(4,{g:150,n:5})},{l:'20 s',ser:rpt(4,{g:20,n:5})},{l:'10 s',ser:rpt(4,{g:10,n:5})}]},
+    'CTP':{n:'25m Pistola Fuego Central (precisión y tiro rápido)', d:'30+30 disparos. Precisión: 6 series de 5 en 300 s. Tiro rápido: 6 series de 5 disparos, cada uno 3 s en verde y 7 s en rojo.',
+      ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{duel:5,g:3,r:7,n:5})}]},
+    '9MM':{n:'Pistola 9 mm', d:'30+30 disparos: 6 series de 5 en 150 s y 6 series de 5 en 20 s.',
+      ph:[{l:'Precisión',ser:rpt(6,{g:150,n:5})},{l:'Velocidad',ser:rpt(6,{g:20,n:5})}]},
+    'SPM':{n:'Pistola 25m (precisión y tiro rápido)', d:'30+30 disparos. Precisión: 6 series de 5 en 300 s. Tiro rápido: 6 series de 5 en 10 s (10×5 disparos máx.).',
+      ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{g:10,n:5})}]}
+  };
+  // pasos del programa: rojo (pausa/aviso) y verde (serie). Cada paso sabe a qué serie pertenece
+  function modSteps(key){
+    const M=MODS[key], st=[], lbl=[]; let k=0;
+    M.ph.forEach(ph=>ph.ser.forEach((sr,si)=>{ k++; const l=ph.l+' · serie '+(si+1)+'/'+ph.ser.length; lbl[k]=l;
+      st.push({c:'red', secs:k===1?T.modFirst:T.modPause, ser:k, l, pre:true});
+      if(sr.duel){ for(let j=0;j<sr.duel;j++){ if(j) st.push({c:'red', secs:sr.r, ser:k, l}); st.push({c:'green', secs:sr.g, ser:k, l, n:1}); } }
+      else st.push({c:'green', secs:sr.g, ser:k, l, n:sr.n}); }));
+    return {st, lbl, nSer:k, tot:M.ph.reduce((a,ph)=>a+ph.ser.reduce((b,sr)=>b+sr.n,0),0)};
+  }
+  function modNext(){
+    T.mi++;
+    if(T.mi>=T.ms.length){ beep(440,0.6,0.6); T.clock=0; clearTick(); updHud();
+      flashScore('✓'); setTimeout(()=>{ if(S.phase==='running') finalizarSesion(); },1200); return; }
+    const stp=T.ms[T.mi]; T.clock=stp.secs;
+    if(stp.c==='green') beep(880,0.4,0.6); else beep(440,0.45,0.6);        // verde: ¡fuego! · rojo: alto
+    updHud(); modBtn();
+  }
+  function modBtn(){ const b=$('#btnModNext'); if(!b) return; const stp=T.mode==='mod'&&T.ms?T.ms[T.mi]:null;
+    b.style.display=(stp&&stp.c==='red'&&stp.pre&&(S.phase==='running'))?'block':'none'; const md=T.mode==='mod'&&!!T.ms&&S.phase!=='review'; $('#rowRun').classList.toggle('mod',md); $('#btnUndoQuick').textContent=md?'↩':'↩ Anular'; }
+  // historial de luces: el impacto se juzga por la luz que había CUANDO se disparó (la detección llega algo después)
+  function lightAt(t){ const h=T.lh||[]; for(let i=h.length-1;i>=0;i--) if(h[i].t<=t) return h[i]; return h[0]||{c:lightState(),i:-1}; }
+  function impactTime(){ const now=performance.now();
+    if(S.detectType!=='holes') return now-150;
+    return (S.lastMov && now-S.lastMov<6000) ? S.lastMov-250 : now-1200; }
   // luces: verde = los impactos cuentan, rojo = no cuentan (null si las luces están apagadas)
   function lightState(){
+    if(T.mode==='mod'){ if(S.phase==='leadin'||S.phase==='paused') return 'red'; if(S.phase!=='running') return null;
+      const stp=T.ms&&T.ms[T.mi]; return stp&&stp.c==='green'?'green':'red'; }
     if(!T.lights) return null;
     if(S.phase==='leadin'||S.phase==='paused') return 'red';
     if(S.phase!=='running') return null;
@@ -2535,6 +2608,7 @@
   }
   let lastLight=null;
   function lightUI(){ const l=lightState(), h=$('#timerHud'), st=$('#stage'), b=$('#bigLight');
+    if(l){ const last=T.lh[T.lh.length-1], i=T.mode==='mod'?T.mi:-1; if(!last||last.c!==l||last.i!==i) T.lh.push({t:performance.now(), c:l, i}); }
     h.classList.toggle('lt-green',l==='green'); h.classList.toggle('lt-red',l==='red');
     st.classList.toggle('lt-green',l==='green'); st.classList.toggle('lt-red',l==='red');
     // semáforo grande: al cambiar se ve fuerte y luego se atenúa para no tapar los impactos
@@ -2559,10 +2633,11 @@
     let lbl='SESIÓN';
     if(S.phase==='paused') lbl='PAUSA';
     else if(T.mode==='down') lbl='CUENTA ATRÁS';
+    else if(T.mode==='mod'&&T.ms&&T.ms[T.mi]) lbl=T.mod+' · '+(T.ms[T.mi].c==='red'&&T.ms[T.mi].pre?'pausa → ':'')+T.ms[T.mi].l;
     else if(T.mode==='alt') lbl=(T.lights?'':(T.altOn==='A'?'🔴 ROJO':'🟢 VERDE')+' · ')+'CICLO '+Math.max(1,T.cyc)+(T.cycles>0?'/'+T.cycles:'');
     hud.querySelector('.ph').textContent=lbl;
     hud.querySelector('.tc').textContent=fmt(T.clock);
-    hud.classList.toggle('alert', (T.mode==='down'||T.mode==='alt') && T.clock<=3 && T.clock>0);
+    hud.classList.toggle('alert', (T.mode==='down'||T.mode==='alt'||T.mode==='mod') && T.clock<=3 && T.clock>0);
     const l=lightState(); if(l) hud.querySelector('.ph').textContent=(l==='green'?'🟢 FUEGO · ':'🔴 ALTO · ')+lbl;
     lightUI();
   }
@@ -2577,9 +2652,9 @@
     fxStart().catch(()=>{ FX.A=null; });       // foto inicial para el análisis final exhaustivo
     if(CP.active){ CP.active.started=Date.now(); CP.active.removed=0; updCompBanner(); }
     $('#rowReady').style.display='none'; $('#rowRun').style.display='flex';
-    clearTick();
+    clearTick(); T.lh=[]; T.ms=null; T.mi=0; S.lastMov=0;
     if(T.startCount>0){
-      S.phase='leadin'; T.lead=T.startCount; beep(1046,0.25,0.5); updHud();
+      S.phase='leadin'; T.lead=T.startCount; T.lh=[]; beep(1046,0.25,0.5); updHud();
       T.tick=setInterval(()=>{
         T.lead--;
         if(T.lead>0){ if(T.lead<=5) beep(660,0.12,0.35); updHud(); }
@@ -2772,13 +2847,22 @@
     S.phase='running'; T.beepAcc=0; HD.cands=[]; HD.recent=[]; LZ.active=false; // referencias limpias
     if(T.mode==='down') T.clock=T.downSecs;
     else if(T.mode==='alt'){ T.altOn='A'; T.clock=T.altA; T.cyc=1; }
+    else if(T.mode==='mod'&&MODS[T.mod]){ const P=modSteps(T.mod); T.ms=P.st; T.mi=0; T.cnt=[]; T.clock=T.ms[0].secs;
+      S.modInfo={key:T.mod, name:MODS[T.mod].n, lbl:P.lbl, nSer:P.nSer, tot:P.tot}; }
     else T.clock=0;
+    if(T.mode!=='mod') S.modInfo=null;
     $('#btnPause').textContent='⏸ Pausar'; $('#btnPause').classList.add('on');
-    updHud(); clearTick();
+    updHud(); clearTick(); modBtn();
     T.tick=setInterval(sessionTick,1000);
   }
   function sessionTick(){
     if(S.phase!=='running') return;
+    if(T.mode==='mod'&&T.ms){
+      T.clock--; const stp=T.ms[T.mi];
+      if(T.clock<=3 && T.clock>0 && (stp.c==='red'||stp.secs>=30)) beep(660,0.12,0.35);
+      if(T.clock<=0){ modNext(); return; }
+      updHud(); return;
+    }
     if(T.mode==='down'){
       T.clock--;
       if(T.clock<=5 && T.clock>0) beep(660,0.12,0.35);
@@ -2802,6 +2886,7 @@
     updHud();
   }
   function togglePausa(){
+    setTimeout(modBtn,0);
     if(S.phase==='running'){ S.phase='paused'; $('#btnPause').textContent='▶ Reanudar'; $('#btnPause').classList.remove('on'); }
     else if(S.phase==='paused'){ S.phase='running'; $('#btnPause').textContent='⏸ Pausar'; $('#btnPause').classList.add('on');
       if(!T.tick) T.tick=setInterval(sessionTick,1000); }
@@ -2809,7 +2894,7 @@
   }
   function finalizarSesion(){
     puestoSave();
-    clearTick(); S.phase='review';                       // revisión antes del informe: añadir o borrar impactos
+    clearTick(); S.phase='review'; modBtn();             // revisión antes del informe: añadir o borrar impactos
     beep(880,0.15); setTimeout(()=>beep(880,0.15),180); setTimeout(()=>beep(1200,0.3),380);
     $('#rowRun').style.display='none'; $('#timerHud').style.display='none'; $('#timerHud').classList.remove('lt-green','lt-red'); $('#stage').classList.remove('lt-green','lt-red'); $('#bigLight').className=''; lastLight=null;
     openAdjust('review'); calMode=null; refreshAbSel();
@@ -3376,8 +3461,25 @@ function autoCalib(rgba, W, H, TARGETS){
     b.classList.add('sel'); T.mode=b.dataset.tm;
     $('#cardDown').style.display = T.mode==='down'?'block':'none';
     $('#cardBeep').style.display = T.mode==='beep'?'block':'none';
-    $('#cardAlt').style.display = T.mode==='alt'?'block':'none'; lightsUI();
+    $('#cardAlt').style.display = T.mode==='alt'?'block':'none'; T.mod=''; modUI(); lightsUI();
   });
+  // modalidades
+  $('#modList').innerHTML=Object.keys(MODS).map(k=>'<button data-mod="'+k+'"><b>'+k+'</b><span>'+MODS[k].n+'</span></button>').join('');
+  function modUI(){
+    document.querySelectorAll('#modList button').forEach(b=>b.classList.toggle('sel',T.mode==='mod'&&b.dataset.mod===T.mod));
+    const on=T.mode==='mod'&&!!MODS[T.mod];
+    $('#modBox').style.display=on?'block':'none';
+    if(on){ const P=modSteps(T.mod); $('#modDesc').innerHTML='<b>'+MODS[T.mod].n+'</b><br>'+MODS[T.mod].d+' '+P.nSer+(P.nSer>1?' series':' serie')+', '+P.tot+' disparos.'; }
+    $('#modPause').value=T.modPause; $('#modFirst').value=T.modFirst;
+    if(on) document.querySelectorAll('#timerMode button').forEach(x=>x.classList.remove('sel'));
+    ['cardDown','cardBeep','cardAlt'].forEach(id=>{ if(on) $('#'+id).style.display='none'; });
+    const lc=$('#swLights').closest('.card'), mc=$('#swMaxShots').closest('.card'); lc.style.display=mc.style.display=on?'none':'';
+  }
+  document.querySelectorAll('#modList button').forEach(b=>b.onclick=()=>{ T.mode='mod'; T.mod=b.dataset.mod; modUI(); });
+  $('#modPause').oninput=e=>{ T.modPause=Math.max(3,Math.min(900,+e.target.value||60)); };
+  $('#modFirst').oninput=e=>{ T.modFirst=Math.max(3,Math.min(120,+e.target.value||7)); };
+  modUI();
+  $('#btnModNext').onclick=()=>{ const stp=T.ms&&T.ms[T.mi]; if(S.phase==='running'&&stp&&stp.c==='red'&&stp.pre){ T.clock=0; modNext(); } };
   $('#downSecs').oninput=e=>{T.downSecs=Math.max(1,+e.target.value||1);};
   $('#beepSecs').oninput=e=>{T.beepSecs=Math.max(1,+e.target.value||1);};
   function lightsUI(){ $('#swLights').classList.toggle('on',!!T.lights); $('#altCycles').value=T.cycles;
@@ -3389,7 +3491,7 @@ function autoCalib(rgba, W, H, TARGETS){
   $('#swMaxShots').onclick=()=>setShotLimit(S.shotLimit>0?0:Math.max(1,+$('#maxShots').value||10));
   $('#maxShots').onchange=e=>setShotLimit(Math.max(1,Math.min(200,+e.target.value||10)));
   try{ const o=JSON.parse(localStorage.getItem('tirofijo_lights')||'null'); if(o){ T.lights=!!o.l; T.greenOn=o.g==='A'?'A':'B'; } }catch(e){}
-  lightsUI(); $('#btnTimer').addEventListener('click',()=>setTimeout(lightsUI,0));
+  lightsUI(); $('#btnTimer').addEventListener('click',()=>setTimeout(()=>{ lightsUI(); modUI(); },0));
   $('#altA').oninput=e=>{T.altA=Math.max(1,+e.target.value||1);};
   $('#altB').oninput=e=>{T.altB=Math.max(1,+e.target.value||1);};
   $('#swLoop').onclick=e=>{T.loop=!T.loop;e.target.classList.toggle('on',T.loop);};
@@ -3472,7 +3574,7 @@ function autoCalib(rgba, W, H, TARGETS){
       if(RPL_LAST && $('#svVid').checked) files.push({k:'🎬 Vídeo', b:RPL_LAST.blob, n:base+(/mp4/.test(RPL_LAST.mt)?'.mp4':'.webm')});
       if($('#svJson').checked){
         const data={app:APPVER, fecha:new Date().toISOString(), tirador:$('#rName').value||'', diana:S.target, aro1_mm:S.realmm, calibre_mm:S.caliber,
-          disparos:S.shots.map((s,i)=>({n:i+1, anillo:s.ring, decimas:+(+s.dec).toFixed(1), x:+s.rx.toFixed(4), y:+s.ry.toFixed(4), cuenta:!s.drop, luz_roja:!!s.late, manual:!!s.manual, recuperado:!!s.rec, dudoso:!!s.dud}))};
+          disparos:S.shots.map((s,i)=>({n:i+1, anillo:s.ring, decimas:+(+s.dec).toFixed(1), x:+s.rx.toFixed(4), y:+s.ry.toFixed(4), cuenta:!s.drop, luz_roja:!!s.late&&!s.over, de_mas:!!s.over, serie:s.ser||null, manual:!!s.manual, recuperado:!!s.rec, dudoso:!!s.dud})), modalidad:S.modInfo?S.modInfo.key:null};
         files.push({k:'📊 Datos', b:new Blob([JSON.stringify(data,null,1)],{type:'application/json'}), n:base+'.json'}); }
       for(let i=0;i<files.length;i++){ if(i) await new Promise(r=>setTimeout(r,1200)); saveBlob(files[i].b, files[i].n); }
       $('#saveBox').style.display='none';
@@ -3507,7 +3609,7 @@ function autoCalib(rgba, W, H, TARGETS){
   function storeProfiles(o){ try{ localStorage.setItem(PKEY, JSON.stringify(o)); return true; }catch(e){ return false; } }
   const SKEYS=['backlit','countOut','askShot','fireMode','dianaMode','detectType','thr','minpx','cooldown','rings','radiusPct','realmm','fit','ringColor','ringW','minRing',
     'holeThr','minHole','maxHole','confirm','roundMax','insideOnly','lightComp','center','edge','laserMax','holeSens','caliber','target','scoreRule','bestOf','shotLimit','modal'];
-  const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB','cycles','lights'];
+  const TKEYS=['sound','mode','startCount','downSecs','loop','beepSecs','altA','altB','cycles','lights','mod','modPause','modFirst'];
   function snapshot(){
     const o={S:{},T:{},REP:{...REP},fields:{},saved:Date.now()};
     SKEYS.forEach(k=>o.S[k]=S[k]); o.S.persp=JSON.parse(JSON.stringify(S.persp));
@@ -3550,7 +3652,7 @@ function autoCalib(rgba, W, H, TARGETS){
     selSeg('#timerMode','tm',T.mode);
     $('#cardDown').style.display=T.mode==='down'?'block':'none';
     $('#cardBeep').style.display=T.mode==='beep'?'block':'none';
-    $('#cardAlt').style.display=T.mode==='alt'?'block':'none'; if(typeof lightsUI==='function') lightsUI();
+    $('#cardAlt').style.display=T.mode==='alt'?'block':'none'; if(typeof lightsUI==='function') lightsUI(); if(typeof modUI==='function') modUI();
     $('#downSecs').value=T.downSecs; $('#beepSecs').value=T.beepSecs; $('#altA').value=T.altA; $('#altB').value=T.altB;
     $('#swLoop').classList.toggle('on',T.loop); setR('#startcd',T.startCount,'#vStart'); $('#swSound').classList.toggle('on',T.sound);
     selSeg('#rGun','g',REP.gun); selSeg('#rHand','h',REP.hand);
