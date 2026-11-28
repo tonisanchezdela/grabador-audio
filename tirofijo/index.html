@@ -826,7 +826,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v27.2', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v27.3', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1413,10 +1413,12 @@
   // recalcula todos los disparos con los ajustes actuales (calibre, modelo de diana…)
   function rescoreAll(){ S.shots.forEach(s=>{ const r=scoreShot(s.dRel); s.ring=r.ring; s.dec=r.dec; }); markBest(); }
   // "cuentan los N mejores": los demás disparos se marcan como descartados (no suman)
+  // modalidades: se puntúa en enteros, sin décimas
+  function INTS(){ if(S.modInfo) return true; try{ return T.mode==='mod' && !!MODS[T.mod]; }catch(e){ return false; } }
   function markBest(sh){
     sh=sh||S.shots; sh.forEach(s=>s.drop=!!s.late);             // con luz roja nunca cuenta
     const N=S.bestOf|0, ok=sh.filter(s=>!s.late); if(!N || ok.length<=N) return sh;
-    ok.map((s,i)=>({s,i})).sort((a,b)=>(b.s.dec-a.s.dec)||(b.s.ring-a.s.ring)||(a.i-b.i)).slice(N).forEach(o=>o.s.drop=true);
+    const I=INTS(); ok.map((s,i)=>({s,i})).sort((a,b)=>I?((b.s.ring-a.s.ring)||(a.i-b.i)):((b.s.dec-a.s.dec)||(b.s.ring-a.s.ring)||(a.i-b.i))).slice(N).forEach(o=>o.s.drop=true);
     return sh;
   }
   const counted=()=>S.shots.filter(s=>!s.drop);
@@ -2275,9 +2277,9 @@
 
   /* ---------- stats ---------- */
   function renderStats(){
-    markBest(); const n=S.shots.length, cs=counted(), dec=cs.reduce((a,s)=>a+s.dec,0);
-    // cabecera: total con décimas y nº de tiros (si se descartan, cuántos cuentan)
-    $('#hdrTotal').textContent = n ? dec.toFixed(1).replace('.',',')+' · '+(cs.length<n?cs.length+'/':'')+n+(n===1?' tiro':' tiros') : '0';
+    markBest(); const n=S.shots.length, cs=counted(), dec=cs.reduce((a,s)=>a+s.dec,0), I=INTS();
+    // cabecera: total con décimas (en modalidades, en enteros) y nº de tiros (si se descartan, cuántos cuentan)
+    $('#hdrTotal').textContent = n ? (I?String(cs.reduce((a,s)=>a+s.ring,0)):dec.toFixed(1).replace('.',','))+' · '+(cs.length<n?cs.length+'/':'')+n+(n===1?' tiro':' tiros') : '0';
   }
 
   /* ---------- REPORT ---------- */
@@ -2290,7 +2292,7 @@
   function shotStats(){
     const sh=S.shots, n=sh.length;
     if(!n) return {n:0};
-    markBest(); const dec=sh.map(s=>s.dec), cs=sh.filter(s=>!s.drop), cdec=cs.map(s=>s.dec);
+    markBest(); const I=INTS(), dec=sh.map(s=>I?s.ring:s.dec), cs=sh.filter(s=>!s.drop), cdec=cs.map(s=>I?s.ring:s.dec);
     const mx=mean(sh.map(s=>s.rx)), my=mean(sh.map(s=>s.ry));
     const dist=sh.map(s=>Math.hypot(s.rx-mx,s.ry-my));
     let es=0; for(let i=0;i<n;i++)for(let j=i+1;j<n;j++) es=Math.max(es,Math.hypot(sh[i].rx-sh[j].rx, sh[i].ry-sh[j].ry));
@@ -2495,9 +2497,9 @@
     if(st.n){
       const hc=clockOf(st.mx,st.my);
       $('#kpis').innerHTML =
-        k('Total', f1(st.totalDec), 'sin décimas: '+st.total+(st.nc<st.n?' · cuentan los '+st.nc+' mejores de '+st.n:'')) +
+        (INTS()?k('Total', String(st.total), 'sin décimas'+(st.nc<st.n?' · cuentan '+st.nc+' de '+st.n:'')):k('Total', f1(st.totalDec), 'sin décimas: '+st.total+(st.nc<st.n?' · cuentan los '+st.nc+' mejores de '+st.n:''))) +
         k('Media por disparo', f1(st.avg), '± '+f1(st.sdS)+' (regularidad)') +
-        k('Mejor / peor', f1(st.best)+' / '+f1(st.worst)) +
+        k('Mejor / peor', INTS()?st.best+' / '+st.worst:f1(st.best)+' / '+f1(st.worst)) +
         k('Radio de grupo', len(st.meanR), 'distancia media al centro del grupo') +
         k('Dispersión máxima', len(st.es), 'entre los 2 disparos más separados') +
         k('Desvío del grupo', len(st.mpi), st.n>=2 && st.mpi*S.rings>=0.3 ? 'hacia '+DIRN[hc]+' ('+hc+' h)' : 'centrado') +
@@ -2515,7 +2517,7 @@
     $('#countTable').innerHTML=ct;
 
     $('#sumLine').textContent = st.n
-      ? 'Total: '+f1(st.totalDec)+' (sin décimas: '+st.total+') · Tiros: '+(st.nc<st.n?st.nc+' de '+st.n+(S.shots.some(s=>s.late)?' (no cuentan los de luz roja'+(S.bestOf?' ni los peores':'')+')':' (se descartan los peores)'):st.n)+' · Media: '+f1(st.avg)
+      ? 'Total: '+(INTS()?st.total+' (sin décimas)':f1(st.totalDec)+' (sin décimas: '+st.total+')')+' · Tiros: '+(st.nc<st.n?st.nc+' de '+st.n+(S.shots.some(s=>s.late)?' (no cuentan los de luz roja'+(S.bestOf?' ni los peores':'')+')':' (se descartan los peores)'):st.n)+' · Media: '+f1(st.avg)
       : 'Sin disparos';
 
     // series de 10 disparos
@@ -2537,7 +2539,8 @@
       sh+='<div class="serie">'+G.t+'</div><table'+(part.length>10?' class="wide"':'')+'>';
       sh+='<tr class="lbl"><td>Tiro</td>'+part.map((_,i)=>'<th>'+(s0+i+1)+'</th>').join('')+'<th>Σ</th></tr>';
       sh+='<tr class="lbl"><td>Anillos</td>'+part.map(s=>'<td'+dc(s)+'>'+s.ring+'</td>').join('')+'<td><b>'+sr+'</b></td></tr>';
-      sh+='<tr class="lbl"><td>Décimas</td>'+part.map(s=>'<td'+dc(s)+'>'+f1(s.dec)+'</td>').join('')+'<td><b>'+f1(sd)+'</b></td></tr></table>';
+      if(!INTS()) sh+='<tr class="lbl"><td>Décimas</td>'+part.map(s=>'<td'+dc(s)+'>'+f1(s.dec)+'</td>').join('')+'<td><b>'+f1(sd)+'</b></td></tr>';
+      sh+='</table>';
     }
     $('#seriesTable').innerHTML=sh;
 
@@ -3333,8 +3336,8 @@ function autoCalib(rgba, W, H, TARGETS){
     else if(bar.dataset.kind==='calib') $('#abInfo').textContent='Centro: '+(S.center?'✓':'—')+' · Borde: '+(S.edge?'✓':'—');
     else if(bar.dataset.kind==='holes') $('#abInfo').textContent='Sensibilidad '+S.holeSens+' · Conf '+confTxt()+' s · '+(HD.info||'');
     else if(bar.dataset.kind==='laser') $('#abInfo').textContent='Umbral '+S.thr+' · Mín '+S.minpx+' px · '+($('#liveRed').textContent||'');
-    else if(bar.dataset.kind==='review'){ const tot=S.shots.reduce((a,s)=>a+s.dec,0);
-      $('#abInfo').textContent=S.shots.length+' impactos · total '+tot.toFixed(1).replace('.',',')+' · '+
+    else if(bar.dataset.kind==='review'){ const I=INTS(), tot=S.shots.filter(s=>!s.drop).reduce((a,s)=>a+(I?s.ring:s.dec),0);
+      $('#abInfo').textContent=S.shots.length+' impactos · total '+(I?String(tot):tot.toFixed(1).replace('.',','))+' · '+
         (calMode==='rvAdd'?'Toca donde AÑADIR un impacto':calMode==='rvDel'?'Toca el impacto a BORRAR':'Elige Impacto + o Impacto −'); }
   }
   function openAdjust(kind){
