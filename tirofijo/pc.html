@@ -101,6 +101,29 @@
   .rchips{display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;}
   .rchips button{min-width:58px; padding:6px 9px; font-size:13px;} .rchips button.on,.ctl button.on{background:var(--gold); border-color:var(--gold); color:#1a1200;}
   .ctl{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:6px;} .ctl button{padding:8px 4px; font-size:13px;}
+  /* tirada común: programa de luces para todos los puestos */
+  .prog .hint{max-width:420px; align-self:center;}
+  .prog [hidden]{display:none !important;}
+  #hud{display:none; align-items:center; gap:14px; padding:8px 16px; border-bottom:1px solid var(--line); background:#0b0f14; flex-wrap:wrap;}
+  #hud.on{display:flex;}
+  #hud .lt{font-size:30px; font-weight:900; padding:6px 22px; border-radius:12px; min-width:170px; text-align:center; letter-spacing:1px;}
+  #hud .lt.g{background:#1f883d; color:#fff;} #hud .lt.r{background:#cf222e; color:#fff;} #hud .lt.n{background:#30363d; color:#c9d1d9;}
+  #hud .clk{font-size:38px; font-weight:900; font-variant-numeric:tabular-nums;}
+  #hud .clk.alert{color:var(--gold);}
+  #hLbl{font-size:17px; font-weight:800;}
+  body.lt-green .tile.inprog{border-color:#2ea043; box-shadow:0 0 0 3px #2ea043 inset;}
+  body.lt-red .tile.inprog{border-color:#f85149; box-shadow:0 0 0 3px #f85149 inset;}
+  #bigLight{position:fixed; left:50%; top:46%; transform:translate(-50%,-50%); font-size:min(22vh,220px); font-weight:900; pointer-events:none; opacity:0; z-index:70;
+    text-shadow:0 0 18px #000,0 0 4px #000;}
+  #bigLight.g{color:#3fb950;} #bigLight.r{color:#f85149;}
+  #bigLight.fade{animation:bl 2.4s ease-out forwards;}
+  @keyframes bl{0%{opacity:1; transform:translate(-50%,-50%) scale(1.06);} 45%{opacity:.95;} 100%{opacity:0; transform:translate(-50%,-50%) scale(1);}}
+  .shots div.late{color:var(--accent); text-decoration:line-through;} .shots div.rec{border-color:#22d3ee; color:#22d3ee;} .shots div.dud{border-color:#ff9f1a; color:#ff9f1a;}
+  .serTot{color:var(--muted); font-size:12px; margin-top:6px;}
+  .fxRow{display:flex; gap:6px; flex-wrap:wrap;} .fxRow button{font-size:12px; padding:6px 8px;}
+  .fxMsg{font-size:12px; color:#9be9f5; white-space:normal;}
+  .btns button.off{opacity:.55;}
+  .more label.chk,.cfg label.chk{flex-direction:row; align-items:center; text-transform:none; letter-spacing:0; font-size:12px; color:var(--txt);}
   .log{color:var(--muted); font:11px ui-monospace,monospace; max-height:90px; overflow:auto; white-space:pre-wrap; padding:4px 16px; border-top:1px solid var(--line);}
 </style>
 </head>
@@ -109,12 +132,35 @@
   <h1><b>◎</b> Tirofijo PC</h1>
   <span class="ver" id="appVer"></span>
   <span class="sp"></span>
+  <button class="primary" id="progBtn" title="Programa de luces común a todos los puestos: modalidades y temporizador">🚦 Tirada común</button>
   <button class="go" id="allArm">▶ Detectar en todos</button>
   <button id="allStop">⏸ Parar todos</button>
   <button id="allNew">⟲ Nueva tirada en todos</button>
   <button id="repBtn" title="Repeticiones de las tiradas grabadas">🎬</button>
   <button id="cfgBtn" title="Cámaras, conexión y grabación">⚙</button>
 </header>
+
+<div class="cfg prog hide" id="prog">
+  <label>Modalidad<select id="pMod"></select></label>
+  <span class="hint" id="pDesc"></span>
+  <label class="pL">Temporizador<select id="pMode"><option value="up">Cronómetro</option><option value="down">Cuenta atrás</option><option value="beep">Intervalo (pitido)</option><option value="alt">Alterno rojo / verde</option></select></label>
+  <label class="pL pDown">Minutos<input id="pDown" type="number" min="0.5" step="0.5" style="width:80px"></label>
+  <label class="pL pBeep">Pitido cada (s)<input id="pBeep" type="number" min="1" style="width:80px"></label>
+  <label class="pL pAlt">Rojo (s)<input id="pAltA" type="number" min="1" style="width:70px"></label>
+  <label class="pL pAlt">Verde (s)<input id="pAltB" type="number" min="1" style="width:70px"></label>
+  <label class="pL pAlt">Ciclos (0 = sin fin)<input id="pCyc" type="number" min="0" style="width:80px"></label>
+  <label class="pL chk"><input type="checkbox" id="pLights"> 🚦 Luces</label>
+  <label class="pL">🎯 Máx. disparos (0 = sin límite)<input id="pMax" type="number" min="0" style="width:80px"></label>
+  <label class="pM">Primer rojo (s)<input id="pFirst" type="number" min="0" style="width:70px"></label>
+  <label class="pM">Pausa entre series (s)<input id="pPause" type="number" min="0" style="width:80px"></label>
+  <label>Cuenta previa (s)<input id="pLead" type="number" min="0" max="30" style="width:70px"></label>
+  <label class="chk"><input type="checkbox" id="pSound"> 🔊 Pitidos</label>
+  <button id="pOk">✓ Aceptar</button>
+  <button class="go" id="pStart">▶ Iniciar tirada en todos</button>
+</div>
+<div id="hud"><span class="lt n" id="hLt">—</span><div><div id="hLbl"></div><div class="hint" id="hSub"></div></div><span class="clk" id="hClk">00:00</span>
+  <span class="sp"></span><button id="hNext" title="Empezar ya la siguiente serie">⏭ Empezar ya</button><button id="hPause">⏸ Pausa</button><button class="primary" id="hStop">⏹ Terminar</button></div>
+<div id="bigLight"></div>
 
 <div class="cfg" id="cfg">
   <label>Dirección de go2rtc<input id="g2r" size="26"></label>
@@ -125,6 +171,7 @@
   <label class="chk"><input type="checkbox" id="repOn"> 🎬 Grabar cada tirada</label>
   <button id="dirBtn" title="Carpeta del PC donde se guardan los vídeos">📁 Carpeta de grabaciones</button><span id="dirName"></span>
   <span id="state">Sin cámaras</span>
+  <button id="cfgOk">✓ Aceptar</button>
 </div>
 
 <main><div class="grid" id="grid"></div><div class="empty" id="empty">Pulsa <b>Leer cámaras de go2rtc</b> (una cámara IP por puesto) o añade una webcam para probar.</div></main>
@@ -146,12 +193,15 @@
         <button data-a="cal" title="Autocalibrar la diana">🎯</button>
         <button data-a="type" title="Láser o cartón">🔴</button>
         <button data-a="undo" title="Quitar el último disparo">↩</button>
-        <button data-a="fin" title="Terminar la tirada (para y guarda la grabación)">⏹</button>
+        <button data-a="fin" title="Terminar la tirada (para, analiza la foto final y guarda la grabación)">⏹</button>
+        <button data-a="rings" title="Mostrar / ocultar la diana y los puntos">👁</button>
+        <button data-a="save" title="Guardar sesión: informe PDF + datos .json, y dejar la diana limpia">💾</button>
         <button data-a="new" title="Nueva tirada (borra los disparos)">⟲</button>
         <button data-a="big" title="Ampliar / volver a la cuadrícula">⛶</button>
       </div>
     </div>
     <div class="more">
+      <button class="go" data-a="ok">✓ Aceptar y volver a la cuadrícula</button>
       <div class="pre">
         <label>Diámetro aro 1<select class="qAro"><option value="155.5">Pistola aire 10 m · 155,5</option><option value="45.5">Carabina aire 10 m · 45,5</option>
           <option value="154.4">Carabina 50 m · 154,4</option><option value="500">Pistola 25/50 m · 500</option>
@@ -174,14 +224,19 @@
       <label class="chk"><input type="checkbox" class="cOut"> Disparos fuera del aro 1 cuentan como 0</label>
       <label class="chk"><input type="checkbox" class="cAsk"> Preguntar «¿disparo?» si la tarjeta se mueve sin agujero nuevo</label>
       <div class="hinfo"></div>
+      <div class="fxBox"><label class="chk"><input type="checkbox" class="cFx"> 🔬 Análisis final exhaustivo (foto al empezar y al terminar; solo cartón)</label>
+        <div class="fxMsg"></div>
+        <div class="fxRow"><button data-a="fxRedo">🔬 Repetir análisis</button><button data-a="fxUndo">↩ Deshacer análisis</button><button data-a="fxSug">✓ Añadir sugeridos</button></div></div>
+      <button data-a="redl" class="redl" style="display:none">⬇ Volver a descargar lo guardado</button>
       <button data-a="repLast">🎬 Ver la última tirada de este puesto</button>
-      <div><small class="hint">Disparos</small><div class="shots"></div></div>
+      <div><small class="hint">Disparos (tachado: luz roja o de más, no cuenta · * a mano · azul: recuperado por la foto · naranja: dudoso)</small><div class="shots"></div><div class="serTot"></div></div>
       <div class="hint">Mayús + clic en la imagen: añadir un impacto a mano · clic derecho: quitar el impacto más cercano · Esc: volver.</div>
       <button data-a="remove">✕ Quitar este puesto</button>
     </div>
   </div>
 </template>
 
+<script src="vendor/jspdf.umd.min.js" onerror="this.remove()"></script>
 <script>
 /* Tirofijo · motor común de detección y puntuación (versión PC, varios puestos a la vez)
    Sale del motor de index.html (v25.4): mismas funciones, pero cada puesto tiene su propio estado.
@@ -197,7 +252,7 @@ const TARGETS={
 };
 const MODALS={issf:{name:'ISSF',scoreRule:'edge',bestOf:0,shotLimit:0}, avancarga:{name:'Avancarga (.45 · 13 disparos, cuentan 10)',scoreRule:'center',bestOf:10,shotLimit:13,caliber:11.43}};
 const SAVE_KEYS=['target','rings','realmm','caliber','detectType','dianaMode','persp','center','edge','radiusPct','modal','scoreRule','bestOf','shotLimit',
-  'thr','minpx','cooldown','holeSens','confirm','laserMax','roundMax','insideOnly','lightComp','backlit','countOut','askShot','ringColor','ringW','minRing','gun'];
+  'thr','minpx','cooldown','holeSens','confirm','laserMax','roundMax','insideOnly','lightComp','backlit','countOut','askShot','fxOn','showRings','ringColor','ringW','minRing','gun'];
 const BASE_W=960;    // ancho del lienzo de trabajo (la altura sigue la proporción del vídeo)
 
 function create(video, overlay){
@@ -209,7 +264,7 @@ function create(video, overlay){
     thr:160, minpx:4, cooldown:0.5, rings:10, radiusPct:42, realmm:500,
     fit:'contain', ringColor:'#ff2bd6', ringW:1.2, minRing:1, scoreRule:'edge', bestOf:0, shotLimit:0, modal:'issf',
     holeThr:45, minHole:6, maxHole:400, confirm:3, roundMax:2.6, laserMax:1.0, holeSens:5, caliber:9, target:'p25', gun:'pistol',
-    insideOnly:true, lightComp:true, backlit:false, countOut:true, askShot:true, persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
+    insideOnly:true, lightComp:true, backlit:false, countOut:true, askShot:true, fxOn:true, showRings:true, ints:false, persp:{top:null,right:null,bottom:null,left:null,center:null}, Hf:null, Hinv:null, selP:'center',
     lastShot:0, shots:[], W:0, H:0, center:null, edge:null, phase:'idle',
   };
   const Z={s:1};
@@ -320,10 +375,12 @@ function create(video, overlay){
   // recalcula todos los disparos con los ajustes actuales (calibre, modelo de diana…)
   function rescoreAll(){ S.shots.forEach(s=>{ const r=scoreShot(s.dRel); s.ring=r.ring; s.dec=r.dec; }); markBest(); }
   // "cuentan los N mejores": los demás disparos se marcan como descartados (no suman)
+  // modalidades: se puntúa en enteros, sin décimas (lo decide pc.html con S.ints)
+  function INTS(){ return !!S.ints; }
   function markBest(sh){
-    sh=sh||S.shots; sh.forEach(s=>s.drop=false);
-    const N=S.bestOf|0; if(!N || sh.length<=N) return sh;
-    sh.map((s,i)=>({s,i})).sort((a,b)=>(b.s.dec-a.s.dec)||(b.s.ring-a.s.ring)||(a.i-b.i)).slice(N).forEach(o=>o.s.drop=true);
+    sh=sh||S.shots; sh.forEach(s=>s.drop=!!s.late);             // con luz roja nunca cuenta
+    const N=S.bestOf|0, ok=sh.filter(s=>!s.late); if(!N || ok.length<=N) return sh;
+    const I=INTS(); ok.map((s,i)=>({s,i})).sort((a,b)=>I?((b.s.ring-a.s.ring)||(a.i-b.i)):((b.s.dec-a.s.dec)||(b.s.ring-a.s.ring)||(a.i-b.i))).slice(N).forEach(o=>o.s.drop=true);
     return sh;
   }
   const counted=()=>S.shots.filter(s=>!s.drop);
@@ -449,8 +506,10 @@ function create(video, overlay){
     const rv=Math.sqrt((vx1-vx0)*(vy1-vy0))/2/ROI_EXT;                  // radio de la diana en px de vídeo
     HD.rv=rv;
     // se analiza con todo el detalle que da la cámara (hasta 300 px de radio): los impactos pequeños se ven mejor
-    HD.RR=170; const sc=HD.RR/rv;
-    const w=Math.max(16,Math.min(720,Math.round(bw*sc))), h=Math.max(16,Math.min(720,Math.round(bh*sc)));
+    // calibre pequeño en diana grande (p. ej. ,22 en 50 cm): se sube la resolución para que el agujero mida ≥ 7 px
+    const dExp=(S.caliber>0?S.caliber:9)/targetD()*2*170;
+    HD.RR=Math.round(Math.max(170, Math.min(rv, 340, dExp>0?170*7/dExp:170))); const sc=HD.RR/rv;
+    const w=Math.max(16,Math.min(900,Math.round(bw*sc))), h=Math.max(16,Math.min(900,Math.round(bh*sc)));
     return {x0,y0,bw,bh,w,h,vw,vh};
   }
   function roiToScreen(R,x,y){ return mapCover((R.x0+x*R.bw/R.w)/R.vw, (R.y0+y*R.bh/R.h)/R.vh); }
@@ -569,6 +628,258 @@ function create(video, overlay){
       mn[o+x]=Math.min(t1[u+x],t1[o+x],t1[d+x]); mx[o+x]=Math.max(t2[u+x],t2[o+x],t2[d+x]); } }
     return {mn,mx};
   }
+  /* ---------- ANÁLISIS FINAL EXHAUSTIVO ----------
+     Foto a la máxima resolución al empezar y otra al terminar. Al final se comparan con calma (sin prisa de
+     tiempo real ni movimiento) para encontrar los agujeros que la detección en directo no vio, y marcar como
+     dudosos los detectados que no aparecen en la foto final. */
+  const FX={A:null, busy:false, res:null, msg:'', sug:[]};
+  const FX_RR=700;                 // radio del aro 1 en la rejilla de alta resolución (px), como máximo
+  const fxSleep=ms=>new Promise(r=>setTimeout(r,ms));
+  // media de varios fotogramas del vídeo (si la cámara no permite fotos): menos ruido que un solo fotograma
+  async function fxVideoAvg(){
+    const vw=video.videoWidth, vh=video.videoHeight; if(!vw) return null;
+    const c=document.createElement('canvas'); c.width=vw; c.height=vh; const g=c.getContext('2d');
+    for(let k=0;k<6;k++){ g.globalAlpha=1/(k+1); g.drawImage(video,0,0,vw,vh); await fxSleep(90); }
+    g.globalAlpha=1; return {img:c, w:vw, h:vh, src:'vídeo'};
+  }
+  // foto con ImageCapture de una pista local (máxima resolución, sin flash)
+  async function fxTakePhoto(t){
+    if(!t || !window.ImageCapture) return null;
+    try{ const ic=new ImageCapture(t), o={};
+      try{ const pc=await ic.getPhotoCapabilities(); if(pc.imageWidth&&pc.imageWidth.max) o.imageWidth=pc.imageWidth.max;
+        if(pc.imageHeight&&pc.imageHeight.max) o.imageHeight=pc.imageHeight.max;
+        if(pc.fillLightMode&&pc.fillLightMode.includes('off')) o.fillLightMode='off'; }catch(e){}
+      const blob=await Promise.race([ic.takePhoto(o), fxSleep(8000).then(()=>null)]);
+      return blob||null; }catch(e){ return null; }
+  }
+  // PC: la foto la pide pc.html (instantánea de la cámara IP o ImageCapture de la webcam); si no hay, media de fotogramas
+  async function fxCapture(){
+    let blob=null; try{ if(E.capturePhoto) blob=await E.capturePhoto(); }catch(e){ blob=null; }
+    if(blob){ try{ const b=await createImageBitmap(blob,{imageOrientation:'from-image'}); return {img:b, w:b.width, h:b.height, src:'foto'}; }catch(e){} }
+    return fxVideoAvg();
+  }
+  // gris de la foto en una rejilla w×h; T: rejilla (continua) → foto, afín [a,b,c,d,e,f]
+  function fxRender(P,T,w,h){
+    const c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d',{willReadFrequently:true});
+    g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+    const I=affInv(T); g.setTransform(I[0],I[3],I[1],I[4],I[2],I[5]); g.drawImage(P.img,0,0);
+    const d=g.getImageData(0,0,w,h).data, n=w*h, out=new Float32Array(n);
+    for(let i=0,p=0;i<n;i++,p+=4) out[i]=d[p]*0.299+d[p+1]*0.587+d[p+2]*0.114;
+    return out;
+  }
+  const fxNcc=(a,b,m)=>{ let sa=0,sb=0,saa=0,sbb=0,sab=0,n=0; for(let i=0;i<a.length;i+=3){ if(!m[i]) continue; const x=a[i],y=b[i]; sa+=x; sb+=y; saa+=x*x; sbb+=y*y; sab+=x*y; n++; }
+    if(n<50) return 0; const va=saa/n-(sa/n)**2, vb=sbb/n-(sb/n)**2; return va>1&&vb>1?(sab/n-(sa/n)*(sb/n))/Math.sqrt(va*vb):0; };
+  // alinea B con A (la tarjeta se mueve o gira un poco): devuelve Wm con B(u) ≈ A(Wm·u). Primero a 1/4, luego fino
+  function fxAlign(A,B,w,h,ins){
+    let d0={dx:0,dy:0};
+    if(w>400){ const k=4, w4=Math.floor(w/k), h4=Math.floor(h/k), a4=new Float32Array(w4*h4), b4=new Float32Array(w4*h4), m4=new Uint8Array(w4*h4);
+      for(let y=0;y<h4;y++)for(let x=0;x<w4;x++){ let sa=0,sb=0; for(let dy=0;dy<k;dy++)for(let dx=0;dx<k;dx++){ const i=(y*k+dy)*w+x*k+dx; sa+=A[i]; sb+=B[i]; }
+        a4[y*w4+x]=sa/16; b4[y*w4+x]=sb/16; m4[y*w4+x]=ins[(y*k+2)*w+x*k+2]; }
+      const R4={w:w4,h:h4}, s4=prepSnap(a4,R4,m4,0), sh=estShift(s4,b4,R4), W4=lkAffine(s4,b4,R4,sh);
+      if(W4){ const c=affApply(W4,w4/2,h4/2); d0={dx:k*(c.x-w4/2), dy:k*(c.y-h4/2)}; } else d0={dx:k*sh.dx, dy:k*sh.dy}; }
+    // B se recoloca con el desplazamiento grueso y se afina (estShift busca ±20 px)
+    const R={w,h}, sn=prepSnap(A,R,ins,0), moved=Math.abs(d0.dx)>0.5||Math.abs(d0.dy)>0.5;
+    const r=estShift(sn,moved?shifted(B,w,h,-d0.dx,-d0.dy):B,R), tot={dx:(moved?d0.dx:0)+r.dx, dy:(moved?d0.dy:0)+r.dy};
+    return lkAffine(sn,B,R,tot)||[1,0,tot.dx,0,1,tot.dy];
+  }
+  // foto girada 90° (la foto viene en otra orientación que el vídeo)
+  function fxRot(P,dir){ const c=document.createElement('canvas'); c.width=P.h; c.height=P.w; const g=c.getContext('2d');
+    g.translate(c.width/2,c.height/2); g.rotate(dir*Math.PI/2); g.drawImage(P.img,-P.w/2,-P.h/2); return {img:c, w:c.width, h:c.height, src:P.src}; }
+  function fxLocalLight(A,B,w,h,r4){
+    const n=w*h, g=new Float32Array(n), o=new Float32Array(n);
+    if(!S.lightComp){ g.fill(1); return {g,o}; }
+    const k=4, w4=Math.ceil(w/k), h4=Math.ceil(h/k), n4=w4*h4, G4=new Float32Array(n4), O4=new Float32Array(n4);
+    const box=X=>{ const t=new Float64Array(n4), u=new Float64Array(n4);
+      for(let y=0;y<h4;y++){ let acc=0; const r=y*w4; for(let x=-r4;x<w4;x++){ if(x+r4<w4) acc+=X[r+x+r4]; if(x-r4-1>=0) acc-=X[r+x-r4-1]; if(x>=0) t[r+x]=acc; } }
+      for(let x=0;x<w4;x++){ let acc=0; for(let y=-r4;y<h4;y++){ if(y+r4<h4) acc+=t[(y+r4)*w4+x]; if(y-r4-1>=0) acc-=t[(y-r4-1)*w4+x]; if(y>=0) u[y*w4+x]=acc; } }
+      return u; };
+    let lim=Infinity;
+    // 2 pasadas: la segunda sin los píxeles que no encajan (agujeros, sombras que se mueven)
+    for(let pass=0;pass<2;pass++){
+      const Q=[0,1,2,3,4].map(()=>new Float64Array(n4)), rs=[];
+      for(let y=0;y<h;y++){ const r=((y/k)|0)*w4; for(let x=0;x<w;x++){ const i=y*w+x, j=r+((x/k)|0);
+        if(pass){ const e=Math.abs(B[i]-(G4[j]*A[i]+O4[j])); if(e>lim) continue; }
+        const a=A[i]-128, b=B[i]-128; Q[0][j]+=a; Q[1][j]+=b; Q[2][j]+=a*a; Q[3][j]+=a*b; Q[4][j]++; } }
+      const [Sa,Sb,Saa,Sab,Sn]=Q.map(box), eps=25;
+      for(let j=0;j<n4;j++){ const N=Math.max(1,Sn[j]), ma=Sa[j]/N, mb=Sb[j]/N, va=Math.max(0,Saa[j]/N-ma*ma), cv=Sab[j]/N-ma*mb;
+        const gm=Math.max(0.2,Math.min(5,(mb+128)/Math.max(8,ma+128))), gg=Math.max(0.2,Math.min(5,(cv+eps*gm)/(va+eps)));
+        G4[j]=gg; O4[j]=(mb+128)-gg*(ma+128); }
+      if(!pass){ for(let i=0;i<n;i+=13){ const y=(i/w)|0, x=i-y*w, j=((y/k)|0)*w4+((x/k)|0); rs.push(Math.abs(B[i]-(G4[j]*A[i]+O4[j]))); }
+        rs.sort((a,b)=>a-b); lim=Math.max(10,3*1.4826*(rs[rs.length>>1]||2)); }
+    }
+    for(let y=0;y<h;y++){ const fy=Math.max(0,Math.min(h4-1.001,(y+0.5)/k-0.5)), y0=fy|0, ty=fy-y0;
+      for(let x=0;x<w;x++){ const fx=Math.max(0,Math.min(w4-1.001,(x+0.5)/k-0.5)), x0=fx|0, tx=fx-x0, j=y0*w4+x0, i=y*w+x;
+        g[i]=(G4[j]*(1-tx)+G4[j+1]*tx)*(1-ty)+(G4[j+w4]*(1-tx)+G4[j+w4+1]*tx)*ty;
+        o[i]=(O4[j]*(1-tx)+O4[j+1]*tx)*(1-ty)+(O4[j+w4]*(1-tx)+O4[j+w4+1]*tx)*ty; } }
+    return {g,o};
+  }
+  // ajuste fino LOCAL: el papel se ondula o se dobla un poco y la afín no basta. Bloques de 48 px, ±4 px
+  function fxFlow(ref,B,w,h,ins){
+    const w2=w>>1, h2=h>>1, a=new Float32Array(w2*h2), b=new Float32Array(w2*h2);
+    for(let y=0;y<h2;y++)for(let x=0;x<w2;x++){ const i=2*y*w+2*x; a[y*w2+x]=(ref[i]+ref[i+1]+ref[i+w]+ref[i+w+1])/4; b[y*w2+x]=(B[i]+B[i+1]+B[i+w]+B[i+w+1])/4; }
+    const T=24, R=2, gx=Math.floor((w2-T-2*R)/T)+1, gy=Math.floor((h2-T-2*R)/T)+1, ng=gx*gy;
+    if(gx<2||gy<2) return ref;
+    const DX=new Float32Array(ng), DY=new Float32Array(ng), OK=new Uint8Array(ng);
+    for(let ty=0;ty<gy;ty++)for(let tx=0;tx<gx;tx++){ const x0=R+tx*T, y0=R+ty*T, t=ty*gx+tx;
+      if(!ins[(2*(y0+T/2))*w+2*(x0+T/2)]) continue;
+      let sa=0,saa=0; for(let y=y0;y<y0+T;y++)for(let x=x0;x<x0+T;x++){ const v=a[y*w2+x]; sa+=v; saa+=v*v; }
+      const N=T*T, ma=sa/N, va=saa/N-ma*ma; if(va<30) continue;
+      const C=new Float32Array((2*R+1)*(2*R+1)); let best=-2,bx=0,by=0;
+      for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){ let sb=0,sbb=0,sab=0;
+        for(let y=y0;y<y0+T;y++){ const ra=y*w2, rb=(y+dy)*w2+dx; for(let x=x0;x<x0+T;x++){ const u=a[ra+x], v=b[rb+x]; sb+=v; sbb+=v*v; sab+=u*v; } }
+        const mb=sb/N, vb=sbb/N-mb*mb, z=vb>1?(sab/N-ma*mb)/Math.sqrt(va*vb):-1; C[(dy+R)*(2*R+1)+dx+R]=z; if(z>best){best=z;bx=dx;by=dy;} }
+      if(best<0.6) continue;
+      const at=(dx,dy)=>C[(dy+R)*(2*R+1)+dx+R], sub=(l,c,r)=>{ const d=l-2*c+r; return d<0?Math.max(-0.5,Math.min(0.5,0.5*(l-r)/d)):0; };
+      DX[t]=bx+(Math.abs(bx)<R?sub(at(bx-1,by),best,at(bx+1,by)):0); DY[t]=by+(Math.abs(by)<R?sub(at(bx,by-1),best,at(bx,by+1)):0); OK[t]=1; }
+    // huecos (zonas lisas) con la media de los vecinos; mediana 3×3 contra valores sueltos
+    for(let it=0;it<30;it++){ let ch=0; for(let t=0;t<ng;t++){ if(OK[t]) continue; const x=t%gx, y=(t/gx)|0; let sx=0,sy=0,c=0;
+        for(const [ex,ey] of [[1,0],[-1,0],[0,1],[0,-1]]){ const xx=x+ex, yy=y+ey; if(xx<0||yy<0||xx>=gx||yy>=gy) continue; const q=yy*gx+xx; if(OK[q]){ sx+=DX[q]; sy+=DY[q]; c++; } }
+        if(c){ DX[t]=sx/c; DY[t]=sy/c; OK[t]=2; ch++; } } if(!ch) break; }
+    const med=X=>{ const out=new Float32Array(ng); for(let y=0;y<gy;y++)for(let x=0;x<gx;x++){ const v=[];
+      for(let ey=-1;ey<=1;ey++)for(let ex=-1;ex<=1;ex++){ const xx=x+ex, yy=y+ey; if(xx>=0&&yy>=0&&xx<gx&&yy<gy&&OK[yy*gx+xx]) v.push(X[yy*gx+xx]); }
+      v.sort((p,q)=>p-q); out[y*gx+x]=v.length?v[v.length>>1]:0; } return out; };
+    const MX=med(DX), MY=med(DY), out=new Float32Array(w*h);
+    for(let y=0;y<h;y++){ const fy=Math.max(0,Math.min(gy-1.001,((y+0.5)/2-0.5-R-T/2)/T)), y0=fy|0, ty=fy-y0;
+      for(let x=0;x<w;x++){ const fx=Math.max(0,Math.min(gx-1.001,((x+0.5)/2-0.5-R-T/2)/T)), x0=fx|0, tx=fx-x0, j=y0*gx+x0;
+        const dx=2*((MX[j]*(1-tx)+MX[j+1]*tx)*(1-ty)+(MX[j+gx]*(1-tx)+MX[j+gx+1]*tx)*ty), dy=2*((MY[j]*(1-tx)+MY[j+1]*tx)*(1-ty)+(MY[j+gx]*(1-tx)+MY[j+gx+1]*tx)*ty);
+        const X=Math.min(w-1.001,Math.max(0,x-dx)), Y=Math.min(h-1.001,Math.max(0,y-dy)), xi=X|0, yi=Y|0, ax=X-xi, ay=Y-yi, i=yi*w+xi;
+        out[y*w+x]=(ref[i]*(1-ax)+ref[i+1]*ax)*(1-ay)+(ref[i+w]*(1-ax)+ref[i+w+1]*ax)*ay; } }
+    return out;
+  }
+  // al empezar la tirada: foto inicial y su correspondencia con la imagen en directo
+  async function fxStart(){
+    FX.A=null; FX.res=null; FX.sug=[]; fxUI('');
+    if(!S.fxOn || S.detectType!=='holes') return;
+    const R=HD.R; if(!R||!HD.ins||HD.ins.length!==R.w*R.h) return;
+    const live=grabRoi(R), rv=HD.rv, RR0=HD.RR, curA=(HD.curA||AFF_I).slice(), ins=HD.ins;
+    const backup=await fxVideoAvg();                         // por si la foto falla o tarda (cámara remota antigua)
+    let P=await fxCapture(); if(!P||P.src!=='foto') P=backup; if(!P) return;
+    const vw=R.vw, vh=R.vh, kx=R.bw/R.w, ky=R.bh/R.h, sn=prepSnap(live,R,ins,0);
+    const cands=((P.w>P.h)!==(vw>vh))?[fxRot(P,1),fxRot(P,-1)]:[P];
+    let best=null;
+    for(const Q of cands){ const s1=Q.w/vw, s2=Q.h/vh, hyps=[{s:s1, ox:0, oy:(Q.h-s1*vh)/2}];
+      if(Math.abs(s1-s2)>0.01*s1) hyps.push({s:s2, ox:(Q.w-s2*vw)/2, oy:0});
+      for(const H of hyps){
+        const T=[H.s*kx,0,H.ox+H.s*R.x0, 0,H.s*ky,H.oy+H.s*R.y0];      // rejilla en directo → foto
+        const g=fxRender(Q,T,R.w,R.h), sh=estShift(sn,g,R), Wm=lkAffine(sn,g,R,sh)||[1,0,sh.dx,0,1,sh.dy];
+        const nc=fxNcc(warpAff(live,R.w,R.h,Wm),g,ins);
+        if(!best||nc>best.nc) best={nc, T:affMul(T,affInv(Wm)), s:H.s, Q};
+      } }
+    if(!best||best.nc<0.6){ if(P!==backup&&backup){ P=backup; const T=[kx,0,R.x0,0,ky,R.y0]; best={nc:1,T,s:1,Q:backup}; } else return; }
+    const Q=best.Q, F=Math.max(1,Math.min(FX_RR/RR0, best.s*rv/RR0, 1900/Math.max(R.w,R.h)));
+    const w=Math.round(R.w*F), h=Math.round(R.h*F), Th=affMul(best.T,[1/F,0,0,0,1/F,0]);   // rejilla alta → foto
+    FX.A={g:fxRender(Q,Th,w,h), w, h, F, T:Th, R, curA, RR:RR0*F, src:Q.src, rot:cands.length>1?(Q===cands[0]?1:-1):0};
+    [P,backup,...cands].forEach(o=>{ if(o&&o.img&&o.img.close) try{ o.img.close(); }catch(e){} });
+  }
+  // al terminar: foto final, comparación y resultado
+  async function fxEnd(){
+    const A=FX.A; if(!A||FX.busy) return null;
+    FX.busy=true; fxUI('🔬 Análisis final: haciendo la foto…');
+    try{
+      let P=await fxCapture(); if(!P){ fxUI('🔬 Análisis final: no se pudo hacer la foto'); return null; }
+      if(A.src==='foto'&&P.src!=='foto'){ fxUI('🔬 Análisis final: la cámara no dio la foto final'); return null; }
+      if(A.src!=='foto'&&P.src==='foto'){ if(P.img.close) P.img.close(); P=await fxVideoAvg(); }
+      if(A.rot) P=fxRot(P,A.rot);
+      fxUI('🔬 Analizando la foto final con detalle…'); await fxSleep(30); const t0=performance.now();
+      const w=A.w, h=A.h, n=w*h, B=fxRender(P,A.T,w,h); if(P.img.close) P.img.close();
+      // máscaras de la diana en la rejilla alta (calculadas a 1/4 y ampliadas)
+      const R=A.R, lim=1.04, limD=(S.countOut!==false)?1.27:1.04, k=4, w4=Math.ceil(w/k), h4=Math.ceil(h/k), dr4=new Float32Array(w4*h4);
+      const toNorm=(X,Y)=>{ const u=affApply(A.curA,X/A.F,Y/A.F), p=roiToScreen(R,u.x,u.y); return normFromScreen(p.x,p.y); };
+      for(let y=0;y<h4;y++)for(let x=0;x<w4;x++) dr4[y*w4+x]=toNorm((x+0.5)*k,(y+0.5)*k).dRel;
+      const ins=new Uint8Array(n), insD=new Uint8Array(n), edge=new Uint8Array(n), eb=3/A.RR;
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){ const d=dr4[((y/k)|0)*w4+((x/k)|0)], i=y*w+x; if(d<=lim) ins[i]=1; if(d<=limD){ insD[i]=1; if(d>limD-eb) edge[i]=1; } }
+      const Wm=fxAlign(A.g,B,w,h,ins);
+      const ref0=warpAff(A.g,w,h,Wm), nc=fxNcc(ref0,B,ins);
+      if(nc<0.6){ fxUI('🔬 La foto final no se parece a la inicial (¿diana girada?). Ponla de frente y pulsa «Repetir análisis»'); return null; }
+      const ref=fxFlow(ref0,B,w,h,ins);
+      // luz por cuartos, ruido, cambio fuera del rango del entorno (tolera desajustes de 1–2 px en las líneas)
+      const dmm=targetD(), cal=S.caliber>0?S.caliber:9, hd=cal/dmm*2*A.RR, hr=Math.max(1,Math.round(0.45*hd)), hA=Math.PI*Math.pow(hd/2+hr,2);
+      // luz LOCAL (sol y sombras que cambian entre las dos fotos): en cada zona de ~8 agujeros, final ≈ g·inicial + o
+      const GO=fxLocalLight(ref,B,w,h,Math.max(6,Math.round(0.75*hd)));
+      let MM=minMax3(ref,w,h); if(hd>=8){ const m1=minMax3(MM.mn,w,h).mn, m2=minMax3(MM.mx,w,h).mx; MM={mn:m1,mx:m2}; }
+      const grad=new Float32Array(n);
+      for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){ const i=y*w+x; const gx=(ref[i+1]-ref[i-1])/2, gy=(ref[i+w]-ref[i-w])/2; grad[i]=Math.sqrt(gx*gx+gy*gy); }
+      const BL=!!S.backlit, DF=new Float32Array(n), rs=[];
+      for(let i=0;i<n;i++){ if(!insD[i]) continue; const G=GO.g[i], O=GO.o[i], c=B[i], hi=G*MM.mx[i]+O, lo=G*MM.mn[i]+O;
+        DF[i]=BL?Math.max(0,c-hi):Math.max(0,c-hi,lo-c); if(ins[i]&&i%7===0&&grad[i]<HOLE_G0*0.25) rs.push(Math.abs(c-(G*ref[i]+O))); }
+      rs.sort((a,b)=>a-b); const sig=rs.length>50?1.4826*rs[rs.length>>1]:2;
+      const sm=[]; for(let i=0;i<n;i+=9) if(ins[i]) sm.push(ref[i]); sm.sort((a,b)=>a-b);
+      const mid=sm.length?(sm[Math.floor(sm.length*0.15)]+sm[Math.floor(sm.length*0.85)])/2:128, paper=sm.length?sm[Math.floor(sm.length*0.9)]:200;
+      const thrD=Math.max(16,4*sig), thrL=Math.max(28,5*sig), E=new Float32Array(n);
+      for(let i=0;i<n;i++){ if(!insD[i]) continue; const thr=ref[i]<mid?thrD:thrL; let e=Math.max(0,DF[i]-0.5*sig)/thr; if(e>2) e=2; const gq=grad[i]/HOLE_G0; E[i]=e/(1+gq*gq); }
+      const W1=w+1, I=new Float64Array(W1*(h+1));
+      for(let y=0;y<h;y++){ let row=0; for(let x=0;x<w;x++){ row+=E[y*w+x]; I[(y+1)*W1+x+1]=I[y*W1+x+1]+row; } }
+      const Tb=holeTb(), mask=new Uint8Array(n);
+      for(let y=0;y<h;y++){ const ya=Math.max(0,y-hr), yb=Math.min(h,y+hr+1);
+        for(let x=0;x<w;x++){ if(!insD[y*w+x]) continue; const xa=Math.max(0,x-hr), xb=Math.min(w,x+hr+1);
+          if((I[yb*W1+xb]-I[ya*W1+xb]-I[yb*W1+xa]+I[ya*W1+xa])/((yb-ya)*(xb-xa))>Tb) mask[y*w+x]=1; } }
+      const at=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x>=0&&y>=0&&x<w&&y<h&&insD[y*w+x]?DF[y*w+x]:-1; };
+      const all=blobs(mask,w,h,edge,DF,ins);
+      all.forEach((c,i)=>c.id=i+1);
+      const inGrid=c=>c.cx-c.bw/2>3 && c.cx+c.bw/2<w-4 && c.cy-c.bh/2>3 && c.cy+c.bh/2<h-4;    // el borde de la rejilla no cuenta
+      const good=all.filter(c=>c.n>=Math.max(8,0.1*hA) && c.n<=12*hA && c.ar<=Math.max(2.2,S.roundMax) && c.fill>=0.3 && c.ne<=Math.max(6,1.2*hd) && inGrid(c))
+        .filter(c=>{ const px=c.pk%w, py=(c.pk/w)|0, rh=Math.max(2,hd/2);
+          let sw=0,sx=0,sy=0; const R2=Math.ceil(rh); for(let dy=-R2;dy<=R2;dy++)for(let dx=-R2;dx<=R2;dx++){ if(dx*dx+dy*dy>rh*rh) continue; const v=at(px+dx,py+dy); if(v>0){ sw+=v; sx+=v*(px+dx); sy+=v*(py+dy); } }
+          if(sw>0){ c.cx=sx/sw; c.cy=sy/sw; }
+          let cen=0,cn=0; const rc=Math.max(1,Math.round(hd/4)); for(let dy=-rc;dy<=rc;dy++)for(let dx=-rc;dx<=rc;dx++){ const v=at(c.cx+dx,c.cy+dy); if(v>=0){cen+=v;cn++;} }
+          let an=0,anN=0; for(let k2=0;k2<32;k2++){ const a=k2/32*6.2832, rr=(k2%2?2.2:3.0)*rh, v=at(c.cx+rr*Math.cos(a),c.cy+rr*Math.sin(a)); if(v>=0){an+=v;anN++;} }
+          if(!cn) return false; cen/=cn; c.cenv=cen; c.sharp=anN>=8&&cen>0?an/anN/cen:0;
+          // con dos fotos quietas el ruido es muy bajo: un agujero débil (negro sobre negro) vale si destaca limpio de su entorno
+          if(cen>=HOLE_PK && (anN<8 || an/anN-sig<0.2*cen)) return true;
+          return cen>=Math.max(12,7*sig) && anN>=8 && c.sharp<=0.1 && c.ar<=1.5 && toNorm(c.cx+0.5,c.cy+0.5).dRel<=1.0; });
+      // agujeros juntos (dos disparos que se tocan): por tamaño frente a un agujero suelto, y se separan por k-medias
+      const singles=good.filter(c=>c.ar<=1.3&&c.fill>=0.7).map(c=>c.n).sort((a,b)=>a-b);
+      const nS=singles.length>=3?singles[singles.length>>1]:0.65*hA, lab=LAB.buf, pts=[];
+      for(const c of good){ const r=c.n/nS, k=r<1.6?1:Math.min((c.fill>=0.6&&c.ar<=1.6)?4:2,Math.round(r));
+        if(k===1){ pts.push({c, x:c.cx, y:c.cy, k:1}); continue; }
+        const x0=Math.max(0,Math.floor(c.cx-c.bw)), x1=Math.min(w,Math.ceil(c.cx+c.bw)), y0=Math.max(0,Math.floor(c.cy-c.bh)), y1=Math.min(h,Math.ceil(c.cy+c.bh)), P=[];
+        for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){ const i=y*w+x; if(lab[i]===c.id) P.push([x,y,Math.max(0.1,DF[i])]); }
+        let sxx=0,syy=0,sxy=0,sw=0; for(const [x,y,v] of P){ const dx=x-c.cx, dy=y-c.cy; sxx+=v*dx*dx; syy+=v*dy*dy; sxy+=v*dx*dy; sw+=v; }
+        const th=0.5*Math.atan2(2*sxy,sxx-syy), sd=Math.sqrt(Math.max(1,(sxx*Math.cos(th)**2+2*sxy*Math.sin(th)*Math.cos(th)+syy*Math.sin(th)**2)/sw));
+        let C=[]; for(let j=0;j<k;j++){ const f=k===1?0:(2*j/(k-1)-1)*1.2*sd; C.push([c.cx+f*Math.cos(th), c.cy+f*Math.sin(th)]); }
+        for(let it=0;it<10;it++){ const acc=C.map(()=>[0,0,0]);
+          for(const [x,y,v] of P){ let bj=0,bd=1e18; C.forEach((q,j)=>{ const d=(x-q[0])**2+(y-q[1])**2; if(d<bd){bd=d;bj=j;} }); acc[bj][0]+=v*x; acc[bj][1]+=v*y; acc[bj][2]+=v; }
+          C=C.map((q,j)=>acc[j][2]>0?[acc[j][0]/acc[j][2],acc[j][1]/acc[j][2]]:q); }
+        C.forEach(q=>pts.push({c, x:q[0], y:q[1], k, pair:true})); }
+      const holes=pts.map(o=>{ const u=affApply(Wm,o.x+0.5,o.y+0.5), q=toNorm(u.x,u.y); return {...o.c, q, k:1, pair:!!o.pair}; })
+        .filter(c=>{ if(c.q.dRel<=1.0) return true; if(S.countOut===false||c.q.dRel>1.25) return false;
+          if(!(c.cenv>=2*HOLE_PK)||!(c.sharp<0.15)) return false;
+          const rh=Math.max(2,hd/2); for(let k2=0;k2<16;k2++){ const a=k2/16*6.2832; for(const f of [2.2,3.2]){ const x=Math.round(c.cx+f*rh*Math.cos(a)), y=Math.round(c.cy+f*rh*Math.sin(a));
+            if(x<0||y<0||x>=w||y>=h||ref[y*w+x]<0.7*paper) return false; } } return true; });
+      // muchas manchas: luz o enfoque muy distintos entre las dos fotos, el resultado no es fiable
+      const res={holes:holes.map(c=>({rx:c.q.rx, ry:c.q.ry, dRel:c.q.dRel, k:1, pair:c.pair, n:c.n, cen:+c.cenv.toFixed(0)})), t:Math.round(performance.now()-t0), ncc:nc, sig, src:A.src+'/'+P.src, size:w+'×'+h, hd};
+      FX.res=res; return res;
+    } finally { FX.busy=false; }
+  }
+  // compara con los impactos en directo: añade los que faltan (recuperados) y marca dudosos los que no están
+  function fxApply(res,forceAdd){
+    // deshace un análisis anterior: posiciones del vídeo, sin recuperados ni dudosos
+    S.shots.forEach(s=>{ delete s.dud; if(s.lv){ Object.assign(s,s.lv); delete s.lv; } }); S.shots=S.shots.filter(s=>!s.rec); FX.sug=[];
+    if(!res){ markBest(); if(E.changed) try{ E.changed(); }catch(e){} return; }
+    const tol=Math.max(2.5*bulletR(), 0)+3/(targetD()/2), use=res.holes.map(hh=>({...hh, left:hh.k}));
+    const live=S.shots.filter(s=>!(s.manual&&s.ring===0&&s.dRel>=1.2));
+    const pairs=[]; live.forEach(s=>use.forEach((hh,j)=>{ const d=Math.hypot(s.rx-hh.rx,s.ry-hh.ry); if(d<=tol) pairs.push({s,j,d}); }));
+    pairs.sort((a,b)=>a.d-b.d); const done=new Set();
+    const hit=new Map(); for(const p of pairs){ if(done.has(p.s)||use[p.j].left<=0) continue; done.add(p.s); hit.set(p.s,use[p.j]); use[p.j].left--; }
+    const miss=use.filter(hh=>hh.left===hh.k);
+    // fotos fiables (luz parecida): la foto manda. Añade los que faltan y la puntuación sale de la posición medida en la foto
+    // (más precisa); el vídeo solo aporta el orden. Si la luz cambió mucho, quedan como sugerencias
+    const auto=forceAdd || (res.ncc>=0.9 && res.sig<=4);
+    let nd=0; if(auto) live.forEach(s=>{ if(!done.has(s)&&!s.manual){ s.dud=true; nd++; } });
+    if(auto) hit.forEach((hh,s)=>{ if(s.manual) return; const {ring,dec}=scoreFromDist(hh.dRel);
+      s.lv={rx:s.rx, ry:s.ry, dRel:s.dRel, ring:s.ring, dec:s.dec};
+      Object.assign(s,{rx:hh.rx, ry:hh.ry, dRel:hh.dRel, ring:hh.dRel>1?0:ring, dec:hh.dRel>1?0:dec}); });
+    const t=S.shots.length?S.shots[S.shots.length-1].t:Date.now(); let nr=0;
+    miss.forEach(hh=>{ const {ring,dec}=scoreFromDist(hh.dRel), o={rx:hh.rx, ry:hh.ry, dRel:hh.dRel, ring:hh.dRel>1?0:ring, dec:hh.dRel>1?0:dec, t, rec:true};
+      if(auto){ S.shots.push(o); nr++; } else FX.sug.push(o); });
+    markBest(); if(E.changed) try{ E.changed(); }catch(e){}
+    if(auto) fxUI('🔬 Análisis final ('+res.size+'): puntuación según la foto · '+(nr?nr+' recuperado'+(nr>1?'s':'')+' (azul)':'ninguno sin detectar')+(nd?' · '+nd+' dudoso'+(nd>1?'s':'')+' (naranja: compruébalo en ⛶ y quítalo con clic derecho si no es un disparo)':'')+'.');
+    else fxUI('🔬 Análisis final ('+res.size+'): '+FX.sug.length+' posible'+(FX.sug.length>1?'s':'')+' impacto'+(FX.sug.length>1?'s':'')+' sin detectar (círculos azules). '+
+      (res.ncc<0.9||res.sig>4?'La luz ha cambiado mucho entre las dos fotos: revísalos. ':'')+'Mayús+clic sobre uno para añadirlo, o «✓ Añadir sugeridos».');
+    return {nr,nd,sug:FX.sug.length};
+  }
+  function fxUI(t){ FX.msg=t; if(E.onFx) try{ E.onFx(t); }catch(e){} }
+  async function fxRun(){ if(!FX.A){ fxUI(''); return; } const r=await fxEnd(); if(S.phase!=='review'){ fxUI(''); return; } if(r) fxApply(r); }
   function resetHoles(){ HD.avg=null; HD.burstSince=0; HD.base=null; HD.prevHalf=null; HD.stableSince=0; HD.quietSince=0; HD.key=''; HD.recent=[]; HD.cands=[]; HD.view=null; }
   function detectHole(){
     if(video.videoWidth===0||!S.W) return null;
@@ -626,11 +937,23 @@ function create(video, overlay){
     const sh=estShift(sn,cur,R);
     // ajuste fino afín (la tarjeta se desplaza y gira un poco en su soporte con cada impacto)
     const Wm=lkAffine(sn,cur,R,sh)||[1,0,sh.dx,0,1,sh.dy];               // cur(u) ≈ base(Wm·u)
+    const prevA=HD.curA, prevOff=HD.lastOff;
     HD.curA=affMul(HD.baseA||AFF_I,Wm);                                   // cur → calibración
     { const c=affApply(HD.curA,R.w/2,R.h/2); HD.lastOff={x:R.w/2-c.x, y:R.h/2-c.y}; }
     const dmax=Math.max(...[[0,0],[w,0],[0,h],[w,h]].map(([x,y])=>{ const q=affApply(Wm,x,y); return Math.hypot(q.x-x,q.y-y); }));
     const still=dmax<0.15;                                               // sin movimiento: no hace falta realinear
     const ref=still?sn.g:warpAff(sn.g,w,h,Wm), grad=still?sn.grad:warpAff(sn.grad,w,h,Wm);
+    // ¿se ve la misma diana? (dianas de giro, algo delante, cámara apuntando a otro sitio). Si no se parece a la referencia,
+    // se espera SIN tocar la referencia: al volver la diana, los agujeros nuevos siguen siendo nuevos
+    { let sa=0,sb=0,saa=0,sbb=0,sab=0,nn=0; for(let i=0;i<n;i+=3){ if(!ins[i]) continue; const a=ref[i], b=cur[i]; sa+=a; sb+=b; saa+=a*a; sbb+=b*b; sab+=a*b; nn++; }
+      const va=saa/nn-(sa/nn)*(sa/nn), vb=sbb/nn-(sb/nn)*(sb/nn), ncc=nn&&va>1&&vb>1?(sab/nn-(sa/nn)*(sb/nn))/Math.sqrt(va*vb):0;
+      HD.ncc=ncc;
+      if(ncc<0.5){
+        HD.curA=prevA; HD.lastOff=prevOff; HD.cands=[]; HD.view=null; HD.avg=null; HD.stableSince=0;
+        if(!HD.goneSince) HD.goneSince=now;
+        if(now-HD.goneSince<90000){ say('Diana girada o fuera de vista: esperando a que vuelva','gone'); return null; }
+        HD.goneSince=0; setBase(cur); HD.quietSince=now; say('La imagen ha cambiado del todo: referencia nueva','ok'); return null; }
+      HD.goneSince=0; }
     const L=S.lightComp?fitLight(ref,cur,ins):{g:1,o:0};
     const LQ=[0,1,2,3].map(q=>S.lightComp&&HD.qn[q]>=150?fitLight(ref,cur,HD.qins[q]):L), qi=HD.qi;
     const QG=new Float32Array(LQ.map(l=>l.g)), QO=new Float32Array(LQ.map(l=>l.o));
@@ -743,6 +1066,7 @@ function create(video, overlay){
     drawRings(RAD,NR); if(offS) octx.restore();
   }
   function drawRings(RAD,NR){
+    if(S.showRings!==false){
     if(S.dianaMode==='persp' && S.Hinv){
       for(let v=Math.min(NR,S.minRing||1); v<=NR; v++){
         const rr=RAD[v]; octx.beginPath();
@@ -764,6 +1088,7 @@ function create(video, overlay){
         if(k==='center'){ octx.beginPath(); octx.moveTo(x-7,y); octx.lineTo(x+7,y); octx.moveTo(x,y-7); octx.lineTo(x,y+7);
           octx.strokeStyle='#d29922'; octx.lineWidth=1.5; octx.stroke(); }
         mark(x,y, sel?'#ffffff':'#d29922', t); }); }
+    }
     // todos los impactos de la sesión, a su tamaño real (calibre) en la diana
     const c0=normToScreen(0,0), ex=normToScreen(1,0), ey=normToScreen(0,1);
     const Rs=(Math.hypot(ex.x-c0.x,ex.y-c0.y)+Math.hypot(ey.x-c0.x,ey.y-c0.y))/2;
@@ -771,12 +1096,16 @@ function create(video, overlay){
     const rev=S.phase==='review';
     S.shots.forEach((s,i)=>{ const p=normToScreen(s.rx,s.ry), last=i===S.shots.length-1;
       octx.beginPath(); octx.arc(p.x,p.y,dot,0,7);
-      octx.fillStyle=(last&&!rev)?'rgba(255,214,10,.95)':(s.drop?'rgba(140,140,140,.7)':'rgba(248,81,73,.9)'); octx.fill();
+      octx.fillStyle=s.rec?'rgba(34,211,238,.95)':(last&&!rev)?'rgba(255,214,10,.95)':(s.drop?'rgba(140,140,140,.7)':'rgba(248,81,73,.9)'); octx.fill();
       octx.strokeStyle='rgba(0,0,0,.85)'; octx.lineWidth=1.2; octx.stroke();
+      if(rev&&(s.dud||s.rec)){ octx.save(); octx.setLineDash([4/Z.s,3/Z.s]); octx.strokeStyle=s.dud?'#ff9f1a':'#22d3ee'; octx.lineWidth=2.5/Z.s;
+        octx.beginPath(); octx.arc(p.x,p.y,dot+5/Z.s,0,7); octx.stroke(); octx.restore(); }
       if(rev){ // en la revisión cada impacto lleva su número para elegirlo fácilmente
         const fs=Math.max(9, 13/Z.s); octx.font='800 '+fs+'px sans-serif'; octx.textAlign='left'; octx.textBaseline='bottom';
         const lx=p.x+dot+1, ly=p.y-dot-1; octx.lineWidth=3/Z.s; octx.strokeStyle='rgba(0,0,0,.9)'; octx.strokeText(i+1,lx,ly);
         octx.fillStyle='#fff'; octx.fillText(i+1,lx,ly); } });
+    if(rev && FX.sug && FX.sug.length){ octx.save(); octx.setLineDash([5/Z.s,4/Z.s]); octx.strokeStyle='#22d3ee'; octx.lineWidth=2.5/Z.s;
+      FX.sug.forEach(o=>{ const p=normToScreen(o.rx,o.ry); octx.beginPath(); octx.arc(p.x,p.y,dot+6/Z.s,0,7); octx.stroke(); }); octx.restore(); }
   }
   // anillo con color vivo + halo oscuro: se ve sobre blanco y sobre negro
   function strokeRing(outer){
@@ -813,10 +1142,13 @@ function create(video, overlay){
     // (v26.0) para la repetición: posición en el fotograma y momento del impacto
     // cartón: justo antes del movimiento que provoca (o ~1,5 s antes de detectarlo); láser: al instante
     const imp = S.detectType==='laser' ? now-300 : (E.lastMov && now-E.lastMov<6000) ? E.lastMov-250 : now-1500;
-    const sh=Object.assign({rx,ry,dRel,ring,dec,t:Date.now(), imp, vx:S.W?x/S.W:null, vy:S.H?y/S.H:null},extra||{});
+    // (v26.2) para las luces: el momento del disparo, no el de la detección (como impactTime() de la app)
+    const impL = S.detectType!=='holes' ? now-150 : (E.lastMov && now-E.lastMov<6000) ? E.lastMov-250 : now-1200;
+    const sh=Object.assign({rx,ry,dRel,ring,dec,t:Date.now(), imp, impL, vx:S.W?x/S.W:null, vy:S.H?y/S.H:null},extra||{});
     S.shots.push(sh); markBest();
     if(E.onShot) try{ E.onShot(sh); }catch(e){}
-    if(S.shotLimit>0 && S.shots.length>=S.shotLimit){ E.armed=false; if(E.onEnd) try{ E.onEnd(); }catch(e){} }
+    markBest();
+    if(S.shotLimit>0 && S.shots.filter(s=>!s.late).length>=S.shotLimit && E.armed){ E.armed=false; if(E.onEnd) try{ E.onEnd(); }catch(e){} }
     return sh;
   }
 
@@ -893,6 +1225,7 @@ function create(video, overlay){
   const ASK={evt:null, okOff:null};
   function watchShot(st, hs){
     const now=performance.now();
+    if(st==='gone'){ ASK.evt=null; ASK.okOff=null; return; }            // (v26.6) diana girada: nada que preguntar
     if(hs&&hs.length){ ASK.evt=null; return; }
     if(st==='ok'){
       if(ASK.evt && !ASK.evt.back) ASK.evt.back=now;
@@ -914,7 +1247,7 @@ function create(video, overlay){
     if(!video.videoWidth) return {st:'off', txt:'Sin imagen'};
     if(S.detectType==='laser') return performance.now()-E.lastLive<300 ? {st:'cand', txt:'🔴 Punto láser'} : {st:'ok', txt:'🔴 Láser listo'};
     const st=HD.state||'wait';
-    return {st, txt: st==='mov'?'✋ Movimiento': st==='cand'?'◎ Impacto…': st==='ok'?'● Diana lista':'… Estabilizando'};
+    return {st, txt: st==='mov'?'✋ Movimiento': st==='gone'?'↻ Diana girada': st==='cand'?'◎ Impacto…': st==='ok'?'● Diana lista':'… Estabilizando'};
   }
   function totals(){
     markBest(); const n=S.shots.length, cs=counted(), sum=cs.reduce((a,s)=>a+s.dec,0), sumInt=cs.reduce((a,s)=>a+s.ring,0);
@@ -925,13 +1258,23 @@ function create(video, overlay){
   // punto del lienzo (coordenadas CSS dentro del elemento) -> coordenadas del lienzo de trabajo
   function cssToCanvas(cx,cy){ const cw=overlay.clientWidth, ch=overlay.clientHeight, sc=Math.min(cw/S.W, ch/S.H);
     return {x:(cx-(cw-S.W*sc)/2)/sc, y:(cy-(ch-S.H*sc)/2)/sc}; }
-  function addShotCss(cx,cy){ if(!S.W) return null; const p=cssToCanvas(cx,cy); return registerShot(p.x,p.y,{manual:true}); }
+  function addShotCss(cx,cy){ if(!S.W) return null; const p=cssToCanvas(cx,cy);
+    if(FX.sug&&FX.sug.length){ const c0=normToScreen(0,0), e1=normToScreen(1,0), Rs=Math.hypot(e1.x-c0.x,e1.y-c0.y), lim=Math.max(bulletR()*Rs*2.5, 26/(Z.s||1));
+      let bi=-1,bd=1e9; FX.sug.forEach((o,i)=>{ const q=normToScreen(o.rx,o.ry), d=Math.hypot(q.x-p.x,q.y-p.y); if(d<bd){bd=d;bi=i;} });
+      if(bi>=0&&bd<=lim){ const s={...FX.sug[bi]}; S.shots.push(s); FX.sug.splice(bi,1); markBest(); if(E.changed) try{ E.changed(); }catch(e){} return s; } }
+    const prevT=S.shots.length?S.shots[S.shots.length-1].t:Date.now();
+    const s=registerShot(p.x,p.y,{manual:true}); if(S.phase==='review') s.t=prevT; return s; }
   function delNearCss(cx,cy){ if(!S.W||!S.shots.length) return null; const p=cssToCanvas(cx,cy); let bi=-1,bd=1e9;
     S.shots.forEach((s,i)=>{ const q=normToScreen(s.rx,s.ry), d=Math.hypot(q.x-p.x,q.y-p.y); if(d<bd){ bd=d; bi=i; } });
     if(bi<0||bd>40/(Z.s||1)) return null; const s=S.shots.splice(bi,1)[0]; markBest(); return s; }
 
   Object.assign(E,{ parseCal, step, status, totals, save, load, setTarget, setModal, setDetect, setAroCal, targetCenterVid, targetD, autoCalib:runAutoCalib, ringRadii, scoreShot,
-    clear(){ S.shots=[]; HD.recent=[]; resetHoles(); ASK.evt=null; ASK.okOff=null; }, addZero, undo(){ const s=S.shots.pop(); markBest(); return s; },
+    clear(){ S.shots=[]; HD.recent=[]; resetHoles(); ASK.evt=null; ASK.okOff=null; FX.A=null; FX.res=null; FX.sug=[]; FX.msg=''; S.phase='idle'; }, addZero,
+    // sesión: «running» mientras se tira; «review» al terminar (números, recuperados y dudosos a la vista)
+    async sessionStart(){ S.phase='running'; HD.cands=[]; HD.recent=[]; E.lastMov=0; FX.res=null; FX.sug=[]; try{ await fxStart(); }catch(e){ FX.A=null; } },
+    sessionEnd(){ S.phase='review'; if(FX.A) return fxRun().catch(()=>fxUI('🔬 Análisis final: error')); fxUI(''); return Promise.resolve(); },
+    fx:FX, fxRedo(){ S.phase='review'; return fxRun(); }, fxUndo(){ fxApply(null); fxUI(''); }, fxAddSug(){ if(FX.res) fxApply(FX.res,true); },
+    fxTakePhoto, markBest, undo(){ const s=S.shots.pop(); markBest(); return s; },
     resetRef(){ resetHoles(); LZ.base=null; }, holeInfo(){ return HD.info||''; }, addShotCss, delNearCss, xRadius, blackRadius, bulletR });
   return E;
 }
@@ -1123,7 +1466,7 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
 </script>
 <script>
 (() => {
-  const PCVER='v1.3', PCDATE='26-11-26';    // versión visible: cambiar en cada versión
+  const PCVER='v1.4', PCDATE='28-11-26';    // versión visible: cambiar en cada versión
   const $=s=>document.querySelector(s);
   $('#appVer').textContent='Versión '+PCVER+' · actualizada el '+PCDATE;
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1187,6 +1530,16 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
       if(now-p.stallSince>6000){ msg(p,'Imagen congelada: reconectando…'); log(p.label+': imagen congelada, reconecto'); p.retryAt=0; connect(p); }
     }); },2000);
 
+  /* ---------- foto para el análisis final (v26.7): webcam → ImageCapture a máxima resolución; cámara IP → instantánea de go2rtc ---------- */
+  async function capturePhoto(p){
+    if(p.src.kind==='cam'){ const t=p.stream&&p.stream.getVideoTracks()[0]; return t?p.m.fxTakePhoto(t):null; }
+    if(p.src.kind==='g2r' && !p.noSnap){
+      const base=$('#g2r').value.replace(/\/$/,''), ac=new AbortController(), tm=setTimeout(()=>ac.abort(),5000);
+      try{ const r=await fetch(base+'/api/frame.jpeg?src='+encodeURIComponent(p.src.name),{signal:ac.signal, cache:'no-store'}); clearTimeout(tm);
+        if(r.ok){ const b=await r.blob(); if(b.size>2000) return b; } }catch(e){ clearTimeout(tm); }
+      p.noSnap=true; log(p.label+': go2rtc no da instantánea JPEG (le falta ffmpeg): el análisis usa la media de fotogramas del vídeo'); }
+    return null;
+  }
   /* ---------- puestos ---------- */
   function cfgKey(p){ return 'tirofijo_pc_'+p.key; }
   function persist(p){ try{ LS(cfgKey(p), JSON.stringify({m:p.m.save(), shooter:p.shooter||''})); }catch(e){} }
@@ -1198,8 +1551,15 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
     p.m=TirofijoMotor.create(p.video, p.canvas);
     try{ const o=JSON.parse(LS(cfgKey(p))||'null'); if(o){ p.m.load(o.m); p.shooter=o.shooter||''; } }catch(e){}
     p.m.onShot=sh=>onShot(p,sh);
-    p.m.onEnd=()=>{ msg(p,'Tirada completa ('+p.m.S.shotLimit+' disparos)'); setTimeout(()=>msg(p,''),4000); recStop(p); paint(p); };
+    // número máximo de disparos alcanzado: la tirada del puesto se cierra sola (en la común, cuando acaban todos, termina el programa)
+    p.m.onEnd=()=>{ msg(p,'Tirada completa ('+p.m.S.shotLimit+' disparos)'); setTimeout(()=>{ if(p.msgTxt&&p.msgTxt.startsWith('Tirada completa')) msg(p,''); },5000);
+      if(p.inProg){ leaveProg(p); if(GP.on && !progParts().length) endProgram(); else hudUI(); }
+      else { p.preOk=false; p.m.sessionEnd().then(()=>{ recStop(p); paint(p); persist(p); }); }
+      paint(p); };
     p.m.onAsk=()=>askOpen(p);
+    p.m.onFx=t=>{ const e=p.el.querySelector('.fxMsg'); if(e) e.textContent=t; if(t) msg(p,t); };
+    p.m.changed=()=>{ paint(p); persist(p); };
+    p.m.capturePhoto=()=>capturePhoto(p);
     el.dataset.id=p.id;
     el.querySelector('.src').textContent=src.kind==='g2r'?src.name:'webcam';
     const sh=el.querySelector('.shooter'); sh.value=p.shooter||''; sh.oninput=()=>{ p.shooter=sh.value; persist(p); };
@@ -1221,6 +1581,7 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
     const cO=el.querySelector('.cOut'), cA=el.querySelector('.cAsk');
     cO.onchange=()=>{ p.m.S.countOut=cO.checked; p.m.resetRef(); persist(p); };
     cA.onchange=()=>{ p.m.S.askShot=cA.checked; if(!cA.checked) askClose(p); persist(p); };
+    const cF=el.querySelector('.cFx'); cF.onchange=()=>{ p.m.S.fxOn=cF.checked; persist(p); };
     // marcar / quitar impactos a mano en la vista ampliada
     p.canvas.addEventListener('click',e=>{ const r=p.canvas.getBoundingClientRect();
       if(p.addNext){ askClose(p); p.m.addShotCss(e.clientX-r.left,e.clientY-r.top); persist(p); return; }   // tras «¿disparo?» → ➕
@@ -1230,7 +1591,7 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
       if(p.m.delNearCss(e.clientX-r.left,e.clientY-r.top)) paint(p); });
     P.push(p); renumber(); $('#grid').appendChild(el); paint(p); layout(); connect(p);
   }
-  function removePuesto(p){ recStop(p); closeMedia(p); p.el.remove(); P.splice(P.indexOf(p),1); renumber(); layout(); saveList(); }
+  function removePuesto(p){ if(p.inProg){ p.inProg=false; } recStop(p); closeMedia(p); p.el.remove(); P.splice(P.indexOf(p),1); renumber(); layout(); saveList(); }
   function renumber(){ P.forEach((p,i)=>{ p.n=i+1; p.el.querySelector('.pn').textContent='Puesto '+(i+1); }); }
   function saveList(){ LS('pc_cams', JSON.stringify(P.filter(p=>p.src.kind==='cam').map(p=>p.src))); }
   function msg(p,t){ p.msgTxt=t; const m=p.el.querySelector('.msg'); m.textContent=t; m.classList.toggle('show',!!t); }
@@ -1250,9 +1611,288 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
   function askPre(p){ p.el.classList.add('needPre'); preFill(p);
     msg(p,'Antes de empezar: confirma el diámetro del aro 1 (mídelo con regla) y el calibre'+(p.el.classList.contains('big')?'.':' (⛶).')); }
   function arm(p,on){
+    if(p.inProg){ msg(p,'Este puesto está en la tirada común: se maneja arriba (⏸ / ⏹)'); setTimeout(()=>msg(p,''),3000); return true; }
     if(on && !p.preOk){ askPre(p); return false; }
-    if(on && p.m.S.shotLimit && p.m.S.shots.length>=p.m.S.shotLimit) p.m.clear();
+    const S=p.m.S;
+    if(on && S.phase!=='running'){                            // empieza una tirada individual (sin luces)
+      if(S.shots.length && !confirm('Empezar una tirada nueva en '+(p.shooter||'Puesto '+p.n)+' borra sus '+S.shots.length+' disparos (guárdalos antes con 💾). ¿Seguir?')) return true;
+      p.m.clear(); S.ints=false; S.showRings=false; p.modInfo=null; p.m.sessionStart();
+    }
     p.m.armed=on; if(on) recGo(p); else { recPause(p); askClose(p); } paint(p); return true;
+  }
+
+  /* =====================================================================
+     TIRADA COMÚN (v1.4, de la app v26.2–v27.3): un programa de luces para todos los puestos a la vez,
+     como en una galería real. Modalidades con series en verde/rojo, o temporizador libre con luces.
+     Cada impacto se juzga por la luz que había CUANDO se disparó (la detección llega algo después).
+     ===================================================================== */
+  const rpt=(k,o)=>Array.from({length:k},()=>({...o}));
+  const MODS={
+    'FR3X40':{n:'50m Carabina 3 posiciones (rodilla, tumbado, en pie)', d:'3×40 disparos · 1 h 45 min en total.', ph:[{l:'3×40',ser:[{g:6300,n:120}]}]},
+    'FR60PR':{n:'50m Carabina tendido', d:'60 disparos · 1 h en total.', ph:[{l:'60 disparos',ser:[{g:3600,n:60}]}]},
+    'RFP':{n:'25m Pistola Tiro Rápido', d:'30+30 disparos. Cada fase: 6 series de 5 disparos (2 en 8 s, 2 en 6 s y 2 en 4 s).',
+      ph:[1,2].map(f=>({l:'Fase '+f, ser:[8,8,6,6,4,4].map(g=>({g,n:5}))}))},
+    'STP':{n:'25m Pistola Standard (series 150, 20, 10 s)', d:'20+20+20 disparos: 4 series de 5 en 150 s, 4 en 20 s y 4 en 10 s.',
+      ph:[{l:'150 s',ser:rpt(4,{g:150,n:5})},{l:'20 s',ser:rpt(4,{g:20,n:5})},{l:'10 s',ser:rpt(4,{g:10,n:5})}]},
+    'CTP':{n:'25m Pistola Fuego Central (precisión y tiro rápido)', d:'30+30 disparos. Precisión: 6 series de 5 en 300 s. Tiro rápido: 6 series de 5 disparos, cada uno 3 s en verde y 7 s en rojo.',
+      ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{duel:5,g:3,r:7,n:5})}]},
+    '9MM':{n:'Pistola 9 mm', d:'30+30 disparos: 6 series de 5 en 150 s y 6 series de 5 en 20 s.',
+      ph:[{l:'Precisión',ser:rpt(6,{g:150,n:5})},{l:'Velocidad',ser:rpt(6,{g:20,n:5})}]},
+    'SPM':{n:'Pistola 25m (precisión y tiro rápido)', d:'30+30 disparos. Precisión: 6 series de 5 en 300 s. Tiro rápido: 6 series de 5 disparos, cada uno 3 s en verde y 7 s en rojo.',
+      ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{duel:5,g:3,r:7,n:5})}]}
+  };
+  // avancarga: 30 min seguidos, 13 disparos, cuentan los 10 mejores (impacto en la línea por el centro)
+  MODS['AVANCARGA']={n:'30 min seguidos · 13 disparos · cuentan los 10 mejores', av:true, d:'30 minutos seguidos, 13 disparos, cuentan los 10 mejores.', ph:[{l:'13 disparos',ser:[{g:1800,n:13}]}]};
+  const TP=Object.assign({mod:'', mode:'up', downMin:10, beepSecs:10, altA:7, altB:3, cycles:5, lights:true, maxShots:0, modFirst:7, modPause:60, lead:3, sound:true},
+    (()=>{ try{ return JSON.parse(LS('pc_prog')||'{}')||{}; }catch(e){ return {}; } })());
+  // pasos del programa: rojo (pausa/aviso) y verde (serie). Cada paso sabe a qué serie pertenece
+  function modSteps(key){
+    const M=MODS[key], st=[], lbl=[]; let k=0;
+    M.ph.forEach(ph=>ph.ser.forEach((sr,si)=>{ k++; const l=ph.l+' · serie '+(si+1)+'/'+ph.ser.length; lbl[k]=l;
+      st.push({c:'red', secs:k===1?(+TP.modFirst||0):(+TP.modPause||0), ser:k, l, pre:true});
+      if(sr.duel){ for(let j=0;j<sr.duel;j++){ if(j) st.push({c:'red', secs:sr.r, ser:k, l}); st.push({c:'green', secs:sr.g, ser:k, l, n:1}); } }
+      else st.push({c:'green', secs:sr.g, ser:k, l, n:sr.n}); }));
+    return {st, lbl, nSer:k, tot:M.ph.reduce((a,ph)=>a+ph.ser.reduce((b,sr)=>b+sr.n,0),0)};
+  }
+  const GP={on:false, phase:'', isMod:false, key:'', ms:null, mi:0, clock:0, lh:[], cyc:0, altOn:'A', beepAcc:0, tick:null, lead:0, info:null};
+  const fmtT=s=>{ s=Math.max(0,Math.round(s)); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return (h?h+':'+String(m).padStart(2,'0'):String(m).padStart(2,'0'))+':'+String(x).padStart(2,'0'); };
+  function beepG(freq=880,dur=0.18,vol=0.4){ if(!TP.sound) return; try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(), g=actx.createGain(); o.frequency.value=freq; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(vol,actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+dur); o.start(); o.stop(actx.currentTime+dur); }catch(e){} }
+  // luz del momento: verde = los impactos cuentan, rojo = no (null: sin luces)
+  function lightState(){
+    if(!GP.on) return null;
+    if(GP.isMod){ if(GP.phase==='leadin'||GP.phase==='paused') return 'red'; if(GP.phase!=='running') return null;
+      const stp=GP.ms&&GP.ms[GP.mi]; return stp&&stp.c==='green'?'green':'red'; }
+    if(!TP.lights) return null;
+    if(GP.phase==='leadin'||GP.phase==='paused') return 'red';
+    if(GP.phase!=='running') return null;
+    if(TP.mode==='alt') return GP.altOn==='B'?'green':'red';
+    if(TP.mode==='down') return GP.clock>0?'green':'red';
+    return 'green';
+  }
+  function lightAt(t){ const h=GP.lh||[]; for(let i=h.length-1;i>=0;i--) if(h[i].t<=t) return h[i]; return h[0]||{c:lightState(),i:-1}; }
+  let lastLight=null;
+  function lightUI(){
+    const l=lightState();
+    if(l){ const last=GP.lh[GP.lh.length-1], i=GP.isMod?GP.mi:-1; if(!last||last.c!==l||last.i!==i) GP.lh.push({t:performance.now(), c:l, i}); }
+    document.body.classList.toggle('lt-green',l==='green'); document.body.classList.toggle('lt-red',l==='red');
+    const L=$('#hLt'); L.className='lt '+(l==='green'?'g':l==='red'?'r':'n'); L.textContent=l==='green'?'FUEGO':l==='red'?'ALTO':(GP.phase==='paused'?'PAUSA':'SESIÓN');
+    // semáforo grande: al cambiar se ve fuerte y luego se atenúa para no tapar los puestos
+    if(l!==lastLight){ lastLight=l; const b=$('#bigLight'); b.className=''; void b.offsetWidth; if(l){ b.textContent=l==='green'?'FUEGO':'ALTO'; b.className=(l==='green'?'g':'r')+' fade'; } }
+  }
+  function hudUI(){
+    const h=$('#hud'); h.classList.toggle('on',GP.on);
+    if(!GP.on){ document.body.classList.remove('lt-green','lt-red'); $('#bigLight').className=''; lastLight=null; return; }
+    let lbl='Tirada libre', sub='';
+    if(GP.phase==='leadin'){ lbl='PREPARADOS'; }
+    else if(GP.isMod&&GP.ms&&GP.ms[GP.mi]){ const st=GP.ms[GP.mi]; lbl=GP.key+' · '+(st.c==='red'&&st.pre?'pausa → ':'')+st.l; sub=MODS[GP.key].n; }
+    else if(TP.mode==='down') lbl='Cuenta atrás'; else if(TP.mode==='alt') lbl='Alterno · ciclo '+Math.max(1,GP.cyc)+(TP.cycles>0?'/'+TP.cycles:''); else if(TP.mode==='beep') lbl='Intervalo';
+    if(GP.phase==='paused') lbl='PAUSA · '+lbl;
+    const parts=P.filter(p=>p.inProg).length; sub=(sub?sub+' · ':'')+parts+(parts===1?' puesto':' puestos');
+    $('#hLbl').textContent=lbl; $('#hSub').textContent=sub;
+    const c=$('#hClk'); c.textContent=GP.phase==='leadin'?String(GP.lead):fmtT(GP.clock);
+    c.classList.toggle('alert', GP.phase==='leadin' || ((GP.isMod||TP.mode==='down'||TP.mode==='alt') && GP.clock<=3 && GP.clock>0));
+    const st=GP.isMod&&GP.ms?GP.ms[GP.mi]:null; $('#hNext').style.display=(st&&st.c==='red'&&st.pre&&GP.phase==='running')?'':'none';
+    $('#hPause').textContent=GP.phase==='paused'?'▶ Reanudar':'⏸ Pausa'; $('#hPause').style.display=GP.phase==='leadin'?'none':'';
+    lightUI();
+  }
+  function clearTickG(){ if(GP.tick){ clearInterval(GP.tick); GP.tick=null; } }
+  // un puesto entra en la tirada común (al empezar, o después si se confirma más tarde)
+  function joinProg(p){
+    const m=p.m, S=m.S; p.inProg=true; p.el.classList.add('inprog'); p.cnt=[];
+    if(GP.isMod && MODS[GP.key].av){ const cal=S.caliber; m.setModal('avancarga'); S.caliber=cal; }   // reglas de avancarga, con el calibre del tirador
+    else if(GP.isMod && S.modal==='avancarga') m.setModal('issf');
+    if(!GP.isMod) S.shotLimit=(+TP.maxShots>0)?+TP.maxShots:(S.modal==='avancarga'?13:0);
+    m.clear(); S.ints=GP.isMod; S.showRings=false; p.modInfo=GP.info; m.armed=false; askClose(p);
+    m.sessionStart();                                         // foto inicial para el análisis final
+    if(GP.phase==='running'){ m.armed=true; recGo(p); }
+    paint(p);
+  }
+  function progParts(){ return P.filter(p=>p.inProg); }
+  function startProgram(){
+    if(GP.on) return; readProg();
+    if(actx&&actx.state==='suspended') actx.resume();
+    const ready=P.filter(p=>p.stream&&p.preOk), wait=P.filter(p=>p.stream&&!p.preOk);
+    if(!ready.length){ say('Ningún puesto está preparado: en cada puesto ⛶ → confirma aro 1 y calibre → ▶ Empezar sesión',1); wait.forEach(askPre); return; }
+    const sh=ready.filter(p=>p.m.S.shots.length);
+    if(sh.length && !confirm('Hay '+sh.length+' puesto'+(sh.length>1?'s':'')+' con disparos sin guardar (💾). La tirada nueva los borra. ¿Seguir?')) return;
+    ready.forEach(p=>{ if(p.rec) recStop(p); });
+    const isMod=!!MODS[TP.mod];
+    Object.assign(GP,{on:true, phase:'leadin', isMod, key:isMod?TP.mod:'', ms:null, mi:0, clock:0, lh:[], cyc:0, altOn:'A', beepAcc:0, lead:+TP.lead||0, info:null});
+    if(isMod){ const S0=modSteps(TP.mod); GP.ms=S0.st; GP.info={key:TP.mod, name:MODS[TP.mod].n, lbl:S0.lbl, nSer:S0.nSer, tot:S0.tot}; }
+    ready.forEach(joinProg); wait.forEach(askPre);
+    $('#prog').classList.add('hide'); setBig(null);
+    log('Tirada común: '+(isMod?TP.mod+' · '+MODS[TP.mod].n:'temporizador libre')+' · '+ready.length+' puestos');
+    clearTickG();
+    if(GP.lead>0){ beepG(1046,0.25,0.5); hudUI();
+      GP.tick=setInterval(()=>{ GP.lead--; if(GP.lead>0){ if(GP.lead<=5) beepG(660,0.12,0.35); hudUI(); } else { beepG(1046,0.4,0.6); clearTickG(); beginRun(); } },1000); }
+    else beginRun();
+  }
+  function beginRun(){
+    GP.phase='running'; GP.beepAcc=0;
+    if(GP.isMod){ GP.mi=0; GP.clock=GP.ms[0].secs; }
+    else if(TP.mode==='down') GP.clock=Math.round((+TP.downMin||1)*60);
+    else if(TP.mode==='alt'){ GP.altOn='A'; GP.clock=+TP.altA||1; GP.cyc=1; }
+    else GP.clock=0;
+    progParts().forEach(p=>{ p.m.armed=true; recGo(p); paint(p); });
+    hudUI(); clearTickG(); GP.tick=setInterval(progTick,1000);
+    if(GP.isMod && GP.ms[0].secs<=0) modNext0();
+  }
+  function modNext0(){ GP.mi--; modNext(); }
+  function modNext(){
+    GP.mi++;
+    if(GP.mi>=GP.ms.length){ beepG(440,0.6,0.6); GP.clock=0; clearTickG(); hudUI(); setTimeout(()=>{ if(GP.on) endProgram(); },1200); return; }
+    const st=GP.ms[GP.mi]; GP.clock=st.secs;
+    if(st.c==='green') beepG(880,0.4,0.6); else beepG(440,0.45,0.6);          // verde: ¡fuego! · rojo: alto
+    hudUI();
+    if(st.secs<=0) modNext();
+  }
+  function progTick(){
+    if(GP.phase!=='running') return;
+    if(GP.isMod&&GP.ms){ GP.clock--; const st=GP.ms[GP.mi];
+      if(GP.clock<=3 && GP.clock>0 && (st.c==='red'||st.secs>=30)) beepG(660,0.12,0.35);
+      if(GP.clock<=0){ modNext(); return; } hudUI(); return; }
+    if(TP.mode==='down'){ GP.clock--; if(GP.clock<=5&&GP.clock>0) beepG(660,0.12,0.35);
+      if(GP.clock<=0){ beepG(440,0.5,0.6); GP.clock=0; clearTickG(); hudUI(); setTimeout(()=>{ if(GP.on) endProgram(); },1200); return; } }
+    else if(TP.mode==='alt'){ GP.clock--; if(GP.clock<=3&&GP.clock>0) beepG(660,0.12,0.35);
+      if(GP.clock<=0){
+        if(GP.altOn==='A'){ GP.altOn='B'; GP.clock=+TP.altB||1; beepG(880,0.35,0.55); }
+        else if(TP.cycles>0 && GP.cyc>=TP.cycles){ beepG(440,0.5,0.6); GP.clock=0; GP.altOn='A'; clearTickG(); hudUI(); setTimeout(()=>{ if(GP.on) endProgram(); },1200); return; }
+        else { GP.cyc++; GP.altOn='A'; GP.clock=+TP.altA||1; beepG(520,0.35,0.55); } } }
+    else { GP.clock++; if(TP.mode==='beep'){ GP.beepAcc++; if(GP.beepAcc>=(+TP.beepSecs||10)){ GP.beepAcc=0; beepG(880,0.15,0.4); } } }
+    hudUI();
+  }
+  function pauseProgram(){
+    if(GP.phase==='running'){ GP.phase='paused'; progParts().forEach(p=>{ p.m.armed=false; recPause(p); askClose(p); paint(p); }); }
+    else if(GP.phase==='paused'){ GP.phase='running'; progParts().forEach(p=>{ p.m.armed=true; recGo(p); paint(p); }); if(!GP.tick) GP.tick=setInterval(progTick,1000); }
+    hudUI();
+  }
+  // fin: análisis final de cada puesto (foto) y después se guarda la grabación con el resultado
+  function endProgram(){
+    if(!GP.on) return; clearTickG(); const parts=progParts();
+    GP.on=false; GP.phase='done'; beepG(880,0.15); setTimeout(()=>beepG(880,0.15),180); setTimeout(()=>beepG(1200,0.3),380);
+    parts.forEach(p=>leaveProg(p)); hudUI(); log('Tirada común terminada');
+    say('Tirada terminada: revisa cada puesto (⛶) y guárdala con 💾');
+  }
+  function leaveProg(p){
+    p.inProg=false; p.el.classList.remove('inprog'); p.m.armed=false; askClose(p); p.preOk=false;
+    p.m.sessionEnd().then(()=>{ recStop(p); paint(p); persist(p); }); paint(p);
+  }
+  // panel del programa
+  function progUI(){
+    const sel=$('#pMod'); if(!sel.options.length){
+      const fire=Object.keys(MODS).filter(k=>!MODS[k].av), av=Object.keys(MODS).filter(k=>MODS[k].av);
+      sel.innerHTML='<option value="">⏱ Temporizador libre</option><optgroup label="🔫 Arma de fuego">'+fire.map(k=>'<option value="'+k+'">'+k+' · '+esc(MODS[k].n)+'</option>').join('')+
+        '</optgroup><optgroup label="💨 Avancarga">'+av.map(k=>'<option value="'+k+'">Avancarga · '+esc(MODS[k].n)+'</option>').join('')+'</optgroup>'; }
+    sel.value=MODS[TP.mod]?TP.mod:''; const isMod=!!MODS[sel.value];
+    $('#pMode').value=TP.mode; $('#pDown').value=TP.downMin; $('#pBeep').value=TP.beepSecs; $('#pAltA').value=TP.altA; $('#pAltB').value=TP.altB; $('#pCyc').value=TP.cycles;
+    $('#pLights').checked=!!TP.lights; $('#pMax').value=TP.maxShots; $('#pFirst').value=TP.modFirst; $('#pPause').value=TP.modPause; $('#pLead').value=TP.lead; $('#pSound').checked=!!TP.sound;
+    document.querySelectorAll('#prog .pL').forEach(e=>e.hidden=isMod); document.querySelectorAll('#prog .pM').forEach(e=>e.hidden=!isMod);
+    if(!isMod){ document.querySelectorAll('#prog .pDown').forEach(e=>e.hidden=TP.mode!=='down'); document.querySelectorAll('#prog .pBeep').forEach(e=>e.hidden=TP.mode!=='beep');
+      document.querySelectorAll('#prog .pAlt').forEach(e=>e.hidden=TP.mode!=='alt'); }
+    $('#pDesc').textContent=isMod?MODS[sel.value].d+(MODS[sel.value].av?' Reglas de avancarga: impacto en la línea por el centro; se respeta el calibre de cada tirador.':' Luces siempre activas; se puntúa en enteros.')
+      :'Todos los puestos tiran a la vez. Con 🚦 Luces, lo que se dispara en rojo no cuenta.';
+    $('#pStart').disabled=GP.on;
+  }
+  function readProg(){
+    const n=(id,d)=>{ const v=+$(id).value; return isFinite(v)&&v>=0?v:d; };
+    Object.assign(TP,{mod:$('#pMod').value, mode:$('#pMode').value, downMin:n('#pDown',10)||10, beepSecs:n('#pBeep',10)||10, altA:n('#pAltA',7)||1, altB:n('#pAltB',3)||1,
+      cycles:Math.round(n('#pCyc',5)), lights:$('#pLights').checked, maxShots:Math.round(n('#pMax',0)), modFirst:n('#pFirst',7), modPause:n('#pPause',60), lead:Math.min(30,Math.round(n('#pLead',3))), sound:$('#pSound').checked});
+    LS('pc_prog',JSON.stringify(TP));
+  }
+  ['#pMod','#pMode','#pLights'].forEach(id=>$(id).addEventListener('change',()=>{ readProg(); progUI(); }));
+  $('#progBtn').onclick=()=>{ progUI(); $('#prog').classList.toggle('hide'); };
+  $('#pOk').onclick=()=>{ readProg(); $('#prog').classList.add('hide'); };            // (v26.5) Aceptar: guarda y cierra
+  $('#pStart').onclick=startProgram;
+  $('#hPause').onclick=pauseProgram;
+  $('#hNext').onclick=()=>{ if(GP.on&&GP.isMod&&GP.phase==='running'){ GP.clock=0; modNext(); } };
+  $('#hStop').onclick=()=>{ if(confirm('¿Terminar la tirada común en todos los puestos?')) endProgram(); };
+
+  /* ---------- GUARDAR SESIÓN (v26.2, v26.5): informe PDF + datos .json con fecha y hora, y la diana queda limpia ---------- */
+  function sessionMeta(p){
+    const m=p.m, S=m.S, T=m.totals(), I=!!S.ints, ok=S.shots.filter(s=>!s.drop);
+    const vals=ok.map(s=>I?s.ring:s.dec);
+    return {app:'Tirofijo PC', ver:PCVER, puesto:p.src.kind==='g2r'?p.src.name:'Puesto '+p.n, tirador:p.shooter||'', fecha:new Date().toISOString(),
+      modalidad:p.modInfo?{clave:p.modInfo.key, nombre:p.modInfo.name}:null, diana:(TARGETS[S.target]||{name:'personalizada de '+S.rings+' aros'}).name,
+      aro1mm:m.targetD(), calibremm:+S.caliber||0, regla:S.scoreRule==='center'?'centro':'borde', cuentan_mejores:S.bestOf||0, enteros:I,
+      total:I?T.sumInt:T.sum, total_decimas:T.sum, total_enteros:T.sumInt, validos:T.counted, disparos:T.n, x:T.x,
+      media:vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*100)/100:0, mejor:vals.length?Math.max(...vals):0, peor:vals.length?Math.min(...vals):0,
+      shots:S.shots.map((s,i)=>({n:i+1, anillo:s.ring, valor:s.dec, cuenta:!s.drop, luz_roja:!!s.late, de_mas:!!s.over, serie:s.ser||null, a_mano:!!s.manual,
+        recuperado:!!s.rec, dudoso:!!s.dud, x:+(s.rx||0).toFixed(4), y:+(s.ry||0).toFixed(4), dRel:+(s.dRel||0).toFixed(4), vt:s.vt!=null?+s.vt.toFixed(2):null}))};
+  }
+  // diana dibujada con los impactos (para el informe)
+  function targetPNG(p,px){
+    const m=p.m, S=m.S, c=document.createElement('canvas'); c.width=c.height=px; const g=c.getContext('2d'), R=px*0.46, cx=px/2, cy=px/2;
+    g.fillStyle='#fff'; g.fillRect(0,0,px,px); const rr=m.ringRadii(), n=rr.length-1, br=m.blackRadius();
+    g.fillStyle='#f4f1e8'; g.beginPath(); g.arc(cx,cy,R,0,7); g.fill();
+    g.fillStyle='#111'; g.beginPath(); g.arc(cx,cy,br*R,0,7); g.fill();
+    for(let v=1;v<=n;v++){ const r=rr[v]*R; if(r<=0) continue; g.beginPath(); g.arc(cx,cy,r,0,7); g.strokeStyle=r<=br*R+0.5?'#ddd':'#222'; g.lineWidth=Math.max(1,px/600); g.stroke(); }
+    const dot=Math.max(px/120, m.bulletR()*R); g.font='bold '+Math.round(dot*1.1)+'px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+    S.shots.forEach((s,i)=>{ const x=cx+s.rx*R, y=cy+s.ry*R; g.beginPath(); g.arc(x,y,dot,0,7);
+      g.fillStyle=s.late?'rgba(140,140,140,.8)':s.rec?'rgba(34,180,220,.95)':s.dud?'rgba(255,159,26,.95)':s.drop?'rgba(140,140,140,.7)':'rgba(220,40,40,.92)'; g.fill();
+      g.strokeStyle='#fff'; g.lineWidth=Math.max(1,dot/6); g.stroke(); g.fillStyle='#fff'; g.fillText(String(i+1),x,y+0.5); });
+    return c.toDataURL('image/jpeg',0.88);
+  }
+  function shotTxt(s,I){ return (s.ring===0&&s.dRel>1?'0':I?String(s.ring):f1(s.dec))+(s.late?'x':'')+(s.manual?'*':'')+(s.rec?'R':'')+(s.dud?'?':''); }
+  function serieGroups(p){
+    const S=p.m.S, info=p.modInfo, G=[];
+    if(info){ for(let k=1;k<=info.nSer;k++){ const sh=S.shots.filter(s=>s.ser===k); if(sh.length) G.push({t:'Serie '+k+' · '+(info.lbl[k]||''), sh}); }
+      const rest=S.shots.filter(s=>!s.ser); if(rest.length) G.push({t:'Sin orden (recuperados por la foto o añadidos a mano)', sh:rest}); }
+    else for(let i=0;i<S.shots.length;i+=10) G.push({t:'Disparos '+(i+1)+'–'+Math.min(S.shots.length,i+10), sh:S.shots.slice(i,i+10)});
+    return G;
+  }
+  async function buildPDF(p,meta){
+    const J=window.jspdf&&window.jspdf.jsPDF; if(!J) return null;
+    const d=new J({unit:'mm',format:'a4'}), I=meta.enteros, S=p.m.S; let y=16;
+    d.setFont('helvetica','bold'); d.setFontSize(17); d.text('Tirofijo · informe de tirada',14,y); y+=8;
+    d.setFont('helvetica','normal'); d.setFontSize(10.5);
+    const dt=new Date(meta.fecha), L=[meta.puesto+(meta.tirador?' · '+meta.tirador:'')+' · '+dt.toLocaleDateString('es-ES')+' '+dt.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}),
+      (meta.modalidad?'Modalidad: '+meta.modalidad.clave+' · '+meta.modalidad.nombre:'Tirada libre')+(meta.cuentan_mejores?' · cuentan los '+meta.cuentan_mejores+' mejores':''),
+      meta.diana+' · aro 1 '+f1(meta.aro1mm)+' mm · calibre '+f1(meta.calibremm)+' mm · regla del '+meta.regla];
+    L.forEach(t=>{ d.text(t,14,y); y+=5.5; });
+    const img=targetPNG(p,900); d.addImage(img,'JPEG',14,y+2,95,95);
+    let ky=y+8; d.setFont('helvetica','bold'); d.setFontSize(30); d.text((I?String(meta.total):f1(meta.total))+' pts',116,ky+6); ky+=16;
+    d.setFont('helvetica','normal'); d.setFontSize(11);
+    [['Disparos que cuentan',meta.validos+' de '+meta.disparos],['Dieces interiores (X)',String(meta.x)],['Media',I?String(meta.media):f1(meta.media)],
+     ['Mejor / peor',(I?meta.mejor:f1(meta.mejor))+' / '+(I?meta.peor:f1(meta.peor))],['Total con décimas',f1(meta.total_decimas)],['Total en enteros',String(meta.total_enteros)]]
+      .forEach(([a,b])=>{ d.setTextColor(110); d.text(a,116,ky); d.setTextColor(0); d.text(b,170,ky); ky+=7; });
+    y+=102; d.setFontSize(10);
+    for(const G of serieGroups(p)){
+      if(y>275){ d.addPage(); y=16; }
+      const sum=G.sh.filter(s=>!s.drop).reduce((a,s)=>a+(I?s.ring:s.dec),0);
+      d.setFont('helvetica','bold'); d.text(G.t+'  ·  '+(I?String(sum):f1(sum)),14,y); y+=5.5; d.setFont('helvetica','normal');
+      d.text(G.sh.map(s=>shotTxt(s,I)).join('   '),14,y,{maxWidth:182}); y+=8; }
+    if(y>270){ d.addPage(); y=16; }
+    d.setTextColor(110); d.setFontSize(8.5);
+    d.text('x: luz roja o disparo de más (no cuenta) · *: añadido a mano · R: recuperado por la foto final · ?: dudoso. Generado por Tirofijo PC '+PCVER+'.',14,y+4,{maxWidth:182});
+    return d.output('blob');
+  }
+  function reportHTML(p,meta){     // sin jsPDF (página abierta fuera de la carpeta de la app): informe imprimible
+    const I=meta.enteros, rows=serieGroups(p).map(G=>'<h3>'+esc(G.t)+'</h3><p>'+G.sh.map(s=>esc(shotTxt(s,I))).join(' &nbsp; ')+'</p>').join('');
+    return new Blob(['<!DOCTYPE html><meta charset="utf-8"><title>Informe '+esc(meta.puesto)+'</title><body style="font-family:sans-serif;max-width:800px;margin:20px auto">'+
+      '<h1>Tirofijo · informe de tirada</h1><p>'+esc(meta.puesto)+(meta.tirador?' · '+esc(meta.tirador):'')+' · '+new Date(meta.fecha).toLocaleString('es-ES')+'<br>'+
+      (meta.modalidad?'Modalidad: '+esc(meta.modalidad.clave+' · '+meta.modalidad.nombre):'Tirada libre')+'<br>'+esc(meta.diana)+' · aro 1 '+f1(meta.aro1mm)+' mm · calibre '+f1(meta.calibremm)+' mm</p>'+
+      '<h2>Total: '+(I?meta.total:f1(meta.total))+' pts · '+meta.validos+' de '+meta.disparos+' disparos cuentan</h2><img src="'+targetPNG(p,700)+'" width="420">'+rows+
+      '<p style="color:#777;font-size:12px">x: luz roja o de más (no cuenta) · *: a mano · R: recuperado por la foto · ?: dudoso. Imprime esta página para guardarla en PDF.</p></body>'],{type:'text/html'});
+  }
+  async function saveSession(p){
+    const m=p.m; if(m.S.phase==='running'||p.inProg){ msg(p,'Termina la tirada primero (⏹)'); setTimeout(()=>msg(p,''),3000); return; }
+    if(!m.S.shots.length){ msg(p,'No hay disparos que guardar'); setTimeout(()=>msg(p,''),3000); return; }
+    if(p.rec) recStop(p);
+    const meta=sessionMeta(p), d0=new Date(), pu=safeName(meta.puesto)||('Puesto '+p.n);
+    const base=locStamp(d0)+'_'+pu.replace(/ /g,'_')+(p.shooter?'_'+safeName(p.shooter).replace(/ /g,'_'):'')+'_informe';
+    const pdf=await buildPDF(p,meta), rep=pdf||reportHTML(p,meta), ext=pdf?'pdf':'html', json=new Blob([JSON.stringify(meta,null,1)],{type:'application/json'});
+    let where='';
+    if(await dirReady()){ try{ const d1=await REC.dir.getDirectoryHandle(pu,{create:true}), d2=await d1.getDirectoryHandle(locStamp(d0).slice(0,8),{create:true});
+        for(const [b,nm] of [[rep,base+'.'+ext],[json,base+'.json']]){ const fh=await d2.getFileHandle(nm,{create:true}), w=await fh.createWritable(); await w.write(b); await w.close(); }
+        where=REC.dir.name+'/'+pu+'/'+locStamp(d0).slice(0,8)+'/'; }catch(e){ where=''; log(p.label+': no se pudo guardar en la carpeta ('+e.message+')'); } }
+    if(!where){ dl(rep,base+'.'+ext); dl(json,base+'.json'); where='Descargas'; }
+    p.lastSave={rep, json, nRep:base+'.'+ext, nJson:base+'.json'};
+    log(p.label+': sesión guardada en '+where+' ('+base+'.'+ext+' + .json)');
+    m.clear(); m.S.showRings=true; p.modInfo=null; p.preOk=false; persist(p);             // la diana vuelve a quedar limpia
+    msg(p,'💾 Sesión guardada en '+where+(pdf?'':' (informe en HTML: ábrelo e imprímelo a PDF)')+' · diana limpia'); setTimeout(()=>{ if(p.msgTxt&&p.msgTxt.startsWith('💾')) msg(p,''); },9000);
+    paint(p);
   }
 
   /* ---------- «¿disparo?» (v25.9): la tarjeta se movió pero no apareció agujero nuevo ---------- */
@@ -1319,7 +1959,7 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
   }
   function recPause(p){ const R=p.rec; if(!R||R.paused) return; try{ R.rec.pause(); }catch(e){} R.paused=true; R.pauseAt=performance.now(); }
   function recStop(p){ p.recWanted=false; const R=p.rec; if(!R) return; p.rec=null; if(R.paused){ R.pausedMs+=performance.now()-R.pauseAt; R.paused=false; }
-    R.shots=p.m.S.shots.map((s,i)=>({n:i+1, ring:s.ring, dec:s.dec, manual:!!s.manual, drop:!!s.drop,
+    R.shots=p.m.S.shots.map((s,i)=>({n:i+1, ring:s.ring, dec:s.dec, manual:!!s.manual, drop:!!s.drop, late:!!s.late, over:!!s.over, ser:s.ser||null, rec:!!s.rec, dud:!!s.dud,
       vt:s.vt!=null?s.vt:Math.max(0,(s.t-R.d0)/1000-1.5), vx:s.vx, vy:s.vy})).filter(s=>s.vt!=null);
     R.dur=(performance.now()-R.t0-R.pausedMs)/1000; R.tot=p.m.totals();
     R.stopped=true; try{ R.rec.state!=='inactive' ? R.rec.stop() : recFinish(p,R); }catch(e){ recFinish(p,R); }
@@ -1328,7 +1968,7 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
   async function recFinish(p,R){
     if(R.fin) return; R.fin=true;
     if(!R.stopped){ // la cámara se cortó a mitad: se guarda lo grabado y se seguirá en otro archivo al reconectar
-      R.shots=p.m.S.shots.map((s,i)=>({n:i+1, ring:s.ring, dec:s.dec, manual:!!s.manual, drop:!!s.drop, vt:s.vt, vx:s.vx, vy:s.vy})).filter(s=>s.vt!=null);
+      R.shots=p.m.S.shots.map((s,i)=>({n:i+1, ring:s.ring, dec:s.dec, manual:!!s.manual, drop:!!s.drop, late:!!s.late, over:!!s.over, ser:s.ser||null, vt:s.vt, vx:s.vx, vy:s.vy})).filter(s=>s.vt!=null);
       R.dur=(performance.now()-R.t0-R.pausedMs)/1000; R.tot=p.m.totals(); if(p.rec===R) p.rec=null; }
     const meta={app:'Tirofijo PC', ver:PCVER, puesto:R.pu, tirador:R.shooter||p.shooter||'', fecha:new Date(R.d0).toISOString(), mt:R.mt, vw:R.vw, vh:R.vh, dur:R.dur,
       diana:(TARGETS[p.m.S.target]||{name:'personalizada'}).name, aro1mm:p.m.targetD(), calibremm:+p.m.S.caliber||0,
@@ -1487,17 +2127,26 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
   function onShot(p,sh){
     if(p.rec && !p.rec.paused && sh.imp!=null) sh.vt=Math.max(0,(sh.imp-p.rec.t0-p.rec.pausedMs)/1000);
     askClose(p);
-    const f=p.el.querySelector('.flash'); f.textContent=sh.ring>0?f1(sh.dec):'0'; f.classList.remove('show'); void f.offsetWidth; f.classList.add('show');
-    log(p.label+(p.shooter?' ('+p.shooter+')':'')+': disparo '+p.m.S.shots.length+' → '+f1(sh.dec));
+    // tirada común con luces: vale la luz del momento del disparo; en modalidad, los disparos de más de cada verde tampoco cuentan
+    if(p.inProg && lightState() && !(sh.manual&&p.m.S.phase==='review')){
+      const L=lightAt(sh.impL!=null?sh.impL:performance.now()); sh.late=L.c==='red';
+      if(GP.isMod&&GP.ms&&L.i>=0&&GP.ms[L.i]){ const st=GP.ms[L.i]; sh.ser=(st.c==='red'&&st.pre&&st.ser>1)?st.ser-1:st.ser;
+        if(!sh.late&&st.n){ p.cnt[L.i]=(p.cnt[L.i]||0)+1; if(p.cnt[L.i]>st.n){ sh.over=true; sh.late=true; } } } }
+    const I=!!p.m.S.ints, f=p.el.querySelector('.flash'); f.textContent=sh.late?'✕':sh.ring>0?(I?String(sh.ring):f1(sh.dec)):'0'; f.classList.remove('show'); void f.offsetWidth; f.classList.add('show');
+    log(p.label+(p.shooter?' ('+p.shooter+')':'')+': disparo '+p.m.S.shots.length+' → '+(I?sh.ring:f1(sh.dec))+(sh.late?(sh.over?' (de más, no cuenta)':' (luz roja, no cuenta)'):''));
     paint(p); persist(p);
   }
   function paint(p){
     const T=p.m.totals(), S=p.m.S, el=p.el;
-    el.querySelector('.last').textContent=T.last?f1(T.last.dec):'—';
-    el.querySelector('.tot').textContent=f1(T.sum);
-    el.querySelector('.ntir').textContent=(T.counted<T.n?T.counted+'/':'')+T.n+(T.n===1?' tiro':' tiros')+(S.shotLimit?' de '+S.shotLimit:'')+' · '+T.sumInt+' pts';
+    const I=!!S.ints;                                           // modalidades: enteros, sin décimas
+    el.querySelector('.last').textContent=T.last?(T.last.late?'✕':I?String(T.last.ring):f1(T.last.dec)):'—';
+    el.querySelector('.tot').textContent=I?String(T.sumInt):f1(T.sum);
+    el.querySelector('.ntir').textContent=(T.counted<T.n?T.counted+'/':'')+T.n+(T.n===1?' tiro':' tiros')+(S.shotLimit?' de '+S.shotLimit:'')+(I?'':' · '+T.sumInt+' pts');
+    el.querySelector('[data-a="rings"]').classList.toggle('off',S.showRings===false);
+    el.querySelector('.cFx').checked=S.fxOn!==false; el.querySelector('.fxMsg').textContent=p.m.fx.msg||'';
+    el.querySelector('.redl').style.display=p.lastSave?'':'none';
     el.classList.toggle('armed',p.m.armed);
-    el.querySelector('.badge').textContent=(p.m.armed?'● DETECTANDO':'PARADO')+(p.rec?(p.rec.paused?' · REC en pausa':' · 🔴 REC'):'');
+    el.querySelector('.badge').textContent=(p.inProg?'🚦 ':'')+(p.m.armed?'● DETECTANDO':S.phase==='review'?'REVISIÓN':'PARADO')+(p.rec?(p.rec.paused?' · REC en pausa':' · 🔴 REC'):'');
     el.querySelector('.cOut').checked=S.countOut!==false; el.querySelector('.cAsk').checked=S.askShot!==false;
     const ba=el.querySelector('[data-a="arm"]'); ba.textContent=p.m.armed?'⏸':'▶'; ba.classList.toggle('on',p.m.armed);
     el.querySelector('[data-a="type"]').textContent=S.detectType==='laser'?'🔴':'◎';
@@ -1506,7 +2155,10 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
     el.querySelector('.selModal').value=MODALS[S.modal]?S.modal:'issf';
     el.querySelector('.selSens').value=S.holeSens; el.querySelector('.vSens').textContent=S.holeSens;
     el.querySelector('.aro').innerHTML='aro 1 '+f1(p.m.targetD())+' mm<br>cal. '+f1(+S.caliber||0)+' mm';
-    if(el.classList.contains('big')) el.querySelector('.shots').innerHTML=S.shots.map((s,i)=>'<div class="'+(s.drop?'drop':'')+(i===S.shots.length-1?' lastS':'')+'" title="'+(s.manual?'marcado a mano':'')+'">'+(s.ring===0?'0':f1(s.dec))+(s.manual?'*':'')+'</div>').join('');
+    if(el.classList.contains('big')){
+      el.querySelector('.shots').innerHTML=S.shots.map((s,i)=>'<div class="'+(s.late?'late':s.drop?'drop':'')+(s.rec?' rec':'')+(s.dud?' dud':'')+(i===S.shots.length-1?' lastS':'')+'" title="'+
+        (s.ser?'serie '+s.ser+' · ':'')+(s.over?'de más · ':s.late?'luz roja · ':'')+(s.manual?'marcado a mano':'')+(s.rec?'recuperado por la foto':'')+(s.dud?'dudoso':'')+'">'+(s.ring===0&&s.dRel>1?'0':I?s.ring:f1(s.dec))+(s.manual?'*':'')+'</div>').join('');
+      el.querySelector('.serTot').textContent=p.modInfo?serieGroups(p).map(G=>(G.t.split(' · ')[0])+': '+G.sh.filter(s=>!s.drop).reduce((a,s)=>a+(I?s.ring:s.dec),0)).join(' · '):''; }
   }
   function paintStatus(p){
     const s=p.m.status(), c=p.el.querySelector('.st');
@@ -1519,13 +2171,21 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
     const p=P.find(x=>x.id===+b.closest('.tile').dataset.id); if(!p) return;
     const a=b.dataset.a, m=p.m;
     if(a==='arm'){ if(!arm(p,!m.armed) && !p.el.classList.contains('big')) setBig(p); }
-    else if(a==='preGo'){ if(preApply(p)){ p.preOk=true; p.el.classList.remove('needPre'); arm(p,true); } }
+    else if(a==='preGo'){ if(preApply(p)){ p.preOk=true; p.el.classList.remove('needPre'); if(GP.on){ msg(p,'🚦 Entra en la tirada común'); setTimeout(()=>msg(p,''),2500); joinProg(p); hudUI(); } else arm(p,true); } }
     else if(['focusC','af','mf','expM','expP'].includes(a)){ camCmd(p,a); }
     else if(a==='askAdd'){ p.addNext=true; clearTimeout(p.askT); p.el.classList.add('adding'); p.el.querySelector('.askTxt').innerHTML='<b>Haz clic en la diana donde fue el disparo</b>';
       p.askT=setTimeout(()=>askClose(p),25000); return; }
     else if(a==='askZero'){ askClose(p); m.addZero(); persist(p); }
     else if(a==='askNo'){ askClose(p); }
-    else if(a==='fin'){ m.armed=false; askClose(p); recStop(p); p.preOk=false; }
+    else if(a==='fin'){ if(p.inProg){ if(!confirm('¿Sacar a '+(p.shooter||'Puesto '+p.n)+' de la tirada común y terminar la suya?')) return; leaveProg(p); }
+      else { m.armed=false; askClose(p); p.preOk=false; if(m.S.phase==='running'||p.rec) m.sessionEnd().then(()=>{ recStop(p); paint(p); persist(p); }); } }
+    else if(a==='rings'){ m.S.showRings=m.S.showRings===false; persist(p); }
+    else if(a==='save'){ saveSession(p); return; }
+    else if(a==='ok'){ persist(p); setBig(null); return; }
+    else if(a==='fxRedo'){ if(!m.fx.A){ msg(p,'No hay foto inicial: el análisis final se activa al empezar una tirada en cartón'); setTimeout(()=>msg(p,''),4000); return; } m.fxRedo().then(()=>paint(p)); }
+    else if(a==='fxUndo'){ m.fxUndo(); persist(p); }
+    else if(a==='fxSug'){ m.fxAddSug(); persist(p); }
+    else if(a==='redl'){ if(p.lastSave){ dl(p.lastSave.rep,p.lastSave.nRep); dl(p.lastSave.json,p.lastSave.nJson); } return; }
     else if(a==='repLast'){ if(p.lastRep) repView(p.lastRep); else { repList(); } return; }
     else if(a==='cal'){ msg(p,'Analizando la diana…'); setTimeout(()=>{ const r=m.autoCalib();
       msg(p, r.ok ? '🎯 '+r.name+(r.hint?' · '+r.hint:'')+' · comprueba los aros' : '🎯 '+r.msg);
@@ -1544,9 +2204,11 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
 
   $('#allArm').onclick=()=>{ let n=0; P.forEach(p=>{ if(!arm(p,true)) n++; });
     if(n) say(n===1?'1 puesto espera que confirmes aro 1 y calibre (⛶)':n+' puestos esperan que confirmes aro 1 y calibre (⛶)'); };
-  $('#allStop').onclick=()=>{ P.forEach(p=>arm(p,false)); };
+  $('#allStop').onclick=()=>{ P.forEach(p=>{ if(!p.inProg) arm(p,false); }); };
   $('#allNew').onclick=()=>{ const n=P.reduce((a,p)=>a+p.m.S.shots.length,0);
-    if(n && !confirm('¿Borrar los disparos de todos los puestos ('+n+' en total)?')) return; P.forEach(p=>{ recStop(p); askClose(p); p.m.clear(); p.m.armed=false; p.preOk=false; persist(p); paint(p); }); };
+    if(GP.on){ say('Hay una tirada común en marcha: termínala antes (⏹ arriba)',1); return; }
+    if(n && !confirm('¿Borrar los disparos de todos los puestos ('+n+' en total)?')) return; P.forEach(p=>{ recStop(p); askClose(p); p.m.clear(); p.m.armed=false; p.preOk=false; p.modInfo=null; persist(p); paint(p); }); };
+  $('#cfgOk').onclick=()=>$('#cfg').classList.add('hide');
   $('#cfgBtn').onclick=()=>$('#cfg').classList.toggle('hide');
 
   function layout(){
