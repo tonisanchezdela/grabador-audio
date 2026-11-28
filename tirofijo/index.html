@@ -826,7 +826,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v27.0', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v27.1', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -2568,8 +2568,8 @@
       ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{duel:5,g:3,r:7,n:5})}]},
     '9MM':{n:'Pistola 9 mm', d:'30+30 disparos: 6 series de 5 en 150 s y 6 series de 5 en 20 s.',
       ph:[{l:'Precisión',ser:rpt(6,{g:150,n:5})},{l:'Velocidad',ser:rpt(6,{g:20,n:5})}]},
-    'SPM':{n:'Pistola 25m (precisión y tiro rápido)', d:'30+30 disparos. Precisión: 6 series de 5 en 300 s. Tiro rápido: 6 series de 5 en 10 s (10×5 disparos máx.).',
-      ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{g:10,n:5})}]}
+    'SPM':{n:'Pistola 25m (precisión y tiro rápido)', d:'30+30 disparos. Precisión: 6 series de 5 en 300 s. Tiro rápido: 6 series de 5 disparos, cada uno 3 s en verde y 7 s en rojo.',
+      ph:[{l:'Precisión',ser:rpt(6,{g:300,n:5})},{l:'Tiro rápido',ser:rpt(6,{duel:5,g:3,r:7,n:5})}]}
   };
   // avancarga: 30 min seguidos, 13 disparos, cuentan los 10 mejores (reglas de avancarga: impacto en la línea por el centro)
   [['KUCHENREUTER','Pistola de percusión (original)'],['COLT','Revólver de percusión (original)'],['MARIETTE','Revólver de percusión (réplica)'],
