@@ -809,7 +809,7 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const APPVER='v26.7', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
+  const APPVER='v26.8', APPDATE='28-11-26';   // versión visible para comprobar que se tiene la última
   document.querySelectorAll('.appVer').forEach(e=>e.textContent='Versión '+APPVER+' · actualizada el '+APPDATE);
   const video = $('#video'), overlay = $('#overlay'), camwrap = $('#camwrap');
   const octx = overlay.getContext('2d');
@@ -1903,22 +1903,27 @@
   }
   // compara con los impactos en directo: añade los que faltan (recuperados) y marca dudosos los que no están
   function fxApply(res,forceAdd){
-    S.shots.forEach(s=>{ delete s.dud; }); S.shots=S.shots.filter(s=>!s.rec); FX.sug=[];
+    // deshace un análisis anterior: posiciones del vídeo, sin recuperados ni dudosos
+    S.shots.forEach(s=>{ delete s.dud; if(s.lv){ Object.assign(s,s.lv); delete s.lv; } }); S.shots=S.shots.filter(s=>!s.rec); FX.sug=[];
     if(!res){ renderStats(); try{ abInfo(); }catch(e){} return; }
     const tol=Math.max(2.5*bulletR(), 0)+3/(targetD()/2), use=res.holes.map(hh=>({...hh, left:hh.k}));
     const live=S.shots.filter(s=>!(s.manual&&s.ring===0&&s.dRel>=1.2));
     const pairs=[]; live.forEach(s=>use.forEach((hh,j)=>{ const d=Math.hypot(s.rx-hh.rx,s.ry-hh.ry); if(d<=tol) pairs.push({s,j,d}); }));
     pairs.sort((a,b)=>a.d-b.d); const done=new Set();
-    for(const p of pairs){ if(done.has(p.s)||use[p.j].left<=0) continue; done.add(p.s); use[p.j].left--; }
+    const hit=new Map(); for(const p of pairs){ if(done.has(p.s)||use[p.j].left<=0) continue; done.add(p.s); hit.set(p.s,use[p.j]); use[p.j].left--; }
     const miss=use.filter(hh=>hh.left===hh.k);
-    // fotos fiables (luz parecida, sin cambios raros) y pocos que faltan: se añaden solos. Si no, quedan como sugerencias
-    const auto=forceAdd || (res.ncc>=0.9 && res.sig<=4 && miss.length<=Math.max(6,Math.ceil(0.5*live.length)));
+    // fotos fiables (luz parecida): la foto manda. Añade los que faltan y la puntuación sale de la posición medida en la foto
+    // (más precisa); el vídeo solo aporta el orden. Si la luz cambió mucho, quedan como sugerencias
+    const auto=forceAdd || (res.ncc>=0.9 && res.sig<=4);
     let nd=0; if(auto) live.forEach(s=>{ if(!done.has(s)&&!s.manual){ s.dud=true; nd++; } });
+    if(auto) hit.forEach((hh,s)=>{ if(s.manual) return; const {ring,dec}=scoreFromDist(hh.dRel);
+      s.lv={rx:s.rx, ry:s.ry, dRel:s.dRel, ring:s.ring, dec:s.dec};
+      Object.assign(s,{rx:hh.rx, ry:hh.ry, dRel:hh.dRel, ring:hh.dRel>1?0:ring, dec:hh.dRel>1?0:dec}); });
     const t=S.shots.length?S.shots[S.shots.length-1].t:Date.now(); let nr=0;
     miss.forEach(hh=>{ const {ring,dec}=scoreFromDist(hh.dRel), o={rx:hh.rx, ry:hh.ry, dRel:hh.dRel, ring:hh.dRel>1?0:ring, dec:hh.dRel>1?0:dec, t, rec:true};
       if(auto){ S.shots.push(o); nr++; } else FX.sug.push(o); });
     renderStats(); try{ abInfo(); }catch(e){}
-    if(auto) fxUI('🔬 Análisis final ('+res.size+'): '+(nr?nr+' recuperado'+(nr>1?'s':'')+' (azul)':'ninguno sin detectar')+(nd?' · '+nd+' dudoso'+(nd>1?'s':'')+' (naranja: compruébalo y bórralo con ➖ si no es un disparo)':'')+'.');
+    if(auto) fxUI('🔬 Análisis final ('+res.size+'): puntuación según la foto · '+(nr?nr+' recuperado'+(nr>1?'s':'')+' (azul)':'ninguno sin detectar')+(nd?' · '+nd+' dudoso'+(nd>1?'s':'')+' (naranja: compruébalo y bórralo con ➖ si no es un disparo)':'')+'.');
     else fxUI('🔬 Análisis final ('+res.size+'): '+FX.sug.length+' posible'+(FX.sug.length>1?'s':'')+' impacto'+(FX.sug.length>1?'s':'')+' sin detectar (círculos azules). '+
       (res.ncc<0.9||res.sig>4?'La luz ha cambiado mucho entre las dos fotos: revísalos. ':'')+'Toca ➕ Impacto sobre uno para añadirlo o «Añadir sugeridos».');
     if(S.phase==='review'){ const m=FX.msg; try{ openAdjust('review'); }catch(e){} fxUI(m); }
@@ -3286,7 +3291,7 @@ function autoCalib(rgba, W, H, TARGETS){
       mk('➖ Impacto',()=>calMode=(calMode==='rvDel'?null:'rvDel'),'rvDel');
       if(FX.A) mk('🔬 Repetir análisis',()=>{ if(!FX.busy) fxRun().catch(()=>fxUI('🔬 Análisis final: error')); });
       if(FX.sug&&FX.sug.length) mk('✓ Añadir sugeridos ('+FX.sug.length+')',()=>{ FX.sug.forEach(o=>S.shots.push({...o})); FX.sug=[]; renderStats(); fxUI('🔬 Sugeridos añadidos (azul). Borra con ➖ los que no sean disparos.'); openAdjust('review'); });
-      if(FX.A) mk('↩ Quitar recuperados',()=>{ fxApply(null); fxUI('🔬 Recuperados quitados'); });
+      if(FX.A) mk('↩ Deshacer análisis',()=>{ fxApply(null); fxUI('🔬 Análisis deshecho: impactos y puntuación del vídeo'); openAdjust('review'); });
     } else if(kind==='laser'){
       $('#abT').textContent='Enciende el láser sobre la diana: el círculo rojo marca el punto detectado';
       mk('Umbral −',()=>{S.thr=Math.max(90,S.thr-10);$('#thr').value=S.thr;$('#vThr').textContent=S.thr;abInfo();});
