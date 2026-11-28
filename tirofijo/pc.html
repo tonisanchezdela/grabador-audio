@@ -1271,7 +1271,11 @@ function create(video, overlay){
   Object.assign(E,{ parseCal, step, status, totals, save, load, setTarget, setModal, setDetect, setAroCal, targetCenterVid, targetD, autoCalib:runAutoCalib, ringRadii, scoreShot,
     clear(){ S.shots=[]; HD.recent=[]; resetHoles(); ASK.evt=null; ASK.okOff=null; FX.A=null; FX.res=null; FX.sug=[]; FX.msg=''; S.phase='idle'; }, addZero,
     // sesión: «running» mientras se tira; «review» al terminar (números, recuperados y dudosos a la vista)
-    async sessionStart(){ S.phase='running'; HD.cands=[]; HD.recent=[]; E.lastMov=0; FX.res=null; FX.sug=[]; try{ await fxStart(); }catch(e){ FX.A=null; } },
+    async sessionStart(){ S.phase='running'; HD.cands=[]; HD.recent=[]; E.lastMov=0; FX.res=null; FX.sug=[]; FX.A=null;
+      // la foto inicial necesita la zona de la diana ya preparada por la detección: se espera un momento si aún no está
+      for(let k=0;k<50 && S.fxOn!==false && S.detectType==='holes' && !(HD.R&&HD.ins&&HD.ins.length===HD.R.w*HD.R.h);k++) await fxSleep(200);
+      if(S.phase!=='running') return;
+      try{ await fxStart(); }catch(e){ FX.A=null; } },
     sessionEnd(){ S.phase='review'; if(FX.A) return fxRun().catch(()=>fxUI('🔬 Análisis final: error')); fxUI(''); return Promise.resolve(); },
     fx:FX, fxRedo(){ S.phase='review'; return fxRun(); }, fxUndo(){ fxApply(null); fxUI(''); }, fxAddSug(){ if(FX.res) fxApply(FX.res,true); },
     fxTakePhoto, markBest, undo(){ const s=S.shots.pop(); markBest(); return s; },
@@ -1466,7 +1470,7 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
 </script>
 <script>
 (() => {
-  const PCVER='v1.4', PCDATE='28-11-26';    // versión visible: cambiar en cada versión
+  const PCVER='v1.5', PCDATE='28-11-26';    // versión visible: cambiar en cada versión
   const $=s=>document.querySelector(s);
   $('#appVer').textContent='Versión '+PCVER+' · actualizada el '+PCDATE;
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1531,15 +1535,27 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
     }); },2000);
 
   /* ---------- foto para el análisis final (v26.7): webcam → ImageCapture a máxima resolución; cámara IP → instantánea de go2rtc ---------- */
-  async function capturePhoto(p){
-    if(p.src.kind==='cam'){ const t=p.stream&&p.stream.getVideoTracks()[0]; return t?p.m.fxTakePhoto(t):null; }
-    if(p.src.kind==='g2r' && !p.noSnap){
-      const base=$('#g2r').value.replace(/\/$/,''), ac=new AbortController(), tm=setTimeout(()=>ac.abort(),5000);
-      try{ const r=await fetch(base+'/api/frame.jpeg?src='+encodeURIComponent(p.src.name),{signal:ac.signal, cache:'no-store'}); clearTimeout(tm);
-        if(r.ok){ const b=await r.blob(); if(b.size>2000) return b; } }catch(e){ clearTimeout(tm); }
-      p.noSnap=true; log(p.label+': go2rtc no da instantánea JPEG (le falta ffmpeg): el análisis usa la media de fotogramas del vídeo'); }
+  // (v1.5) cámara IP: primero la FOTO de la propia cámara (resolución completa del sensor, sin compresión de vídeo),
+  // que go2rtc trae de su enlace de foto con la entrada «<puesto> foto» de go2rtc.yaml; si no hay, un fotograma del vídeo (necesita ffmpeg)
+  async function g2rJpeg(src,ms){
+    const base=$('#g2r').value.replace(/\/$/,''), ac=new AbortController(), tm=setTimeout(()=>ac.abort(),ms);
+    try{ const r=await fetch(base+'/api/frame.jpeg?src='+encodeURIComponent(src),{signal:ac.signal, cache:'no-store'}); clearTimeout(tm);
+      if(r.ok){ const b=await r.blob(); if(b.size>2000) return b; } }catch(e){ clearTimeout(tm); }
     return null;
   }
+  async function capturePhoto(p){
+    if(p.src.kind==='cam'){ const t=p.stream&&p.stream.getVideoTracks()[0]; return t?p.m.fxTakePhoto(t):null; }
+    if(p.src.kind!=='g2r') return null;
+    if(p.photoSrc){ const b=await g2rJpeg(p.photoSrc,10000);
+      if(b){ if(!p.photoOk){ p.photoOk=true; log(p.label+': foto de la cámara para el análisis ('+Math.round(b.size/1024)+' kB)'); } photoInfo(p); return b; }
+      log(p.label+': la cámara no dio la foto («'+p.photoSrc+'»): revisa su enlace de foto en go2rtc.yaml'); p.photoOk=false; photoInfo(p,'⚠ La cámara no dio la foto: revisa «'+p.photoSrc+'» en go2rtc.yaml'); }
+    if(!p.noSnap){ const b=await g2rJpeg(p.src.name,5000); if(b) return b;
+      p.noSnap=true; log(p.label+': sin foto de la cámara ni instantánea de go2rtc (le falta ffmpeg): el análisis usa la media de fotogramas del vídeo'); }
+    return null;
+  }
+  function photoInfo(p,t){ const e=p.el&&p.el.querySelector('.qcamT'); if(!e||p.src.kind!=='g2r') return;
+    e.textContent=t||('Enfoque y exposición se ajustan en la propia cámara IP. '+(p.photoSrc?'Foto para el análisis final: «'+p.photoSrc+'» (resolución completa de la cámara).'
+      :'Sin enlace de foto: añade «'+p.src.name+' foto» en go2rtc.yaml para analizar con la foto de la cámara.')); }
   /* ---------- puestos ---------- */
   function cfgKey(p){ return 'tirofijo_pc_'+p.key; }
   function persist(p){ try{ LS(cfgKey(p), JSON.stringify({m:p.m.save(), shooter:p.shooter||''})); }catch(e){} }
@@ -1578,6 +1594,7 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
     p.preOk=false; preFill(p);
     p.m.onBig=()=>{ msg(p,'⚠ Los impactos se ven más grandes que el calibre: revisa calibre y diámetro real del aro 1'); setTimeout(()=>msg(p,''),9000); };
     if(src.kind!=='cam') el.querySelector('.qcamT').textContent='Enfoque y exposición se ajustan en la propia cámara IP.';
+    if(src.kind==='g2r'){ p.photoSrc=G2R_PHOTO.get(src.name)||null; }
     const cO=el.querySelector('.cOut'), cA=el.querySelector('.cAsk');
     cO.onchange=()=>{ p.m.S.countOut=cO.checked; p.m.resetRef(); persist(p); };
     cA.onchange=()=>{ p.m.S.askShot=cA.checked; if(!cA.checked) askClose(p); persist(p); };
@@ -2221,6 +2238,7 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
   addEventListener('resize',layout);
 
   /* ---------- cámaras de go2rtc ---------- */
+  const G2R_PHOTO=new Map();          // cámara → su entrada de foto en go2rtc
   async function readG2r(){
     const base=$('#g2r').value.replace(/\/$/,''); LS('pc_g2r',$('#g2r').value);
     if(location.protocol==='https:' && /^http:/.test(base) && !/^http:\/\/(localhost|127\.)/.test(base)){
@@ -2228,10 +2246,14 @@ window.TirofijoMotor={create, TARGETS, MODALS, autoCalib};
     say('Leyendo cámaras…');
     try{
       const r=await fetch(base+'/api/streams'); if(!r.ok) throw new Error('go2rtc respondió '+r.status);
-      const names=Object.keys(await r.json());
+      const all=Object.keys(await r.json());
+      // «Puesto 1 foto» no es un puesto: es el enlace de foto de la cámara de «Puesto 1»
+      const isPh=n=>/\s+foto$/i.test(n), names=all.filter(n=>!isPh(n));
+      G2R_PHOTO.clear(); all.filter(isPh).forEach(n=>{ const cam=n.replace(/\s+foto$/i,''); if(all.includes(cam)) G2R_PHOTO.set(cam,n); });
       if(!names.length){ say('go2rtc no tiene cámaras configuradas',1); return; }
       names.forEach(n=>addPuesto({kind:'g2r', name:n}, n));
-      LS('pc_auto','1'); layout(); log('go2rtc: '+names.length+' cámaras');
+      P.forEach(p=>{ if(p.src.kind==='g2r'){ const ph=G2R_PHOTO.get(p.src.name)||null; if(ph!==p.photoSrc){ p.photoSrc=ph; p.photoOk=false; } p.noSnap=false; photoInfo(p); } });
+      LS('pc_auto','1'); layout(); log('go2rtc: '+names.length+' cámaras'+(G2R_PHOTO.size?' · '+G2R_PHOTO.size+' con foto':''));
     }catch(e){ say('No se puede leer go2rtc en '+base+' ('+e.message+'). ¿Está abierto go2rtc?',1); }
   }
   $('#connBtn').onclick=readG2r;
